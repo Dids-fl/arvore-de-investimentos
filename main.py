@@ -18,6 +18,7 @@ from cli import (
 )
 from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador import calcular_recomendacao
+from recomendador_ativos import recomendar_ativos
 
 
 def main() -> None:
@@ -383,6 +384,50 @@ def main() -> None:
         for av in avisos:
             print(f"   {av}")
 
+    # ── Ativos específicos ────────────────────────────────────────────────────
+    _sep()
+    print("\n📈 Quer ver os ativos específicos recomendados para seu perfil?")
+    print("   (pode levar ~15s — busca dados em tempo real da bolsa)")
+    print("   (sim | não)")
+    quer_ativos = input("   → ").strip().lower() in ("sim", "s", "yes", "y")
+
+    ativos_sugeridos: list = []
+
+    if quer_ativos:
+        print("\n   🔍 Buscando e rankeando ativos...")
+        ativos_sugeridos = recomendar_ativos(perfil_exibido, nivel_risco_perfil) or []
+
+        if ativos_sugeridos:
+            _sep()
+            _labels = {
+                "acoes":  "AÇÕES",
+                "fiis":   "FIIs",
+                "cripto": "CRIPTO",
+            }
+            from recomendador_ativos import _CLASSE
+            classe = _CLASSE.get(perfil_exibido, "ativos")
+            label  = _labels.get(classe, "ATIVOS")
+
+            print(f"\n📊 TOP {len(ativos_sugeridos)} {label} PARA SEU PERFIL "
+                  f"({'conservador' if nivel_risco_perfil==1 else 'moderado' if nivel_risco_perfil==2 else 'agressivo'}):")
+            print()
+
+            for i, ativo in enumerate(ativos_sugeridos, 1):
+                ticker = ativo.get("ticker", "")
+                nome   = ativo.get("nome", "")
+                preco  = ativo.get("preco", 0)
+                score  = ativo.get("score", 0)
+
+                print(f"   {i}. {ticker:<8} {'— ' + nome[:35] if nome else ''}")
+                print(f"      Score: {score:.0f}/100   "
+                      f"{'Preço: R$' + f'{preco:,.2f}' if preco else ''}")
+                for motivo in ativo.get("motivos", []):
+                    print(f"      {motivo}")
+                print()
+        else:
+            print("\n   ⚠️  Não foi possível buscar ativos no momento.")
+            print("   Verifique sua conexão ou tente novamente mais tarde.")
+
     # ── Salva JSON ────────────────────────────────────────────────────────────
     res = {
         "recomendacao":       perfil_exibido,
@@ -402,6 +447,7 @@ def main() -> None:
         },
         "perfil":          _pp,
         "avisos":          avisos,
+        "ativos_sugeridos": ativos_sugeridos,
         "fontes_de_dados": _fontes,
     }
 
