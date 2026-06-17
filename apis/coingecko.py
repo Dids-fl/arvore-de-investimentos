@@ -28,6 +28,27 @@ class CoinGeckoClient:
         r.raise_for_status()
         return r.json()
 
+    def get_markets_top(self, top_n: int = 20, vs_currency: str = "brl") -> list[dict]:
+        """
+        Top N criptos por market cap — universo dinâmico, sem lista fixa.
+
+        Exemplo:
+            top20 = CoinGeckoClient().get_markets_top(20)
+            for c in top20:
+                print(f"{c['name']}: R${c['current_price']:,.2f}")
+        """
+        return self._get(
+            "coins/markets",
+            params={
+                "vs_currency":             vs_currency,
+                "order":                   "market_cap_desc",
+                "per_page":                top_n,
+                "page":                    1,
+                "sparkline":               "false",
+                "price_change_percentage": "24h,7d,30d",
+            },
+        )
+
     def get_markets(self, ids: list[str], vs_currency: str = "brl") -> list[dict]:
         """
         Dados de mercado de uma lista de moedas.
