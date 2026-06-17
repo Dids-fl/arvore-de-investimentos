@@ -1,3 +1,7 @@
+# Monta a carteira de alocação (ex: 50% RF, 30% Fundos, 20% RV), 
+# aplica ajustes por dependentes, dívidas, liquidez etc. 
+# e classifica o perfil final da carteira.
+
 from typing import Dict, List, Optional
 
 from categorias import RK, _risco, _RK_DISPLAY

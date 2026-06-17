@@ -1,3 +1,5 @@
+#Números fixos: alíquotas de IR (15%, 10%...) e taxas de fallback caso as APIs estejam fora.
+
 # ── Alíquotas de IR ───────────────────────────────────────────────────────────
 IR_RF    = 0.15
 IR_ACOES = 0.15

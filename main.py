@@ -1,3 +1,6 @@
+# Orquestra tudo: exibe o cabeçalho, conduz o questionário, 
+# chama o recomendador, monta o portfólio, imprime o resultado e salva o JSON final.
+
 import json
 import datetime
 from typing import Optional, List

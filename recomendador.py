@@ -1,3 +1,6 @@
+# O motor de regras: recebe todas as 21 respostas e decide qual produto recomendar, 
+# aplicando ajustes por prazo, emocional, reserva, idade, conhecimento e assim por diante.
+
 import sys
 from typing import List, Tuple
 

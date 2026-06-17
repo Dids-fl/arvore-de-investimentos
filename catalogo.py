@@ -1,5 +1,7 @@
-from typing import Dict, Tuple
+# O catálogo completo de produtos: o que comprar dentro de cada categoria, 
+# garantias, impostos e onde abrir conta. Também calcula a alíquota correta para cada produto.
 
+from typing import Dict, Tuple
 from config import IR_RF, IR_ACOES, IR_VGBL, IR_PGBL, IR_FII
 from categorias import RK, _RK_DISPLAY
 

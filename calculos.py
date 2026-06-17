@@ -1,3 +1,6 @@
+# Matemática financeira pura: calcula valor futuro bruto, 
+# valor futuro líquido (descontando IR) e valor real (descontando inflação).
+
 def _meses(anos: float) -> int:
     return int(anos * 12)
 

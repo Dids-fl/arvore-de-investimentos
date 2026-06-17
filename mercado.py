@@ -1,3 +1,7 @@
+# Busca as taxas em tempo real: SELIC e IPCA no Banco Central, 
+# Ibovespa CAGR pelo Yahoo Finance e previsão Focus. 
+# Salva cache local de 6h para não bater nas APIs toda vez.
+
 import time
 import json
 import datetime

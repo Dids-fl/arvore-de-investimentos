@@ -1,3 +1,7 @@
+#Tudo que aparece no terminal: as funções de pergunta, 
+# validação das respostas, os dicionários de opções 
+# (curto→1, médio→2...) e o perfil de demonstração (d na primeira pergunta).
+
 import unicodedata
 from typing import Optional, Dict, List
 

@@ -1,5 +1,7 @@
-from typing import Dict
+# Define todos os tipos de investimento (RK.RF, RK.RV, RK.PREV_PGBL...), 
+# o nível de risco de cada um (1, 2 ou 3) e o nome de exibição de cada produto.
 
+from typing import Dict
 
 class RK:
     RF              = "rf"
