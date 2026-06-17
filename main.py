@@ -1,6 +1,3 @@
-# Orquestra tudo: exibe o cabeçalho, conduz o questionário, 
-# chama o recomendador, monta o portfólio, imprime o resultado e salva o JSON final.
-
 import json
 import datetime
 from typing import Optional, List
@@ -395,21 +392,32 @@ def main() -> None:
 
     if quer_ativos:
         print("\n   🔍 Buscando e rankeando ativos...")
-        ativos_sugeridos = recomendar_ativos(perfil_exibido, nivel_risco_perfil) or []
+        ativos_sugeridos = recomendar_ativos(perfil_exibido, nivel_risco_perfil)
 
-        if ativos_sugeridos:
-            _sep()
-            _labels = {
-                "acoes":  "AÇÕES",
-                "fiis":   "FIIs",
-                "cripto": "CRIPTO",
-            }
+        if ativos_sugeridos is None:
+            # Categoria sem ranking individual (RF, previdência, fundos, ETFs)
+            print("\n   ℹ️  Para esta categoria não há ranking de ativos individuais.")
+            print(f"   Os produtos recomendados já estão detalhados acima: {_disp(perfil_exibido)}")
+            print("   Qualquer produto dentro da categoria serve — foque nas taxas e no emissor.")
+            ativos_sugeridos = []
+
+        elif not ativos_sugeridos:
+            print("\n   ⚠️  Não foi possível buscar ativos no momento.")
+            print("   Verifique sua conexão ou tente novamente mais tarde.")
+
+        else:
+            _labels = {"acoes": "AÇÕES", "fiis": "FIIs", "cripto": "CRIPTO"}
             from recomendador_ativos import _CLASSE
             classe = _CLASSE.get(perfil_exibido, "ativos")
             label  = _labels.get(classe, "ATIVOS")
+            perfil_label = (
+                "conservador" if nivel_risco_perfil == 1 else
+                "moderado"    if nivel_risco_perfil == 2 else
+                "agressivo"
+            )
 
-            print(f"\n📊 TOP {len(ativos_sugeridos)} {label} PARA SEU PERFIL "
-                  f"({'conservador' if nivel_risco_perfil==1 else 'moderado' if nivel_risco_perfil==2 else 'agressivo'}):")
+            _sep()
+            print(f"\n📊 TOP {len(ativos_sugeridos)} {label} PARA SEU PERFIL ({perfil_label}):")
             print()
 
             for i, ativo in enumerate(ativos_sugeridos, 1):
@@ -424,9 +432,6 @@ def main() -> None:
                 for motivo in ativo.get("motivos", []):
                     print(f"      {motivo}")
                 print()
-        else:
-            print("\n   ⚠️  Não foi possível buscar ativos no momento.")
-            print("   Verifique sua conexão ou tente novamente mais tarde.")
 
     # ── Salva JSON ────────────────────────────────────────────────────────────
     res = {
