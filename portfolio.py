@@ -1,7 +1,3 @@
-# Monta a carteira de alocação (ex: 50% RF, 30% Fundos, 20% RV), 
-# aplica ajustes por dependentes, dívidas, liquidez etc. 
-# e classifica o perfil final da carteira.
-
 from typing import Dict, List, Optional
 
 from categorias import RK, _risco, _RK_DISPLAY
@@ -187,7 +183,9 @@ def _build_portfolio(nr, conhec, fv, obj, rd, div, dep, ap, cart, ir_t,
 
     if dep == 2:   mover_rv_para_rf(p, 10)
     elif dep == 3: mover_rv_para_rf(p, 20)
-    if rd >= 3:    mover_rv_para_rf(p, 10, avisos)
+    if rd == 3:    mover_rv_para_rf(p, 10, avisos)  # autônomo: protege liquidez
+    # rd==4 (sem renda) não penaliza o portfólio aqui —
+    # o recomendador.py já tratou esse caso com avisos e rec_key conservador
     if div == 2:   mover_rv_para_rf(p, 10)
 
     if cart == 4:
@@ -204,9 +202,9 @@ def _classificar_portfolio_final(p: Dict[str, int]) -> tuple:
     """
     score = sum(pct * _risco(k) for k, pct in p.items()) / 100.0
 
-    if score < 1.75:
+    if score < 1.30:
         risco = 1
-    elif score < 2.50:
+    elif score < 2.20:
         risco = 2
     else:
         risco = 3

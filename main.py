@@ -294,8 +294,11 @@ def main() -> None:
     print("\n" + "═" * 58)
     print("   ✅ ONDE INVESTIR:")
     print(f"   {_disp(perfil_exibido)}")
-    print(f"   Risco efetivo do perfil: {nivel_risco_perfil}")
-    print(f"   Risco da recomendação:   {risco_recomendado}")
+    _label_nivel = {1: "Baixo", 2: "Médio", 3: "Alto"}
+    print(f"   Risco do perfil: {_label_nivel[nivel_risco_perfil]} ({nivel_risco_perfil})")
+    if risco_recomendado != nivel_risco_perfil:
+        print(f"   ⚠️  Carteira ajustada para risco {_label_nivel[risco_recomendado]} ({risco_recomendado})"
+              f" — veja observações abaixo")
     print("═" * 58)
 
     print("\n📋 O que comprar dentro desta categoria:")
