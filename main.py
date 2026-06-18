@@ -15,7 +15,7 @@ from cli import (
 )
 from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador import calcular_recomendacao
-from recomendador_ativos import recomendar_ativos
+from recomendador_ativos import recomendar_por_portfolio, _LABEL, MIN_PCT
 
 
 def main() -> None:
@@ -382,56 +382,61 @@ def main() -> None:
             print(f"   {av}")
 
     # ── Ativos específicos ────────────────────────────────────────────────────
-    _sep()
-    print("\n📈 Quer ver os ativos específicos recomendados para seu perfil?")
-    print("   (pode levar ~15s — busca dados em tempo real da bolsa)")
-    print("   (sim | não)")
-    quer_ativos = input("   → ").strip().lower() in ("sim", "s", "yes", "y")
+    from recomendador_ativos import _CLASSE as _MAPA_CLASSE
+    classes_no_portfolio = {
+        _MAPA_CLASSE[rk]
+        for rk, pct in portfolio.items()
+        if pct >= MIN_PCT and rk in _MAPA_CLASSE
+    }
 
-    ativos_sugeridos: list = []
+    if classes_no_portfolio:
+        _sep()
+        _nomes = {
+            "acoes":  "ações",
+            "fiis":   "FIIs",
+            "cripto": "criptomoedas",
+        }
+        classes_str = " e ".join(_nomes.get(c, c) for c in sorted(classes_no_portfolio))
+        print(f"\n📈 Seu portfólio inclui {classes_str}.")
+        print("   Quer ver os ativos específicos recomendados para cada classe?")
+        print("   (pode levar ~20s — busca dados em tempo real da bolsa)")
+        print("   (sim | não)")
+        quer_ativos = input("   → ").strip().lower() in ("sim", "s", "yes", "y")
+    else:
+        quer_ativos = False
+        ativos_sugeridos = {}
 
     if quer_ativos:
         print("\n   🔍 Buscando e rankeando ativos...")
-        ativos_sugeridos = recomendar_ativos(perfil_exibido, nivel_risco_perfil)
+        ativos_sugeridos = recomendar_por_portfolio(portfolio, nivel_risco_perfil)
 
-        if ativos_sugeridos is None:
-            # Categoria sem ranking individual (RF, previdência, fundos, ETFs)
-            print("\n   ℹ️  Para esta categoria não há ranking de ativos individuais.")
-            print(f"   Os produtos recomendados já estão detalhados acima: {_disp(perfil_exibido)}")
-            print("   Qualquer produto dentro da categoria serve — foque nas taxas e no emissor.")
-            ativos_sugeridos = []
-
-        elif not ativos_sugeridos:
+        if not ativos_sugeridos:
             print("\n   ⚠️  Não foi possível buscar ativos no momento.")
             print("   Verifique sua conexão ou tente novamente mais tarde.")
-
         else:
-            _labels = {"acoes": "AÇÕES", "fiis": "FIIs", "cripto": "CRIPTO"}
-            from recomendador_ativos import _CLASSE
-            classe = _CLASSE.get(perfil_exibido, "ativos")
-            label  = _labels.get(classe, "ATIVOS")
             perfil_label = (
                 "conservador" if nivel_risco_perfil == 1 else
                 "moderado"    if nivel_risco_perfil == 2 else
                 "agressivo"
             )
-
-            _sep()
-            print(f"\n📊 TOP {len(ativos_sugeridos)} {label} PARA SEU PERFIL ({perfil_label}):")
-            print()
-
-            for i, ativo in enumerate(ativos_sugeridos, 1):
-                ticker = ativo.get("ticker", "")
-                nome   = ativo.get("nome", "")
-                preco  = ativo.get("preco", 0)
-                score  = ativo.get("score", 0)
-
-                print(f"   {i}. {ticker:<8} {'— ' + nome[:35] if nome else ''}")
-                print(f"      Score: {score:.0f}/100   "
-                      f"{'Preço: R$' + f'{preco:,.2f}' if preco else ''}")
-                for motivo in ativo.get("motivos", []):
-                    print(f"      {motivo}")
+            for classe, lista in ativos_sugeridos.items():
+                label = _LABEL.get(classe, classe.upper())
+                _sep()
+                print(f"\n📊 TOP {len(lista)} {label} PARA SEU PERFIL ({perfil_label}):")
                 print()
+                for i, ativo in enumerate(lista, 1):
+                    ticker = ativo.get("ticker", "")
+                    nome   = ativo.get("nome", "")
+                    preco  = ativo.get("preco", 0)
+                    score  = ativo.get("score", 0)
+                    print(f"   {i}. {ticker:<8} {'— ' + nome[:35] if nome else ''}")
+                    print(f"      Score: {score:.0f}/100"
+                          + (f"   Preço: R${preco:,.2f}" if preco else ""))
+                    for motivo in ativo.get("motivos", []):
+                        print(f"      {motivo}")
+                    print()
+    else:
+        ativos_sugeridos = {}
 
     # ── Salva JSON ────────────────────────────────────────────────────────────
     res = {
