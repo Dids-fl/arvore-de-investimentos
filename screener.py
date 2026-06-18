@@ -132,19 +132,29 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
     filtra por liquidez mínima e retorna as top N pelo score do perfil.
     """
     si = StatusInvestClient()
-
-    # Busca ampla: top por DY (tende a capturar empresas maduras e lucrativas)
     universo = si.search_stocks(limit=UNIVERSO_ACOES_N)
 
-    # Filtra liquidez mínima
+    if not universo:
+        return []
+
+    # Filtra por liquidez mínima — com fallback se campo não vier da API
     liquidos = [a for a in universo
                 if float(a.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_ACOES]
 
+    # Se o filtro eliminou tudo (campo de liquidez ausente na API),
+    # usa o universo completo para não retornar vazio
     if not liquidos:
-        return []
+        liquidos = universo
 
     resultados = []
     for ind in liquidos:
+        # Ignora ações com todos os indicadores zerados (dados inválidos)
+        dy  = float(ind.get("dy",  0) or 0)
+        pl  = float(ind.get("pl",  0) or 0)
+        roe = float(ind.get("roe", 0) or 0)
+        if dy == 0 and pl == 0 and roe == 0:
+            continue
+
         score, motivos = _score_acao(ind, perfil)
         resultados.append({
             "ticker":  ind.get("ticker", ""),
@@ -152,9 +162,9 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
             "preco":   float(ind.get("cotacao", 0) or 0),
             "score":   score,
             "motivos": motivos,
-            "dy":      float(ind.get("dy",  0) or 0),
-            "roe":     float(ind.get("roe", 0) or 0),
-            "pl":      float(ind.get("pl",  0) or 0),
+            "dy":      dy,
+            "roe":     roe,
+            "pl":      pl,
         })
 
     return sorted(resultados, key=lambda x: -x["score"])[:n]
@@ -168,14 +178,23 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
     si = StatusInvestClient()
     universo = si.search_fiis(limit=UNIVERSO_FIIS_N)
 
+    if not universo:
+        return []
+
     liquidos = [f for f in universo
                 if float(f.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_FIIS]
 
+    # Fallback se campo de liquidez não vier da API
     if not liquidos:
-        return []
+        liquidos = universo
 
     resultados = []
     for ind in liquidos:
+        dy  = float(ind.get("dy",  0) or 0)
+        pvp = float(ind.get("pvp", 0) or 0)
+        if dy == 0 and pvp == 0:
+            continue
+
         score, motivos = _score_fii(ind, perfil)
         resultados.append({
             "ticker":  ind.get("ticker", ""),
@@ -184,8 +203,8 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
             "cotacao": float(ind.get("cotacao", 0) or 0),
             "score":   score,
             "motivos": motivos,
-            "dy":      float(ind.get("dy",  0) or 0),
-            "pvp":     float(ind.get("pvp", 0) or 0),
+            "dy":      dy,
+            "pvp":     pvp,
         })
 
     return sorted(resultados, key=lambda x: -x["score"])[:n]

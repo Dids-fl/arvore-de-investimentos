@@ -82,7 +82,7 @@ class StatusInvestClient:
             raise RuntimeError(f"Erro ao buscar dados do FII '{ticker}': {e}")
 
     def search_fiis(self, tipo: Optional[str] = None, dy_min: float = 0.0,
-                    p_vp_max: float = 9.99, limit: int = 20) -> list[dict]:
+                    p_vp_max: float = 9.99, limit: int = 100) -> list[dict]:
         """
         Busca FIIs com filtros básicos.
 
@@ -115,19 +115,26 @@ class StatusInvestClient:
             items = data.get("list", [])
             result = []
             for item in items:
-                dy = float(item.get("dy", 0) or 0)
-                pv = float(item.get("p_vp", 0) or 0)
+                dy  = float(item.get("dy",    0) or 0)
+                pv  = float(item.get("p_vp",  0) or 0)
+                liq = float(
+                    item.get("liquidityAvg") or
+                    item.get("liquidity") or
+                    item.get("avgDailyLiquidity") or
+                    item.get("vol") or 0
+                )
                 if dy >= dy_min and pv <= p_vp_max:
                     result.append({
                         "ticker":   item.get("ticker", ""),
                         "nome":     item.get("companyName", ""),
-                        "cotacao":  item.get("price", 0),
+                        "cotacao":  float(item.get("price", 0) or 0),
                         "dy":       dy,
-                        "p_vp":     pv,
-                        "vacancia": item.get("vacancyRate", 0),
+                        "pvp":      pv,
+                        "vacancia": float(item.get("vacancyRate", 0) or 0),
                         "tipo":     item.get("segment", ""),
-                        "liquidez": item.get("liquidityAvg", 0),
+                        "liquidez": liq,
                     })
+            return result[:limit]
             return result[:limit]
         except Exception as e:
             raise RuntimeError(f"Erro ao buscar FIIs: {e}")
@@ -177,13 +184,17 @@ class StatusInvestClient:
         except Exception as e:
             raise RuntimeError(f"Erro ao buscar dados da ação '{ticker}': {e}")
 
-    def search_stocks(self, dy_min: float = 0.0, p_l_max: float = 30.0,
-                      roe_min: float = 0.0, limit: int = 20) -> list[dict]:
+    def search_stocks(self, dy_min: float = 0.0, p_l_max: float = 999.0,
+                      roe_min: float = 0.0, limit: int = 150) -> list[dict]:
         """
-        Busca ações com filtros de qualidade.
+        Busca ações com filtros básicos. Padrão: universo amplo ordenado por DY.
+        Retorna campos: ticker, nome, cotacao, dy, pl, pvp, roe, liquidez.
+
+        Exemplo — universo completo (sem filtro):
+            acoes = client.search_stocks(limit=150)
 
         Exemplo — ações baratas com boa rentabilidade:
-            acoes = client.search_stocks(dy_min=5.0, p_l_max=12.0, roe_min=15.0)
+            acoes = client.search_stocks(dy_min=5.0, roe_min=15.0)
         """
         try:
             data = self._get(
@@ -204,16 +215,23 @@ class StatusInvestClient:
                 dy  = float(item.get("dy",  0) or 0)
                 pl  = float(item.get("p_l", 0) or 0)
                 roe = float(item.get("roe", 0) or 0)
-                if dy >= dy_min and (pl <= p_l_max or pl <= 0) and roe >= roe_min:
+                liq = float(
+                    item.get("liquidityAvg") or
+                    item.get("liquidity") or
+                    item.get("avgDailyLiquidity") or
+                    item.get("vol") or 0
+                )
+                if dy >= dy_min and roe >= roe_min:
                     result.append({
-                        "ticker":  item.get("ticker", ""),
-                        "nome":    item.get("companyName", ""),
-                        "cotacao": item.get("price", 0),
-                        "dy":      dy,
-                        "p_l":     pl,
-                        "p_vp":    float(item.get("p_vp", 0) or 0),
-                        "roe":     roe,
+                        "ticker":   item.get("ticker", ""),
+                        "nome":     item.get("companyName", ""),
+                        "cotacao":  float(item.get("price", 0) or 0),
+                        "dy":       dy,
+                        "pl":       pl,
+                        "pvp":      float(item.get("p_vp", 0) or 0),
+                        "roe":      roe,
+                        "liquidez": liq,
                     })
-            return result[:limit]
+            return result
         except Exception as e:
             raise RuntimeError(f"Erro ao buscar ações: {e}")
