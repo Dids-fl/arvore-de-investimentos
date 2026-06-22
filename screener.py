@@ -1,32 +1,14 @@
-"""
-Motor de score: busca universo dinâmico das APIs, normaliza e rankeia.
-
-Fluxo:
-  top_acoes()  → Status Invest (top 150 por liquidez) → filtra → score → top N
-  top_fiis()   → Status Invest (top 100 FIIs)         → filtra → score → top N
-  top_cripto() → CoinGecko     (top 20 por mkt cap)   → score → top N
-
-Diferenciação por perfil
-────────────────────────
-  Conservador (1): prioriza DY alto e recorrente. Penaliza duramente
-      empresas sem histórico de proventos. P/L baixo confirma preço justo.
-      Feedback de DY só é ✅ a partir de 8% a.a.
-
-  Moderado (2): ROE é o motor — busca empresas de qualidade que também
-      distribuem. DY razoável (~5%) já é positivo. Aceita P/L moderado
-      desde que o ROE justifique. É o único perfil que destaca empresas
-      com boa combinação de crescimento + renda.
-
-  Agressivo (3): ROE dominante (peso 0.70). DY quase irrelevante —
-      empresa que reinveste lucro cresce mais. P/L alto tolerado se o
-      ROE for excepcional. Usa REF_ACOES_AGRESSIVO para não punir
-      empresas de crescimento negociadas a múltiplos premium.
-"""
-
+import math
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from apis.status_invest import StatusInvestClient
+from apis.brapi import BrapiClient
+from apis.fmp import FMPClient
 from apis.coingecko import CoinGeckoClient
+from apis.fundamentus import get_stock_data, search_stocks as fundamentus_search
+from apis.analise_crescimento import get_cagr_receita, calcular_cagr
+from filtros import aplicar_filtros, filtrar_por_setor, filtrar_por_governanca
 from validador import validar_universo, resumo_validacao
 from ativos import (
     MIN_LIQUIDEZ_ACOES, MIN_LIQUIDEZ_FIIS,
@@ -34,23 +16,24 @@ from ativos import (
     PESOS_ACOES, PESOS_FIIS, PESOS_CRIPTO,
     REF_ACOES, REF_ACOES_AGRESSIVO, REF_FIIS, REF_CRIPTO,
     LIMIARES_DY_ACOES, LIMIARES_ROE_ACOES, LIMIARES_PL_ACOES,
+    PESO_TAMANHO_ACOES, MKTCAP_REF_MAX_B, MKTCAP_REF_MIN_B, LIQ_REF_MAX_M,
 )
+from config import USE_FUNDAMENTUS, FILTRO_SETORES, FILTRO_GOVERNANCA
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 # ── Normalização ──────────────────────────────────────────────────────────────
 
 def norm(valor: float, bom: float, ruim: float) -> float:
-    """Normaliza valor para [0.0, 1.0]. bom→1.0, ruim→0.0."""
     if abs(bom - ruim) < 1e-9:
         return 0.5
     return max(0.0, min(1.0, (valor - ruim) / (bom - ruim)))
 
-
-# ── Score de ações ────────────────────────────────────────────────────────────
+# ── Score de ações (com CAGR) ────────────────────────────────────────────────
 
 def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
     pesos   = PESOS_ACOES[perfil]
-    # Agressivo usa referências próprias para tolerar P/L e P/VP mais altos
     refs    = REF_ACOES_AGRESSIVO if perfil == 3 else REF_ACOES
     lim_dy  = LIMIARES_DY_ACOES[perfil]
     lim_roe = LIMIARES_ROE_ACOES[perfil]
@@ -58,12 +41,10 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
     score   = 0.0
     motivos: list[str] = []
 
-    # ── DY ───────────────────────────────────────────────────────────────────
+    # DY
     dy = float(ind.get("dy", 0) or 0)
     score += pesos["dy"] * norm(dy, refs["dy"]["bom"], refs["dy"]["ruim"])
-
     if perfil == 1:
-        # Conservador: DY é critério dominante — penaliza explicitamente DY baixo
         if dy >= lim_dy["otimo"]:
             motivos.append(f"✅ DY: {dy:.1f}% (excelente para renda)")
         elif dy >= lim_dy["ok"]:
@@ -71,19 +52,15 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
         else:
             motivos.append(f"⚠️  DY: {dy:.1f}% (baixo para conservador)")
     elif perfil == 2:
-        # Moderado: DY é complementar — só destaca quando realmente bom
         if dy >= lim_dy["otimo"]:
             motivos.append(f"✅ DY: {dy:.1f}% + crescimento")
         elif dy >= lim_dy["ok"]:
             motivos.append(f"ℹ️  DY: {dy:.1f}%")
-        # Abaixo do mínimo moderado: silencia — ROE vai falar mais alto
     else:
-        # Agressivo: DY quase ignorado nos pesos; só menciona se for relevante
         if dy >= lim_dy["otimo"]:
             motivos.append(f"ℹ️  DY: {dy:.1f}% (bônus — foco é crescimento)")
-        # Silencia DY baixo: esperado em empresas de crescimento
 
-    # ── P/L ──────────────────────────────────────────────────────────────────
+    # P/L
     pl = float(ind.get("pl", 0) or 0)
     if pl > 0:
         score += pesos["pl"] * norm(pl, refs["pl"]["bom"], refs["pl"]["ruim"])
@@ -102,7 +79,6 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
             else:
                 motivos.append(f"⚠️  P/L: {pl:.1f} (avaliar crescimento)")
         else:
-            # Agressivo: P/L alto é aceitável — o ROE que justifica
             if pl <= lim_pl["otimo"]:
                 motivos.append(f"✅ P/L: {pl:.1f} (e ROE alto = oportunidade)")
             elif pl <= lim_pl["ok"]:
@@ -117,19 +93,16 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
         else:
             motivos.append("ℹ️  P/L negativo (reinvestimento agressivo?)")
 
-    # ── ROE ──────────────────────────────────────────────────────────────────
+    # ROE
     roe = float(ind.get("roe", 0) or 0)
     if roe > 0:
         score += pesos["roe"] * norm(roe, refs["roe"]["bom"], refs["roe"]["ruim"])
         if perfil == 1:
-            # Para conservador: ROE é filtro de qualidade, não motor
             if roe >= lim_roe["otimo"]:
                 motivos.append(f"✅ ROE: {roe:.1f}% (negócio sólido)")
             elif roe >= lim_roe["ok"]:
                 motivos.append(f"ℹ️  ROE: {roe:.1f}%")
-            # Silencia ROE baixo: DY já sinalizou o problema
         elif perfil == 2:
-            # Para moderado: ROE é o motor — sempre aparece nos motivos
             if roe >= lim_roe["otimo"]:
                 motivos.append(f"✅ ROE: {roe:.1f}% (qualidade comprovada)")
             elif roe >= lim_roe["ok"]:
@@ -137,7 +110,6 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
             else:
                 motivos.append(f"⚠️  ROE: {roe:.1f}% (abaixo do esperado)")
         else:
-            # Para agressivo: ROE excepcional é o critério principal
             if roe >= lim_roe["otimo"]:
                 motivos.append(f"✅ ROE: {roe:.1f}% ← motor de crescimento")
             elif roe >= lim_roe["ok"]:
@@ -147,7 +119,7 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
     elif perfil == 3:
         motivos.append("❌ ROE zero/negativo — descartável para agressivo")
 
-    # ── P/VP ─────────────────────────────────────────────────────────────────
+    # P/VP
     pvp = float(ind.get("pvp", 0) or 0)
     if pvp > 0:
         score += pesos["pvp"] * norm(pvp, refs["pvp"]["bom"], refs["pvp"]["ruim"])
@@ -164,13 +136,23 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
             elif pvp < 2.5:
                 motivos.append(f"ℹ️  P/VP: {pvp:.2f}")
         else:
-            # Agressivo: P/VP alto é normal em empresas premium de crescimento
             if pvp < 2.0:
                 motivos.append(f"✅ P/VP: {pvp:.2f}")
-            # Silencia P/VP acima: esperado em crescimento de qualidade
+
+    # ── Crescimento de receita (CAGR) ──────────────────────────────────────────
+    cagr = ind.get('crescimento_receita', 0)
+    if cagr and cagr > 0:
+        peso_cresc = 0.10 if perfil == 3 else 0.05 if perfil == 2 else 0.02
+        score += peso_cresc * min(1.0, cagr / 0.30)  # normaliza até 30% CAGR
+        if perfil == 3:
+            if cagr > 0.20:
+                motivos.append(f"✅ CAGR receita: {cagr*100:.1f}% (acelerado)")
+            elif cagr > 0.10:
+                motivos.append(f"ℹ️  CAGR receita: {cagr*100:.1f}%")
+            else:
+                motivos.append(f"⚠️  Crescimento baixo: {cagr*100:.1f}%")
 
     return round(score * 100, 1), motivos[:4]
-
 
 # ── Score de FIIs ─────────────────────────────────────────────────────────────
 
@@ -180,7 +162,6 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
     score  = 0.0
     motivos: list[str] = []
 
-    # ── DY ───────────────────────────────────────────────────────────────────
     dy = float(ind.get("dy", 0) or 0)
     score += pesos["dy"] * norm(dy, refs["dy"]["bom"], refs["dy"]["ruim"])
     if perfil == 1:
@@ -190,16 +171,13 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
         label = "✅" if dy >= 10 else "ℹ️ "
         motivos.append(f"{label} DY: {dy:.1f}%")
     else:
-        # Agressivo foca em valorização — DY é secundário
         if dy >= 10:
             motivos.append(f"ℹ️  DY: {dy:.1f}% (bônus de renda)")
 
-    # ── P/VP ─────────────────────────────────────────────────────────────────
     pvp = float(ind.get("pvp", 0) or 0)
     if pvp > 0:
         score += pesos["pvp"] * norm(pvp, refs["pvp"]["bom"], refs["pvp"]["ruim"])
         if perfil == 3:
-            # Agressivo: P/VP baixo = maior upside de valorização
             if pvp < 0.90:
                 motivos.append(f"✅ P/VP: {pvp:.2f} (desconto sobre patrimônio = upside)")
             elif pvp < 1.0:
@@ -210,7 +188,6 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
             label = "✅" if pvp < 1.0 else ("ℹ️ " if pvp <= 1.15 else "⚠️ ")
             motivos.append(f"{label} P/VP: {pvp:.2f}")
 
-    # ── Liquidez ─────────────────────────────────────────────────────────────
     liq = float(ind.get("liquidez", 0) or 0)
     if liq > 0:
         score += pesos["liquidez"] * norm(liq, refs["liquidez"]["bom"], refs["liquidez"]["ruim"])
@@ -220,7 +197,6 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
         else:
             motivos.append(f"Liquidez: R${liq/1e6:.1f}M/dia")
 
-    # ── Vacância ─────────────────────────────────────────────────────────────
     vac = float(ind.get("vacancia", 0) or 0)
     score += pesos["vacancia"] * norm(vac, refs["vacancia"]["bom"], refs["vacancia"]["ruim"])
     if vac == 0:
@@ -231,7 +207,6 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
         motivos.append(f"⚠️  Vacância: {vac:.1f}%")
 
     return round(score * 100, 1), motivos[:4]
-
 
 # ── Score de cripto ───────────────────────────────────────────────────────────
 
@@ -270,57 +245,123 @@ def _score_cripto(ind: dict, perfil: int) -> tuple[float, list[str]]:
 
     return round(score * 100, 1), motivos[:4]
 
+# ── Funções de busca com fallback ──────────────────────────────────────────────
 
-# ── Top N por classe ──────────────────────────────────────────────────────────
-
-def top_acoes(perfil: int, n: int = 5) -> list[dict]:
-    """
-    Busca universo de ações diretamente do Status Invest,
-    filtra por liquidez mínima, valida estatisticamente os dados
-    e retorna as top N pelo score do perfil.
-
-    Validação intra-universo (validador.py):
-      Calcula mediana e IQR de cada campo (dy, pl, pvp, roe) no universo
-      e descarta ativos cujos valores fogem mais de 3.5 × IQR da mediana.
-      Limites absolutos adicionais: DY > 30%, P/VP < 0.10, ROE > 200%.
-      Ativos com 3+ campos suspeitos são excluídos; 1-2 campos suspeitos
-      recebem confiança reduzida mas ainda entram no ranking.
-    """
-    si = StatusInvestClient()
-    universo = si.search_stocks(limit=UNIVERSO_ACOES_N)
-
-    if not universo:
+def _buscar_acoes_status_invest() -> list[dict]:
+    try:
+        si = StatusInvestClient()
+        return si.search_stocks(limit=UNIVERSO_ACOES_N)
+    except Exception as e:
+        logger.warning(f"Status Invest falhou: {e}")
         return []
 
-    liquidos = [a for a in universo
-                if float(a.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_ACOES]
+def _buscar_acoes_brapi() -> list[dict]:
+    try:
+        client = BrapiClient()
+        tickers = ["PETR4", "VALE3", "ITUB4", "BBDC4", "ABEV3", "BBAS3", "WEGE3", "RENT3", "MGLU3", "B3SA3"]
+        dados = []
+        for t in tickers:
+            try:
+                q = client.get_quote(t)
+                dados.append({
+                    "ticker": t,
+                    "nome": q.get("longName", ""),
+                    "cotacao": q.get("regularMarketPrice", 0),
+                    "dy": 0,
+                    "pl": q.get("priceEarnings", 0),
+                    "pvp": 0,
+                    "roe": 0,
+                    "liquidez": 0,
+                    "mktcap_proxy": q.get("marketCap", 0),
+                })
+            except Exception:
+                continue
+        return dados
+    except Exception as e:
+        logger.warning(f"BRAPI falhou: {e}")
+        return []
 
+def _buscar_acoes_fmp() -> list[dict]:
+    try:
+        client = FMPClient()
+        lista = client._get("stock/list")
+        dados = []
+        for item in lista[:UNIVERSO_ACOES_N]:
+            sym = item.get("symbol", "")
+            if not sym.endswith(".SA"):
+                continue
+            try:
+                perfil = client.get_profile(sym)
+                dados.append({
+                    "ticker": sym,
+                    "nome": perfil.get("companyName", ""),
+                    "cotacao": perfil.get("price", 0),
+                    "dy": 0,
+                    "pl": 0,
+                    "pvp": 0,
+                    "roe": 0,
+                    "liquidez": 0,
+                    "mktcap_proxy": perfil.get("mktCap", 0),
+                })
+            except Exception:
+                continue
+        return dados
+    except Exception as e:
+        logger.warning(f"FMP falhou: {e}")
+        return []
+
+def _enriquecer_com_fundamentus(ativos: list[dict]) -> list[dict]:
+    """Tenta enriquecer ativos com dados do Fundamentus (setor, CAGR)."""
+    if not USE_FUNDAMENTUS:
+        return ativos
+    enriquecidos = []
+    for ativo in ativos:
+        ticker = ativo.get("ticker")
+        try:
+            dados = get_stock_data(ticker)
+            if dados:
+                ativo["setor"] = dados.get("setor", "")
+                ativo["crescimento_receita"] = dados.get("receita_cagr_5a", 0) / 100.0
+        except Exception as e:
+            logger.debug(f"Fundamentus para {ticker} falhou: {e}")
+        enriquecidos.append(ativo)
+    return enriquecidos
+
+# ── Top N ações (com fallback e filtros) ──────────────────────────────────────
+
+def top_acoes(perfil: int, n: int = 5) -> list[dict]:
+    universo = _buscar_acoes_status_invest()
+    if not universo:
+        logger.info("Status Invest sem dados, tentando BRAPI...")
+        universo = _buscar_acoes_brapi()
+    if not universo:
+        logger.info("BRAPI sem dados, tentando FMP...")
+        universo = _buscar_acoes_fmp()
+    if not universo:
+        logger.error("Nenhuma fonte de dados para ações disponível.")
+        return []
+
+    # Enriquecer com Fundamentus
+    universo = _enriquecer_com_fundamentus(universo)
+
+    liquidos = [a for a in universo if float(a.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_ACOES]
     if not liquidos:
         liquidos = universo
 
-    # ── Validação estatística intra-universo ──────────────────────────────────
-    # Descarta dados sabidamente corrompidos antes de qualquer filtro de perfil.
-    # Usa IQR-fence de Tukey (3.5×IQR) + limites absolutos por campo.
     liquidos_validados, descartados = validar_universo(liquidos)
     if descartados:
-        import sys
-        print(resumo_validacao(descartados), file=sys.stderr)
+        logger.warning(resumo_validacao(descartados))
     liquidos = liquidos_validados
 
-    # ── Filtros de perfil ─────────────────────────────────────────────────────
-    # Conservador: pré-filtra empresas sem DY (sem histórico de proventos)
     if perfil == 1:
         com_dy = [a for a in liquidos if float(a.get("dy", 0) or 0) >= 3.0]
         liquidos = com_dy if com_dy else liquidos
-
-    # Agressivo: pré-filtra empresas sem ROE (negócios sem retorno sobre capital)
     elif perfil == 3:
         com_roe = [a for a in liquidos if float(a.get("roe", 0) or 0) >= 10.0]
         liquidos = com_roe if com_roe else liquidos
 
-    # ── Score e deduplicação por empresa ─────────────────────────────────────
-    import re
-    candidatos: dict[str, dict] = {}
+    tamanho_peso = PESO_TAMANHO_ACOES.get(perfil, 0.18)
+    candidatos = {}
     for ind in liquidos:
         dy  = float(ind.get("dy",  0) or 0)
         pl  = float(ind.get("pl",  0) or 0)
@@ -328,41 +369,70 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         if dy == 0 and pl == 0 and roe == 0:
             continue
 
-        score, motivos = _score_acao(ind, perfil)
+        score_fund, motivos = _score_acao(ind, perfil)
 
-        # Deduplica por empresa-base: POMO3/POMO4 → mantém o de maior score
+        liq_m      = float(ind.get("liquidez",     0) or 0) / 1_000_000
+        mktcap_b   = float(ind.get("mktcap_proxy", 0) or 0) / 1_000_000_000
+
+        if liq_m > 0:
+            score_liq = min(1.0, math.log10(max(liq_m, 0.001)) / math.log10(LIQ_REF_MAX_M))
+        else:
+            score_liq = 0.0
+
+        if mktcap_b >= MKTCAP_REF_MIN_B:
+            score_mktcap = min(1.0, math.log10(mktcap_b / MKTCAP_REF_MIN_B) /
+                                     math.log10(MKTCAP_REF_MAX_B / MKTCAP_REF_MIN_B))
+        else:
+            score_mktcap = 0.0
+
+        if score_mktcap > 0:
+            score_tamanho = score_mktcap * 0.667 + score_liq * 0.333
+        else:
+            score_tamanho = score_liq
+
+        confianca = ind.get("confianca", 1.0)
+        score = (score_fund * (1 - tamanho_peso) + score_tamanho * 100 * tamanho_peso) * confianca
+
         base = re.sub(r"\d+$", "", ind.get("ticker", ""))
         if base not in candidatos or score > candidatos[base]["score"]:
-            confianca = ind.get("confianca", 1.0)
             candidatos[base] = {
                 "ticker":    ind.get("ticker", ""),
                 "nome":      ind.get("nome", ""),
                 "preco":     float(ind.get("cotacao", 0) or 0),
-                "score":     score,
+                "score":     round(score, 1),
                 "motivos":   motivos,
                 "dy":        dy,
                 "roe":       roe,
                 "pl":        pl,
                 "confianca": confianca,
+                "setor":     ind.get("setor", ""),
             }
 
-    return sorted(candidatos.values(), key=lambda x: -(x["score"] * x.get("confianca", 1.0)))[:n]
+    # ── Aplicar filtros se configurados ──────────────────────────────────────
+    lista_para_filtrar = list(candidatos.values())
+    if FILTRO_SETORES:
+        lista_para_filtrar = filtrar_por_setor(lista_para_filtrar, FILTRO_SETORES)
+    if FILTRO_GOVERNANCA:
+        lista_para_filtrar = filtrar_por_governanca(lista_para_filtrar, FILTRO_GOVERNANCA)
+    # Reconstruir candidatos
+    candidatos = {a['ticker']: a for a in lista_para_filtrar}
 
+    return sorted(candidatos.values(), key=lambda x: -x["score"])[:n]
+
+# ── Top FIIs ──────────────────────────────────────────────────────────────────
 
 def top_fiis(perfil: int, n: int = 5) -> list[dict]:
-    """
-    Busca universo de FIIs do Status Invest,
-    filtra por liquidez e retorna os top N pelo score do perfil.
-    """
-    si = StatusInvestClient()
-    universo = si.search_fiis(limit=UNIVERSO_FIIS_N)
+    try:
+        si = StatusInvestClient()
+        universo = si.search_fiis(limit=UNIVERSO_FIIS_N)
+    except Exception as e:
+        logger.error(f"Erro ao buscar FIIs: {e}")
+        return []
 
     if not universo:
         return []
 
-    liquidos = [f for f in universo
-                if float(f.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_FIIS]
-
+    liquidos = [f for f in universo if float(f.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_FIIS]
     if not liquidos:
         liquidos = universo
 
@@ -387,18 +457,19 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
 
     return sorted(resultados, key=lambda x: -x["score"])[:n]
 
+# ── Top Cripto ─────────────────────────────────────────────────────────────────
 
 def top_cripto(perfil: int, n: int = 4) -> list[dict]:
-    """
-    Busca top N criptos por market cap da CoinGecko e rankeia pelo perfil.
-    """
-    cg  = CoinGeckoClient()
-    mkt = cg.get_markets_top(top_n=CRIPTO_TOP_N)
+    try:
+        cg = CoinGeckoClient()
+        mkt = cg.get_markets_top(top_n=CRIPTO_TOP_N)
+    except Exception as e:
+        logger.error(f"Erro ao buscar cripto: {e}")
+        return []
 
     with ThreadPoolExecutor(max_workers=6) as ex:
-        rv_futures = {ex.submit(cg.get_retorno_e_volatilidade, c["id"]): c["id"]
-                      for c in mkt}
-        rv_map: dict[str, dict] = {}
+        rv_futures = {ex.submit(cg.get_retorno_e_volatilidade, c["id"]): c["id"] for c in mkt}
+        rv_map = {}
         for fut in as_completed(rv_futures):
             cid = rv_futures[fut]
             try:

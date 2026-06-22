@@ -1,7 +1,3 @@
-# Busca as taxas em tempo real: SELIC e IPCA no Banco Central, 
-# Ibovespa CAGR pelo Yahoo Finance e previsão Focus. 
-# Salva cache local de 6h para não bater nas APIs toda vez.
-
 import time
 import json
 import datetime
@@ -13,11 +9,18 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from config import FB_SELIC, FB_IPCA, FB_IBOV
+from config import FB_SELIC, FB_IPCA, FB_IBOV, REQUEST_TIMEOUT, MAX_RETRIES, RETRY_BACKOFF
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # ── Sessão HTTP com retry automático ─────────────────────────────────────────
-_HTTP   = requests.Session()
-_retry  = Retry(total=2, backoff_factor=0.2, status_forcelist=[429, 500, 502, 503, 504])
+_HTTP = requests.Session()
+_retry = Retry(
+    total=MAX_RETRIES,
+    backoff_factor=RETRY_BACKOFF,
+    status_forcelist=[429, 500, 502, 503, 504],
+)
 _HTTP.mount("https://", HTTPAdapter(max_retries=_retry))
 _HTTP.mount("http://",  HTTPAdapter(max_retries=_retry))
 
@@ -27,17 +30,16 @@ try:
     _YFINANCE = True
 except ImportError:
     _YFINANCE = False
+    logger.warning("yfinance não instalado. Ibovespa CAGR usará fallback.")
 
 # ── Cache em disco ────────────────────────────────────────────────────────────
-CACHE_FILE        = Path.home() / ".cache" / "recomendador_investimentos_market.json"
+CACHE_FILE = Path.home() / ".cache" / "recomendador_investimentos_market.json"
 CACHE_TTL_SECONDS = 6 * 60 * 60
 
-
-def _json_get(url: str, timeout=(3, 8)):
+def _json_get(url: str, timeout=REQUEST_TIMEOUT):
     r = _HTTP.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     return r.json()
-
 
 def _load_market_cache():
     try:
@@ -50,19 +52,20 @@ def _load_market_cache():
         required = ("selic", "focus_selic", "ipca", "ibov_cagr", "data_ref", "fontes", "avisos")
         if not all(k in data for k in required):
             return None
+        logger.info("Carregado cache de taxas de mercado.")
         return data
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Erro ao ler cache: {e}")
         return None
-
 
 def _save_market_cache(payload: dict):
     try:
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with CACHE_FILE.open("w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
-    except Exception:
-        pass
-
+        logger.info("Cache de taxas de mercado salvo.")
+    except Exception as e:
+        logger.warning(f"Erro ao salvar cache: {e}")
 
 def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/5?formato=json"
@@ -76,14 +79,9 @@ def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
                 return float(raw.replace(",", ".")) / 100.0, str(item.get("data", ""))
             except (ValueError, KeyError):
                 continue
-    raise RuntimeError(f"SGS série {serie}: nenhum valor válido nos últimos registros")
-
+    raise RuntimeError(f"SGS série {serie}: nenhum valor válido")
 
 def _fetch_focus_selic() -> Optional[float]:
-    """
-    [FIX-2] Se o ano atual não tiver estimativa Focus (ex: início de ano),
-    tenta o ano anterior como fallback.
-    """
     for ano in (datetime.date.today().year, datetime.date.today().year - 1):
         try:
             url = (
@@ -95,13 +93,12 @@ def _fetch_focus_selic() -> Optional[float]:
             values = data.get("value", [])
             if values:
                 return float(values[0]["Mediana"]) / 100
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Erro ao buscar Focus para ano {ano}: {e}")
             continue
     return None
 
-
 def _fetch_ibov_cagr_10a() -> Optional[float]:
-    """Retorna CAGR real, incluindo negativos. Piso seguro está em SPREAD_ALT_MIN."""
     if not _YFINANCE:
         return None
     try:
@@ -114,9 +111,9 @@ def _fetch_ibov_cagr_10a() -> Optional[float]:
         if c0 <= 0:
             return None
         return (c1 / c0) ** (1.0 / anos) - 1
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Erro ao buscar Ibovespa: {e}")
         return None
-
 
 def load_market_data() -> dict:
     cached = _load_market_cache()
@@ -135,7 +132,8 @@ def load_market_data() -> dict:
             key = futures[fut]
             try:
                 results[key] = fut.result()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Falha ao obter {key}: {e}")
                 results[key] = None
 
     selic_raw = results.get("selic")

@@ -221,16 +221,36 @@ class StatusInvestClient:
                     item.get("avgDailyLiquidity") or
                     item.get("vol") or 0
                 )
+                pvp = float(item.get("p_vp", 0) or 0)
+
+                # patrimony e netProfit: campos opcionais que o endpoint
+                # batch do Status Invest pode ou não retornar dependendo
+                # da versão da API. Capturados se existirem.
+                patrimony  = float(item.get("patrimony")  or
+                                   item.get("patrimônio") or
+                                   item.get("netWorth")   or 0)
+                net_profit = float(item.get("netProfit")  or
+                                   item.get("lucroLiquido") or 0)
+
+                # market_cap_proxy = pvp × patrimônio líquido
+                # Quando disponível, é uma estimativa real de market cap.
+                # Quando não disponível (0), cai para 0 e o score de tamanho
+                # fica zerado — o componente de liquidez assume sozinho.
+                mktcap_proxy = pvp * patrimony if patrimony > 0 else 0.0
+
                 if dy >= dy_min and roe >= roe_min:
                     result.append({
-                        "ticker":   item.get("ticker", ""),
-                        "nome":     item.get("companyName", ""),
-                        "cotacao":  float(item.get("price", 0) or 0),
-                        "dy":       dy,
-                        "pl":       pl,
-                        "pvp":      float(item.get("p_vp", 0) or 0),
-                        "roe":      roe,
-                        "liquidez": liq,
+                        "ticker":       item.get("ticker", ""),
+                        "nome":         item.get("companyName", ""),
+                        "cotacao":      float(item.get("price", 0) or 0),
+                        "dy":           dy,
+                        "pl":           pl,
+                        "pvp":          pvp,
+                        "roe":          roe,
+                        "liquidez":     liq,
+                        "patrimony":    patrimony,
+                        "net_profit":   net_profit,
+                        "mktcap_proxy": mktcap_proxy,
                     })
             return result
         except Exception as e:

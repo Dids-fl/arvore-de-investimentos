@@ -1,6 +1,7 @@
 import json
 import datetime
-from typing import Optional, List
+import logging
+from typing import Optional
 
 from config import IR_RF
 from categorias import _risco
@@ -16,12 +17,22 @@ from cli import (
 from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador import calcular_recomendacao
 from recomendador_ativos import recomendar_por_portfolio, _LABEL, MIN_PCT
+from utils.logging_config import setup_logging
 
+setup_logging(logging.INFO)
+logger = logging.getLogger(__name__)
+
+def salvar_perfil_respostas(respostas: dict, timestamp: str):
+    try:
+        fname = f"perfil_respostas_{timestamp}.json"
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(respostas, f, ensure_ascii=False, indent=2)
+        logger.info(f"Respostas salvas em {fname}")
+    except Exception as e:
+        logger.warning(f"Não foi possível salvar respostas: {e}")
 
 def main() -> None:
-    # ── Carrega taxas de mercado ───────────────────────────────────────────────
     market = load_market_data()
-
     selic       = market["selic"]
     focus_selic = market["focus_selic"]
     ipca        = market["ipca"]
@@ -31,22 +42,11 @@ def main() -> None:
     _avisos_api = market["avisos"]
 
     _taxa_base = (selic + focus_selic) / 2 if focus_selic else selic
-
     TAXAS = {1: selic, 2: (selic + ibov_cagr) / 2, 3: ibov_cagr}
 
-    def _label_taxa(nivel: int) -> str:
-        t = TAXAS[nivel]
-        d = {
-            1: f"SELIC atual {selic*100:.2f}% a.a.",
-            2: f"Média entre SELIC ({selic*100:.2f}%) e Ibovespa CAGR 10a ({ibov_cagr*100:.2f}%)",
-            3: f"Ibovespa CAGR histórico 10 anos ({ibov_cagr*100:.2f}% a.a.)",
-        }
-        return f"~{t*100:.2f}% a.a. bruto  [{d[nivel]}]"
-
-    # ── Cabeçalho ─────────────────────────────────────────────────────────────
     print("\n" + "═" * 58)
     print("   📊 RECOMENDADOR DE INVESTIMENTOS")
-    print("   Análise completa de perfil — versão corrigida")
+    print("   Análise completa de perfil — versão melhorada")
     print("═" * 58)
 
     if _avisos_api:
@@ -112,7 +112,6 @@ def main() -> None:
         carteira_atual = d["carteira_atual"]
         cap_inicial    = d["cap_inicial"]
         aporte_mensal  = d["aporte_mensal"]
-
     else:
         prazo = primeira
         risco = _p(
@@ -147,7 +146,7 @@ def main() -> None:
                 "   6a. Em uma emergência, qual % estima precisar resgatar?\n"
                 "       (ex: 30 = precisaria de 30% do valor investido)",
                 mn=1, mx=100,
-            )
+            ) or 0.0
 
         reserva_emerg = _p(
             "7. Você já tem reserva de emergência (3-6 meses de gastos)?\n"
@@ -226,7 +225,6 @@ def main() -> None:
             "    (não tenho | conservadora | moderada | arrojada)",
             _CAD,
         )
-
         modo_meta = _p(
             "21. Você tem uma meta financeira?\n"
             "    (sim      = quero saber se consigo atingir um valor específico\n"
@@ -238,18 +236,29 @@ def main() -> None:
         if modo_meta == 1:
             meta_valor  = _n("    Qual valor quer acumular? (R$, ex: 500000)", mn=1)
             meta_prazo  = _n("    Em quantos anos? (ex: 10)", mn=1, mx=50)
-            cap_inicial = _n("    Capital inicial disponível? (R$, ex: 10000)", mn=0)
+            cap_inicial = _n("    Capital inicial disponível? (R$, ex: 10000)", mn=0) or 0.0
             if aporte == 2:
                 ap_raw        = _n("    Aporte mensal? (R$, ex: 500 — ou 0 se não houver)", mn=0)
                 aporte_mensal = ap_raw if ap_raw is not None else 0.0
         elif modo_meta == 2:
-            cap_inicial = _n("    Capital inicial disponível? (R$, ex: 5000)", mn=0)
+            cap_inicial = _n("    Capital inicial disponível? (R$, ex: 5000)", mn=0) or 0.0
             if aporte == 2:
                 ap_raw        = _n("    Aporte mensal? (R$, ex: 300 — ou 0 se não houver)", mn=0)
                 aporte_mensal = ap_raw if ap_raw is not None else 0.0
 
-        if cap_inicial is None:
-            cap_inicial = 0.0
+    # Salva respostas
+    respostas_usuario = {
+        "prazo": prazo, "risco": risco, "objetivo": objetivo, "fluxo": fluxo,
+        "controle": controle, "liquidez": liquidez, "liquidez_pct": liquidez_pct,
+        "reserva_emerg": reserva_emerg, "idade": idade, "despesas": despesas,
+        "faixa_valor": faixa_valor, "patrim_pct": patrim_pct, "renda": renda,
+        "dividas": dividas, "conhecimento": conhecimento, "experiencia": experiencia,
+        "dependentes": dependentes, "aporte": aporte, "emocional": emocional,
+        "ir_tipo": ir_tipo, "carteira_atual": carteira_atual,
+        "cap_inicial": cap_inicial, "aporte_mensal": aporte_mensal,
+    }
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    salvar_perfil_respostas(respostas_usuario, timestamp)
 
     # ── Motor de recomendação ─────────────────────────────────────────────────
     rec_key, nivel_risco_perfil, meses_res, avisos, conhecimento = calcular_recomendacao(
@@ -277,7 +286,6 @@ def main() -> None:
         TAXAS=TAXAS,
     )
 
-    # ── Montagem e classificação do portfólio ─────────────────────────────────
     portfolio = _build_portfolio(
         nivel_risco_perfil, conhecimento, faixa_valor, objetivo, renda, dividas,
         dependentes, aporte, carteira_atual, ir_tipo, fluxo, patrim_pct,
@@ -294,11 +302,11 @@ def main() -> None:
     print("\n" + "═" * 58)
     print("   ✅ ONDE INVESTIR:")
     print(f"   {_disp(perfil_exibido)}")
-    _label_nivel = {1: "Baixo", 2: "Médio", 3: "Alto"}
-    print(f"   Risco do perfil: {_label_nivel[nivel_risco_perfil]} ({nivel_risco_perfil})")
+    _rlabel = {1: "Conservador", 2: "Moderado", 3: "Agressivo"}
+    print(f"   Perfil de risco: {_rlabel[nivel_risco_perfil]}")
     if risco_recomendado != nivel_risco_perfil:
-        print(f"   ⚠️  Carteira ajustada para risco {_label_nivel[risco_recomendado]} ({risco_recomendado})"
-              f" — veja observações abaixo")
+        print(f"   \u2139\ufe0f  Alocacao ajustada para {_rlabel[risco_recomendado]} "
+              f"com base nas suas respostas (sem renda, iniciante, sem reserva etc.)")
     print("═" * 58)
 
     print("\n📋 O que comprar dentro desta categoria:")
@@ -378,7 +386,6 @@ def main() -> None:
     print(f"   Pessimista = {taxa_pess*100:.1f}% a.a.")
     print(f"   VF Real = poder de compra em preços de hoje (IPCA {ipca*100:.1f}% a.a.)")
 
-    # ── Avisos de negócio ─────────────────────────────────────────────────────
     if avisos:
         print("\n⚠️  Observações e ajustes aplicados:")
         for av in avisos:
@@ -398,12 +405,26 @@ def main() -> None:
             "acoes":  "ações",
             "fiis":   "FIIs",
             "cripto": "criptomoedas",
+            "rf":     "renda fixa",
+            "fundos": "fundos",
         }
-        classes_str = " e ".join(_nomes.get(c, c) for c in sorted(classes_no_portfolio))
+        _tempo = {
+            "acoes":  "~20s — busca e rankeia dados em tempo real da bolsa",
+            "fiis":   "~20s — busca e rankeia dados em tempo real da bolsa",
+            "cripto": "~20s — busca e rankeia dados em tempo real",
+            "rf":     "~1s  — calcula retorno real a partir de SELIC/IPCA/CDI atuais",
+            "fundos": "~1s  — estima retorno líquido real por cenário de juros",
+        }
+        classes_sorted  = sorted(classes_no_portfolio)
+        classes_str     = " e ".join(_nomes.get(c, c) for c in classes_sorted)
+        tempos_unicos   = sorted(set(_tempo[c] for c in classes_sorted))
+
         print(f"\n📈 Seu portfólio inclui {classes_str}.")
-        print("   Quer ver os ativos específicos recomendados para cada classe?")
-        print("   (pode levar ~20s — busca dados em tempo real da bolsa)")
-        print("   (sim | não)")
+        print("   Posso recomendar ativos específicos e rankeados para cada grupo:")
+        for c in classes_sorted:
+            print(f"     • {_nomes.get(c, c).capitalize():<12} — {_tempo[c]}")
+        print()
+        print("   Quer ver as recomendações? (sim | não)")
         quer_ativos = input("   → ").strip().lower() in ("sim", "s", "yes", "y")
     else:
         quer_ativos = False
@@ -411,7 +432,10 @@ def main() -> None:
 
     if quer_ativos:
         print("\n   🔍 Buscando e rankeando ativos...")
-        ativos_sugeridos = recomendar_por_portfolio(portfolio, nivel_risco_perfil)
+        ativos_sugeridos = recomendar_por_portfolio(
+            portfolio, nivel_risco_perfil,
+            selic=selic, ipca=ipca, ibov_cagr=ibov_cagr,
+        )
 
         if not ativos_sugeridos:
             print("\n   ⚠️  Não foi possível buscar ativos no momento.")
@@ -476,7 +500,6 @@ def main() -> None:
 
     _sep()
     print()
-
 
 if __name__ == "__main__":
     main()

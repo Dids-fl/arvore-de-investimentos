@@ -1,12 +1,12 @@
-# O motor de regras: recebe todas as 21 respostas e decide qual produto recomendar, 
-# aplicando ajustes por prazo, emocional, reserva, idade, conhecimento e assim por diante.
-
 import sys
+import logging
 from typing import List, Tuple
 
 from categorias import RK, _ARRISCADAS, _risco
 from cli import _sep
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 def _pode_assumir_volatilidade(prazo: int, objetivo: int, emocional: int,
                                 reserva_emerg: int, renda: int) -> bool:
@@ -17,7 +17,6 @@ def _pode_assumir_volatilidade(prazo: int, objetivo: int, emocional: int,
         reserva_emerg in (2, 3) and
         renda != 4
     )
-
 
 def calcular_recomendacao(
     prazo: int,
@@ -43,12 +42,6 @@ def calcular_recomendacao(
     carteira_atual: int,
     TAXAS: dict,
 ) -> Tuple[str, int, int, List[str], int]:
-    """
-    Aplica todas as regras de negócio e retorna:
-        (rec_key, nivel_risco_perfil, meses_res, avisos, conhecimento_ajustado)
-
-    Pode chamar sys.exit(0) se dívidas de juros altos forem detectadas.
-    """
     avisos: List[str] = []
 
     # ── Dívidas ───────────────────────────────────────────────────────────────
@@ -169,7 +162,6 @@ def calcular_recomendacao(
         avisos.append(f"ℹ️  1 dependente: mantenha reserva de {meses_res} meses antes de assumir riscos maiores.")
         if rec_key == RK.RV_CRIPTO:
             rec_key = RK.RV
-
     elif dependentes == 3:
         avisos.append(f"⚠️  2+ dependentes: reserva de {meses_res} meses recomendada. Evite risco alto.")
         if rec_key in {RK.RV_CRIPTO, RK.RV, RK.RV_DCA}:
@@ -182,13 +174,11 @@ def calcular_recomendacao(
                 f"ℹ️  Sem reserva de emergência — mas sem obrigações fixas nem dependentes, "
                 f"isso não é impeditivo agora. Quando sua vida evoluir (aluguel, família), "
                 f"constitua uma reserva de {meses_res} meses em Tesouro Selic.")
-
         elif idade == 1 and (dependentes > 1 or despesas > 1):
             avisos.append(f"⚠️  Jovem sem reserva com obrigações. "
                           f"Monte {meses_res} meses de reserva em paralelo.")
             if rec_key in {RK.RV_CRIPTO, RK.RV_DCA}:
                 rec_key = RK.RV
-
         elif idade == 2:
             avisos.append(f"⚠️  Adulto sem reserva de emergência (recomendado: {meses_res} meses). "
                           "Reduzindo exposição a risco.")
@@ -196,11 +186,9 @@ def calcular_recomendacao(
                 rec_key = RK.RV
             elif rec_key == RK.RV:
                 rec_key = RK.FUNDOS
-
         elif idade == 3:
             avisos.append("⚠️  Sênior sem reserva de emergência — priorize isso antes de investir.")
             rec_key = RK.RF_RESERVA
-
     elif reserva_emerg == 2:
         avisos.append(f"⚠️  Reserva incompleta (recomendado: {meses_res} meses). "
                       "Considere completá-la antes de assumir riscos maiores.")
@@ -233,13 +221,11 @@ def calcular_recomendacao(
     if objetivo == 1:
         if rec_key in _ARRISCADAS:
             rec_key = RK.RF_LIQUIDEZ if prazo > 1 else RK.RF
-
     elif objetivo == 2:
         if rec_key == RK.RF and prazo >= 2 and nivel_risco_perfil >= 2:
             rec_key = RK.FUNDOS
         if rec_key == RK.FUNDOS and prazo == 3:
             rec_key = RK.RV
-
     elif objetivo == 3:
         if prazo == 1:
             avisos.append("⚠️  Prazo curto com objetivo de aposentadoria. Reavalie seu prazo.")
@@ -321,7 +307,7 @@ def calcular_recomendacao(
 
     # ── Preferência por delegação ─────────────────────────────────────────────
     if controle == 2:
-        _delegacao: Dict[str, str] = {
+        _delegacao: dict[str, str] = {
             RK.RV_DCA:           RK.FUNDOS_ACOES_DCA,
             RK.RV:               RK.FUNDOS_ACOES,
             RK.RV_CRIPTO:        RK.FUNDOS_CRIPTO,
@@ -335,12 +321,10 @@ def calcular_recomendacao(
             RK.FIIS:             RK.FIIS_DEL,
             RK.FUNDOS_ACOES_ETF: RK.FUNDOS_ACOES,
         }
-
         _bloqueados = {
             RK.RF_RESERVA, RK.RF_REAVALIE, RK.RF_EQUILIBRIO,
             RK.COE, RK.ESTRUTURADOS, RK.OFERTAS, RK.CAMBIO
         }
-
         if rec_key not in _bloqueados and rec_key in _delegacao:
             rec_key = _delegacao[rec_key]
 
@@ -355,8 +339,6 @@ def calcular_recomendacao(
         elif objetivo == 2 and carteira_atual in (3, 4) and renda != 4:
             rec_key = RK.CAMBIO
 
+    # Log da recomendação final
+    logger.info(f"Recomendação final: {rec_key} (risco {nivel_risco_perfil})")
     return rec_key, nivel_risco_perfil, meses_res, avisos, conhecimento
-
-
-# Tipagem auxiliar para o mypy
-from typing import Dict  # noqa: E402 (já importado no topo, re-referenciado aqui apenas para anotação)
