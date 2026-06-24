@@ -2,7 +2,7 @@ import sys
 import logging
 from typing import List, Tuple
 
-from categorias import RK, _ARRISCADAS, _risco
+from core.categorias import RK, _ARRISCADAS, _risco
 from cli import _sep
 from utils.logging_config import get_logger
 

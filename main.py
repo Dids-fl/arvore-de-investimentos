@@ -4,8 +4,8 @@ import logging
 from typing import Optional
 
 from config import IR_RF
-from categorias import _risco
-from catalogo import _get_prod, _disp, _aliq
+from core.categorias import _risco
+from core.catalogo import _get_prod, _disp, _aliq
 from mercado import load_market_data
 from calculos import _vf_bruto, _vf_liquido, _vf_real
 from cli import (

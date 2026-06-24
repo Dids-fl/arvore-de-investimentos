@@ -29,3 +29,11 @@ FMP_API_KEY = os.getenv("FMP_API_KEY")
 USE_FUNDAMENTUS = True   # Se True, tenta enriquecer com dados do Fundamentus
 FILTRO_SETORES = []      # Ex: ["Financeiro", "Petróleo"] – vazio = sem filtro
 FILTRO_GOVERNANCA = []   # Ex: ["NM", "N2"] – vazio = sem filtro
+
+# ── Filtros de Market Cap para ações (NOVO) ────────────────────────────────────
+# Mínimo de market cap (em reais) por perfil de risco
+LIMITE_MKTCAP = {
+    1: 2_000_000_000,
+    2: 1_000_000_000,
+    3: 500_000_000,
+}

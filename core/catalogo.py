@@ -3,7 +3,7 @@
 
 from typing import Dict, Tuple
 from config import IR_RF, IR_ACOES, IR_VGBL, IR_PGBL, IR_FII
-from categorias import RK, _RK_DISPLAY
+from core.categorias import RK, _RK_DISPLAY
 
 _PROD: Dict[str, dict] = {
     RK.RF: {

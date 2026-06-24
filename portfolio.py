@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from categorias import RK, _risco, _RK_DISPLAY
+from core.categorias import RK, _risco, _RK_DISPLAY
 
 # ── Normalização de portfólio (soma = 100, sem negativos) ─────────────────────
 
@@ -184,12 +184,27 @@ def _build_portfolio(nr, conhec, fv, obj, rd, div, dep, ap, cart, ir_t,
     if dep == 2:   mover_rv_para_rf(p, 10)
     elif dep == 3: mover_rv_para_rf(p, 20)
     if rd == 3:    mover_rv_para_rf(p, 10, avisos)  # autônomo: protege liquidez
-    # rd==4 (sem renda) não penaliza o portfólio aqui —
-    # o recomendador.py já tratou esse caso com avisos e rec_key conservador
     if div == 2:   mover_rv_para_rf(p, 10)
 
+    # ── Carteira atual (CORRIGIDO) ────────────────────────────────────────────
     if cart == 4:
-        p = {RK.RF: 60, RK.FUNDOS: 40}
+        # Verifica se o usuário tem estrutura financeira para manter risco
+        # Usa parâmetros disponíveis: rd (renda), dep (dependentes), conhec, id_, desp
+        tem_estrutura = (
+            rd != 4 and          # tem renda (não é "sem renda")
+            dep < 3 and          # poucos dependentes
+            conhec >= 2 and      # não é iniciante
+            desp <= 2 and        # despesas não são altas
+            id_ != 3             # não é idoso
+        )
+        if tem_estrutura:
+            if avisos is not None:
+                avisos.append("ℹ️  Carteira arrojada existente com boa estrutura financeira. Mantendo exposição, mas monitore o rebalanceamento anual.")
+            # Mantém a alocação original (não força rebalanceamento)
+        else:
+            if avisos is not None:
+                avisos.append("ℹ️  Carteira arrojada existente, mas com estrutura financeira limitada. Reduzindo risco da nova alocação.")
+            p = {RK.RF: 60, RK.FUNDOS: 40}
 
     return _norm(dict(sorted(p.items(), key=lambda x: -x[1])))
 

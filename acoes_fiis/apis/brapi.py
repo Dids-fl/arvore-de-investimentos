@@ -16,7 +16,7 @@ Sem token: 15 req/min. Com token gratuito: limite maior.
 
 import os
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -191,135 +191,6 @@ class BrapiClient:
             return None
         return round((divida - caixa) / pl, 3)
 
-    # ── Score com dados disponíveis no free ───────────────────────────────────
-
-    def score_stock_free(self, ticker: str, perfil_risco: int,
-                         preco_atual: Optional[float] = None) -> dict:
-        """
-        Pontuação de ação usando APENAS dados do plano gratuito da BRAPI:
-          • P/L (da quote)
-          • Dívida/PL (do balanço)
-          • Consistência e volume de dividendos (de dividendsData)
-
-        NÃO usa: ROE, margens, crescimento de receita (requer Startup+).
-        Para análise completa, combine com StatusInvestClient.get_stock_indicators().
-
-        perfil_risco: 1 = conservador | 2 = moderado | 3 = agressivo
-
-        Retorna:
-            score (0-100), apto (bool), motivos (list), indicadores (dict)
-        """
-        try:
-            fund      = self.get_fundamentals(ticker)
-            pl        = float(fund.get("priceEarnings", 0) or 0)
-            eps       = float(fund.get("earningsPerShare", 0) or 0)
-            mkt_cap   = float(fund.get("marketCap", 0) or 0)
-            preco     = preco_atual or float(fund.get("regularMarketPrice", 0) or 0)
-
-            bs        = fund.get("balanceSheetHistory", [])
-            divs_data = fund.get("dividendsData", {})
-            divs      = divs_data.get("cashDividends", [])
-        except Exception as e:
-            return {"score": 0, "apto": False,
-                    "motivos": [f"Erro ao buscar dados: {e}"],
-                    "indicadores": {}}
-
-        # Dívida líquida / PL
-        debt_equity = None
-        if bs:
-            u      = bs[0]
-            divida = (float(u.get("loansAndFinancing", 0) or 0) +
-                      float(u.get("longTermLoansAndFinancing", 0) or 0))
-            caixa  = float(u.get("cash", 0) or 0)
-            pl_val = float(u.get("shareholdersEquity", 0) or 0)
-            if pl_val > 0:
-                debt_equity = (divida - caixa) / pl_val
-
-        # Dividendos 12 meses e consistência
-        hoje  = date.today()
-        d1a   = (hoje - timedelta(days=365)).isoformat()
-        d5a   = (hoje - timedelta(days=365 * 5)).isoformat()
-        div_1a = sum(d["rate"] for d in divs if d.get("paymentDate", "")[:10] >= d1a)
-        dy_pct = (div_1a / preco * 100) if preco > 0 else 0
-        anos_c = len({d["paymentDate"][:4] for d in divs
-                      if d.get("paymentDate", "")[:10] >= d5a})
-        consistente = anos_c >= 4
-
-        indicadores = {
-            "p_l":              round(pl, 1),
-            "eps":              round(eps, 4),
-            "div_yield_pct":    round(dy_pct, 2),
-            "div_12m_por_acao": round(div_1a, 4),
-            "dividendos_consistentes": consistente,
-            "divida_liquida_pl": round(debt_equity, 2) if debt_equity is not None else None,
-            "market_cap_bi":    round(mkt_cap / 1e9, 1),
-        }
-
-        score   = 0
-        motivos = []
-
-        # P/L
-        if 0 < pl <= 10:
-            score += 25; motivos.append(f"✅ P/L muito atrativo: {pl:.1f}")
-        elif 10 < pl <= 18:
-            score += 18; motivos.append(f"✅ P/L razoável: {pl:.1f}")
-        elif 18 < pl <= 30:
-            score += 8;  motivos.append(f"ℹ️  P/L elevado: {pl:.1f}")
-        elif pl <= 0:
-            motivos.append("❌ Lucro negativo (P/L inválido)")
-        else:
-            motivos.append(f"❌ P/L alto demais: {pl:.1f}")
-
-        # Dividend Yield
-        if perfil_risco == 1:
-            if dy_pct >= 7:
-                score += 30; motivos.append(f"✅ DY excelente: {dy_pct:.1f}%")
-            elif dy_pct >= 5:
-                score += 20; motivos.append(f"✅ DY bom: {dy_pct:.1f}%")
-            elif dy_pct >= 3:
-                score += 10; motivos.append(f"ℹ️  DY moderado: {dy_pct:.1f}%")
-            else:
-                motivos.append(f"❌ DY baixo para conservador: {dy_pct:.1f}%")
-        elif perfil_risco == 2:
-            if dy_pct >= 4:
-                score += 20; motivos.append(f"✅ DY bom: {dy_pct:.1f}%")
-            elif dy_pct >= 2:
-                score += 10; motivos.append(f"ℹ️  DY moderado: {dy_pct:.1f}%")
-        else:
-            if dy_pct >= 3:
-                score += 10; motivos.append(f"ℹ️  DY: {dy_pct:.1f}% (bônus)")
-
-        # Consistência de dividendos
-        if consistente:
-            score += 20; motivos.append(f"✅ Pagou dividendos em {anos_c}/5 últimos anos")
-        else:
-            motivos.append(f"❌ Dividendos inconsistentes ({anos_c}/5 anos)")
-
-        # Dívida
-        if debt_equity is not None:
-            if debt_equity < 0:
-                score += 25; motivos.append(f"✅ Caixa líquido positivo (dívida líq./PL: {debt_equity:.2f})")
-            elif debt_equity < 0.5:
-                score += 20; motivos.append(f"✅ Dívida baixa: {debt_equity:.2f}x PL")
-            elif debt_equity < 1.5:
-                score += 10; motivos.append(f"ℹ️  Dívida moderada: {debt_equity:.2f}x PL")
-            elif debt_equity < 3.0:
-                score += 0;  motivos.append(f"⚠️  Dívida alta: {debt_equity:.2f}x PL")
-            else:
-                motivos.append(f"❌ Endividamento preocupante: {debt_equity:.2f}x PL")
-        else:
-            motivos.append("⚠️  Balanço não disponível para análise de dívida")
-
-        score = min(score, 100)
-        return {
-            "score":       score,
-            "apto":        score >= 55,
-            "motivos":     motivos,
-            "indicadores": indicadores,
-            "nota":        "⚠️  Score parcial — sem ROE/margens (Startup+). "
-                           "Combine com StatusInvestClient para análise completa.",
-        }
-
     # ── Histórico de preços ───────────────────────────────────────────────────
 
     def get_historical(self, ticker: str, range_: str = "5y",
@@ -353,16 +224,6 @@ class BrapiClient:
         except Exception:
             return None
 
-    # ── Tesouro Direto ────────────────────────────────────────────────────────
-
-    def get_treasury_bonds(self) -> list[dict]:
-        """Lista títulos do Tesouro Direto disponíveis com taxa e vencimento."""
-        try:
-            data = self._get("v2/prime-rate", params={"country": "brazil"})
-            return data.get("results", [])
-        except Exception:
-            return []
-
     # ── FIIs ──────────────────────────────────────────────────────────────────
 
     def get_fii_list(self) -> list[dict]:
@@ -372,3 +233,57 @@ class BrapiClient:
             return data.get("stocks", [])
         except Exception:
             return []
+
+    # ── NOVOS MÉTODOS: ENRIQUECIMENTO EM LOTE ────────────────────────────────
+
+    def get_complete_data(self, ticker: str) -> Dict[str, Any]:
+        """
+        Retorna um dicionário consolidado com dados da BRAPI para um ticker:
+          - market_cap (int)
+          - balance_sheet (list de dicts)
+          - dividend_consistency (bool)
+          - historical_prices (list de dicts, últimos 5 anos)
+        """
+        try:
+            fund = self.get_fundamentals(ticker)
+            quote = fund  # já contém quote, perfil, balanço, dividendos
+
+            market_cap = quote.get("marketCap", 0)
+            balance_sheet = quote.get("balanceSheetHistory", [])
+            div_summary = self.get_dividend_summary(ticker)
+            historical = self.get_historical(ticker, range_="5y", interval="1mo")
+
+            return {
+                "market_cap": market_cap,
+                "balance_sheet": balance_sheet,
+                "dividend_consistency": div_summary.get("consistente", False),
+                "dividend_summary": div_summary,
+                "historical_prices": historical,
+            }
+        except Exception as e:
+            # Retorna vazio em caso de erro
+            return {
+                "market_cap": 0,
+                "balance_sheet": [],
+                "dividend_consistency": False,
+                "dividend_summary": {},
+                "historical_prices": [],
+            }
+
+    def get_complete_data_batch(self, tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Retorna um dicionário {ticker: dados_completos} para uma lista de tickers.
+        Utiliza ThreadPoolExecutor para paralelizar as requisições.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_ticker = {executor.submit(self.get_complete_data, t): t for t in tickers}
+            for future in as_completed(future_to_ticker):
+                ticker = future_to_ticker[future]
+                try:
+                    results[ticker] = future.result()
+                except Exception:
+                    results[ticker] = {}
+        return results
