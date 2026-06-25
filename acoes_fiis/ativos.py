@@ -41,14 +41,14 @@ CRIPTO_TOP_N       = 20          # top 20 por market cap da CoinGecko
 #   0.30 × liquidez_norm                              (quando mktcap não disponível)
 #
 # Pesos do componente de tamanho sobre o score final, por perfil de risco:
-#   Conservador: 0.25 — tamanho importa muito; quer empresa reconhecida e estável
-#   Moderado:    0.18 — equilíbrio entre fundamentals e robustez
+#   Conservador: 0.30 — tamanho importa muito; quer empresa reconhecida e estável
+#   Moderado:    0.20 — equilíbrio entre fundamentals e robustez
 #   Agressivo:   0.08 — fundamentos dominam; small cap OK se ROE excepcional
-PESO_TAMANHO_ACOES: dict[int, float] = {1: 0.25, 2: 0.18, 3: 0.08}
+PESO_TAMANHO_ACOES: dict[int, float] = {1: 0.30, 2: 0.20, 3: 0.08}
 
 # Referências para normalização em escala log
 # Market cap: VALE3/PETR4 ~R$400B = score 1.0; R$500M = score ~0.18 (small cap)
-MKTCAP_REF_MAX_B  = 400.0   # R$400 bilhões (referência VALE3/PETR4)
+MKTCAP_REF_MAX_B  = 200.0   # R$200B — patrimônio dos maiores bancos/mineradoras
 MKTCAP_REF_MIN_B  = 0.5     # R$500M = threshold mínimo de relevância
 # Liquidez: ITUB4 ~R$500M/dia = score 1.0; R$1M/dia = score 0.0
 LIQ_REF_MAX_M     = 500.0   # R$500M/dia

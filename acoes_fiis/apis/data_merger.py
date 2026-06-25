@@ -9,15 +9,27 @@ from typing import Dict
 
 brapi = BrapiClient()
 
+# Cache do bulk para evitar N scrapings (1 por ticker chamado)
+# get_all_bulk() faz UMA requisição HTTP — cachear é essencial
+_bulk_cache: Dict | None = None
+
+def _get_bulk_cached() -> Dict:
+    """Retorna o bulk do Fundamentus, fazendo scraping apenas uma vez por processo."""
+    global _bulk_cache
+    if _bulk_cache is None:
+        _bulk_cache = get_all_bulk()
+    return _bulk_cache
+
 def merge_ticker_data(ticker: str) -> Dict:
     """
     Retorna dados consolidados: Fundamentus (primário) + BRAPI (complementos).
+    Usa cache do bulk para evitar 1 scraping por ticker.
     """
     ticker = ticker.upper()
     resultado = {}
 
     # ── 1. Fundamentus (bulk) – fonte primária ──────────────────────────────
-    bulk = get_all_bulk()
+    bulk = _get_bulk_cached()
     if ticker in bulk:
         dados = bulk[ticker]
         resultado.update({

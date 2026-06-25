@@ -25,6 +25,7 @@ from .ativos import (
 
 # Módulos externos
 from utils.logging_config import get_logger
+from .diversificador import diversificar
 
 # Importa configurações com fallback
 try:
@@ -378,21 +379,23 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         score_fund, motivos = _score_acao(ind, perfil)
 
         liq_m      = float(ind.get("liquidez",     0) or 0) / 1_000_000
-        mktcap_b   = float(ind.get("mktcap_proxy", 0) or 0) / 1_000_000_000
+        patrimony_b = float(ind.get("mktcap_proxy", 0) or 0) / 1_000_000_000
+        # mktcap_proxy armazena patrimônio líquido puro (sem pvp)
 
         if liq_m > 0:
             score_liq = min(1.0, math.log10(max(liq_m, 0.001)) / math.log10(LIQ_REF_MAX_M))
         else:
             score_liq = 0.0
 
-        if mktcap_b >= MKTCAP_REF_MIN_B:
-            score_mktcap = min(1.0, math.log10(mktcap_b / MKTCAP_REF_MIN_B) /
-                                     math.log10(MKTCAP_REF_MAX_B / MKTCAP_REF_MIN_B))
+        if patrimony_b >= MKTCAP_REF_MIN_B:
+            score_pat = min(1.0, math.log10(patrimony_b / MKTCAP_REF_MIN_B) /
+                                  math.log10(MKTCAP_REF_MAX_B / MKTCAP_REF_MIN_B))
         else:
-            score_mktcap = 0.0
+            score_pat = 0.0
 
-        if score_mktcap > 0:
-            score_tamanho = score_mktcap * 0.667 + score_liq * 0.333
+        # 2/3 patrimônio + 1/3 liquidez quando disponível; 100% liquidez como fallback
+        if score_pat > 0:
+            score_tamanho = score_pat * 0.667 + score_liq * 0.333
         else:
             score_tamanho = score_liq
 
@@ -428,7 +431,8 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         candidatos_lista = validar_com_brapi(candidatos_lista)
         candidatos = {a['ticker']: a for a in candidatos_lista}
 
-    return sorted(candidatos.values(), key=lambda x: -x["score"])[:n]
+    ranking = sorted(candidatos.values(), key=lambda x: -x["score"])
+    return diversificar(ranking, n, perfil)
 
 # ── Top FIIs ──────────────────────────────────────────────────────────────────
 

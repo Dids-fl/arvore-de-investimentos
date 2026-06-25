@@ -236,7 +236,10 @@ class StatusInvestClient:
                 # Quando disponível, é uma estimativa real de market cap.
                 # Quando não disponível (0), cai para 0 e o score de tamanho
                 # fica zerado — o componente de liquidez assume sozinho.
-                mktcap_proxy = pvp * patrimony if patrimony > 0 else 0.0
+                # patrimony puro — sem pvp para evitar double-counting
+                # pvp já entra no score de fundamentos; multiplicar aqui
+                # inflaria o tamanho de empresas premium (ex: WEGE3 pvp=9)
+                mktcap_proxy = patrimony
 
                 if dy >= dy_min and roe >= roe_min:
                     result.append({

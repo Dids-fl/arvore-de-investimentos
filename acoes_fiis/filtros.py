@@ -14,23 +14,24 @@ def filtrar_por_setor(acoes: List[Dict], setores: List[str]) -> List[Dict]:
 
 def filtrar_por_governanca(acoes: List[Dict], niveis: List[str]) -> List[Dict]:
     """
-    Filtra por nível de governança (ex: ["NM", "N2"]).
-    Extrai do ticker: se termina em 3 -> NM, 4 -> N2, 5 -> N1, 6 -> N2.
+    Filtra por nível de governança corporativa (ex: ["NM", "N2", "N1"]).
+
+    IMPORTANTE: o sufixo do ticker NÃO determina o nível de governança.
+    BBAS3 e ITUB4 são ambos Novo Mercado (NM), apesar dos sufixos diferentes.
+    A inferência correta exige consulta à B3 ou campo "governanca" da API.
+
+    Comportamento:
+      - Se o campo "governanca" estiver presente no ativo: filtra por ele.
+      - Se o campo estiver ausente em todos os ativos: retorna todos sem filtrar
+        (evita descartar erroneamente empresas por lógica de sufixo incorreta).
     """
     if not niveis:
         return acoes
-    def nivel_do_ticker(ticker):
-        if ticker[-1] == '3':
-            return 'NM'
-        elif ticker[-1] == '4':
-            return 'N2'
-        elif ticker[-1] == '5':
-            return 'N1'
-        elif ticker[-1] == '6':
-            return 'N2'
-        else:
-            return 'OUTRO'
-    return [a for a in acoes if nivel_do_ticker(a['ticker']) in niveis]
+    ativos_com_campo = [a for a in acoes if a.get("governanca")]
+    if not ativos_com_campo:
+        # Campo não disponível na API atual — não filtra para não descartar indevidamente
+        return acoes
+    return [a for a in acoes if a.get("governanca", "") in niveis]
 
 def aplicar_filtros(acoes: List[Dict], filtros: List[Callable]) -> List[Dict]:
     """

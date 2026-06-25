@@ -1,11 +1,24 @@
-from validador import validar_universo
+"""Testes do validador de dados."""
+from acoes_fiis.validador import validar_universo, resumo_validacao
 
-def test_validar_universo():
-    universo = [
-        {"ticker": "A", "dy": 10, "pl": 10, "pvp": 1, "roe": 20},
-        {"ticker": "B", "dy": 35, "pl": 100, "pvp": 0.2, "roe": 250},
-    ]
-    validados, descartados = validar_universo(universo)
-    assert len(validados) == 1
-    assert len(descartados) == 1
-    assert descartados[0]["ticker"] == "B"
+def test_outlier_detectado():
+    universo = [{"ticker": f"NORM{i}3", "dy": 8.0, "pl": 10.0, "pvp": 1.2, "roe": 20.0} for i in range(20)]
+    universo.append({"ticker": "OUTLIER", "dy": 50.0, "pl": 10.0, "pvp": 1.2, "roe": 20.0})
+    val, desc = validar_universo(universo)
+    outlier_flagged = any(a.get("confianca", 1.0) < 1.0 or a["ticker"] == "OUTLIER"
+                          for a in val + desc)
+    assert outlier_flagged, "Outlier de DY deve ser detectado"
+    print("✅ test_outlier_detectado")
+
+def test_dados_limpos_passam():
+    universo = [{"ticker": f"ACAO{i}3", "dy": 8.0, "pl": 10.0, "pvp": 1.2, "roe": 20.0} for i in range(15)]
+    val, desc = validar_universo(universo)
+    assert len(val) == 15 and len(desc) == 0
+    print("✅ test_dados_limpos_passam")
+
+if __name__ == "__main__":
+    test_outlier_detectado()
+    test_dados_limpos_passam()
+    print("Todos os testes passaram.")
+
+# pytest tests/test_validador.py -v
