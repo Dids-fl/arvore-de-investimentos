@@ -4,16 +4,18 @@ Traduz o portfólio em sugestões de ativos específicos por classe.
 Classes suportadas e fonte dos dados
 ─────────────────────────────────────
   acoes  → acoes_fiis.screener.top_acoes() (Fundamentus + BRAPI)
-  etf    → ETFs recomendados para iniciantes/perfil moderado (BOVA11, IVVB11, SMALL11)
+  etf    → etfs.screener_etf.top_etfs()   (BRAPI /api/v2/tickers + yfinance)
   fiis   → acoes_fiis.screener.top_fiis() (Fundamentus + fallback Status Invest)
-  cripto → acoes_fiis.screener.top_cripto() (CoinGecko)
-  rf     → apis.rf_mercado.py — taxas derivadas de SELIC/IPCA/CDI reais
-  fundos → apis.rf_mercado.py — retorno líquido real estimado por cenário
+  cripto → cripto.screener_cripto.top_cripto() (CoinGecko)
+  rf     → rf_fundos.rf_mercado.calcular_rf() (SELIC/IPCA/CDI)
+  fundos → rf_fundos.rf_mercado.calcular_fundos() (taxas e spreads)
 """
 
 from core.categorias import RK
-from acoes_fiis.screener import top_acoes, top_fiis, top_cripto, _score_acao
+from acoes_fiis.screener import top_acoes, top_fiis, _score_acao
+from cripto.screener_cripto import top_cripto
 from rf_fundos.rf_mercado import calcular_rf, calcular_fundos
+from etfs.screener_etf import top_etfs
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -49,8 +51,8 @@ _CLASSE: dict[str, str] = {
 }
 
 _LABEL: dict[str, str] = {
-    "acoes":  "AÇÕES / ETFs",
-    "etf":    "ETFs (Fundos de Índice)",
+    "acoes":  "AÇÕES",
+    "etf":    "ETFs (Ranking Dinâmico)",
     "fiis":   "FIIs",
     "cripto": "CRIPTO",
     "rf":     "RENDA FIXA",
@@ -87,53 +89,6 @@ def _filtrar_fundos_por_perfil(todos: list[dict], perfil: int, n: int) -> list[d
     return filtrados[:n]
 
 
-def _recomendar_etfs(perfil: int, n: int = 3, ibov_cagr: float = None) -> list[dict]:
-    ibov = ibov_cagr if ibov_cagr else 0.13
-    etfs = [
-        {
-            "ticker": "BOVA11",
-            "nome": "ETF Ibovespa (B3)",
-            "preco": 0,
-            "score": 70 if ibov > 0.10 else 50,
-            "motivos": [
-                f"✅ Exposição às maiores empresas do Brasil",
-                "✅ Taxa de administração ~0.3% a.a.",
-                "✅ Ideal para iniciantes (diversificação automática)",
-                f"📈 Retorno histórico estimado: {ibov*100:.1f}% a.a."
-            ]
-        },
-        {
-            "ticker": "IVVB11",
-            "nome": "ETF S&P 500 (BRL)",
-            "preco": 0,
-            "score": 75,
-            "motivos": [
-                "✅ Diversificação internacional (500 maiores dos EUA)",
-                "✅ Proteção cambial (dólar)",
-                "✅ Taxa de administração ~0.24% a.a.",
-                "📈 Retorno histórico S&P500 ~10% a.a. + câmbio"
-            ]
-        },
-        {
-            "ticker": "SMALL11",
-            "nome": "ETF Small Caps Brasil",
-            "preco": 0,
-            "score": 55,
-            "motivos": [
-                "✅ Exposição a empresas menores com maior potencial de crescimento",
-                "⚠️  Maior volatilidade que BOVA11",
-                "📈 Indicado para pequena parcela (até 20% da carteira de ações)"
-            ]
-        }
-    ]
-    if perfil == 1:
-        etfs[0]["score"] += 5
-        etfs[2]["score"] -= 10
-    elif perfil == 3:
-        etfs[2]["score"] += 10
-    return sorted(etfs, key=lambda x: -x["score"])[:n]
-
-
 # ── Função principal ──────────────────────────────────────────────────────────
 
 def recomendar_por_portfolio(
@@ -144,6 +99,19 @@ def recomendar_por_portfolio(
     ipca: float = 0.044,
     ibov_cagr: float | None = None,
 ) -> dict[str, list]:
+    """
+    Recebe o portfólio completo e retorna os top N ativos de cada classe
+    que tiver alocação >= MIN_PCT no portfólio.
+
+    RF e Fundos usam as taxas reais passadas (selic, ipca, ibov_cagr)
+    para calcular retorno líquido real e rankear dinamicamente.
+
+    ETFs são rankeados com base em performance histórica (yfinance) e
+    pré-seleção via BRAPI (liquidez e retorno 12m).
+
+    Retorna dict com chaves: "rf", "fundos", "fiis", "acoes", "etf", "cripto"
+    (apenas as classes presentes no portfólio).
+    """
     classes: set[str] = {
         _CLASSE[rk]
         for rk, pct in portfolio.items()
@@ -164,7 +132,7 @@ def recomendar_por_portfolio(
                 resultado["acoes"] = top_acoes(perfil_risco, n=n)
 
             elif classe == "etf":
-                resultado["etf"] = _recomendar_etfs(perfil_risco, n=min(n, 3), ibov_cagr=ibov_cagr)
+                resultado["etf"] = top_etfs(perfil_risco, n=min(n, 5))
 
             elif classe == "fiis":
                 resultado["fiis"] = top_fiis(perfil_risco, n=n)
@@ -203,6 +171,9 @@ def recomendar_ativos(
     ipca: float = 0.044,
     ibov_cagr: float | None = None,
 ) -> list[dict] | None:
+    """
+    Versão legada — prefira recomendar_por_portfolio().
+    """
     classe = _CLASSE.get(rec_key)
     if classe is None:
         return None
@@ -210,7 +181,7 @@ def recomendar_ativos(
         if classe == "acoes":
             return top_acoes(perfil_risco, n=n)
         if classe == "etf":
-            return _recomendar_etfs(perfil_risco, n=min(n, 3), ibov_cagr=ibov_cagr)
+            return top_etfs(perfil_risco, n=min(n, 5))
         if classe == "fiis":
             return top_fiis(perfil_risco, n=n)
         if classe == "cripto":
