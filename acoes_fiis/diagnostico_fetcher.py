@@ -77,4 +77,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python diagnostico_fetcher.py VALE3
+# python -m acoes_fiis.diagnostico_fetcher VALE3
