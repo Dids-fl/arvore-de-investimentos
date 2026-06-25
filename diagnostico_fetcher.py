@@ -2,7 +2,6 @@
 Script de diagnóstico para testar a coleta híbrida (Fundamentus + BRAPI).
 Mostra: dados brutos do Fundamentus, complementos da BRAPI e a fusão final.
 """
-
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -21,7 +20,6 @@ def testar_fundamentus(ticker: str):
         for k, v in dados.items():
             print(f"   {k}: {v}")
     else:
-        print("❌ Não encontrado no bulk. Buscando detalhes...")
         detalhes = get_fundamentus_data(ticker)
         if detalhes:
             print("✅ Detalhes encontrados:")
@@ -78,3 +76,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# python diagnostico_fetcher.py VALE3
