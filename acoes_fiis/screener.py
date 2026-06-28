@@ -1,19 +1,19 @@
 """
 Motor de score para Ações (ON/PN) e FIIs.
-Usa Fundamentus + BRAPI (via data_merger) para enriquecer dados.
+Fonte primária: Fundamentus (scraping) via get_all_bulk().
+Fallback: Status Invest (se o Fundamentus falhar).
+Complementos: Yahoo Finance (via data_merger) para market cap, P/L, P/VP, dividendos.
 """
 
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Módulos internos da pasta acoes_fiis (imports relativos)
 from .apis.fundamentus_scraper import get_all_bulk, get_fiis_bulk
-from .apis.brapi import BrapiClient
 from .apis.status_invest import StatusInvestClient
 from .apis.data_merger import merge_ticker_data
 from .filtros import aplicar_filtros, filtrar_por_setor, filtrar_por_governanca
-from .validador import validar_universo, resumo_validacao, validar_com_brapi
+from .validador import validar_universo, resumo_validacao
 from .ativos import (
     MIN_LIQUIDEZ_ACOES, MIN_LIQUIDEZ_FIIS,
     UNIVERSO_ACOES_N, UNIVERSO_FIIS_N,
@@ -23,11 +23,8 @@ from .ativos import (
     PESO_TAMANHO_ACOES, MKTCAP_REF_MAX_B, MKTCAP_REF_MIN_B, LIQ_REF_MAX_M,
 )
 
-# Módulos externos
 from utils.logging_config import get_logger
-from .diversificador import diversificar
 
-# Importa configurações com fallback
 try:
     from config import USE_FUNDAMENTUS, FILTRO_SETORES, FILTRO_GOVERNANCA, LIMITE_MKTCAP
 except ImportError:
@@ -167,29 +164,31 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
             else:
                 motivos.append(f"⚠️  Crescimento baixo: {cagr*100:.1f}%")
 
-    # ── Bônus por consistência de dividendos (BRAPI) ──────────────────────────
+    # ── Bônus por consistência de dividendos (Yahoo Finance via data_merger) ──
     if ind.get("dividendos_consistentes", False):
         if perfil == 1:
-            score += 5
+            score += 0.05  # 5% do score total
             motivos.append("✅ Dividendos consistentes (5+ anos)")
         elif perfil == 2:
-            score += 3
+            score += 0.03
             motivos.append("ℹ️  Dividendos consistentes")
 
     # ── Endividamento (Dívida/PL) – essencial para conservador ──────────────
     divida_pl = ind.get('divida_patrimonio', 0)
     if perfil == 1 and divida_pl > 0:
         if divida_pl < 0.5:
-            score += 5
+            score += 0.05
             motivos.append("✅ Dívida controlada (Dív/PL < 0.5)")
         elif divida_pl < 1.0:
-            score += 2
+            score += 0.02
             motivos.append(f"ℹ️  Dívida moderada: {divida_pl:.2f}x PL")
         else:
-            score -= 5
+            score -= 0.05
             motivos.append(f"⚠️  Endividamento alto: {divida_pl:.2f}x PL")
 
-    return round(score * 100, 1), motivos[:6]
+    # Score final em porcentagem (0-100)
+    score_final = round(score * 100, 1)
+    return score_final, motivos[:6]
 
 # ── Score de FIIs ─────────────────────────────────────────────────────────────
 
@@ -200,13 +199,22 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
     motivos: list[str] = []
 
     dy = float(ind.get("dy", 0) or 0)
-    score += pesos["dy"] * norm(dy, refs["dy"]["bom"], refs["dy"]["ruim"])
+    # Trata DY > 30% como extraordinário (limita o impacto)
+    dy_effective = min(dy, 30.0)
+    score += pesos["dy"] * norm(dy_effective, refs["dy"]["bom"], refs["dy"]["ruim"])
+    
     if perfil == 1:
-        label = "✅" if dy >= 11 else ("ℹ️ " if dy >= 8 else "⚠️ ")
-        motivos.append(f"{label} DY: {dy:.1f}% {'(excelente renda mensal)' if dy >= 11 else ''}")
+        if dy >= 11:
+            motivos.append(f"✅ DY: {dy:.1f}% (excelente renda mensal)")
+        elif dy >= 8:
+            motivos.append(f"ℹ️  DY: {dy:.1f}%")
+        else:
+            motivos.append(f"⚠️  DY: {dy:.1f}% (baixo para conservador)")
     elif perfil == 2:
-        label = "✅" if dy >= 10 else "ℹ️ "
-        motivos.append(f"{label} DY: {dy:.1f}%")
+        if dy >= 10:
+            motivos.append(f"✅ DY: {dy:.1f}%")
+        else:
+            motivos.append(f"ℹ️  DY: {dy:.1f}%")
     else:
         if dy >= 10:
             motivos.append(f"ℹ️  DY: {dy:.1f}% (bônus de renda)")
@@ -235,17 +243,18 @@ def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
             motivos.append(f"Liquidez: R${liq/1e6:.1f}M/dia")
 
     vac = float(ind.get("vacancia", 0) or 0)
-    score += pesos["vacancia"] * norm(vac, refs["vacancia"]["bom"], refs["vacancia"]["ruim"])
-    if vac == 0:
-        motivos.append("✅ Vacância zero")
-    elif perfil == 1 and vac > 5:
-        motivos.append(f"⚠️  Vacância: {vac:.1f}% (risco ao DY)")
-    elif vac > 10:
-        motivos.append(f"⚠️  Vacância: {vac:.1f}%")
+    if vac > 0:
+        score += pesos["vacancia"] * norm(vac, refs["vacancia"]["bom"], refs["vacancia"]["ruim"])
+        if vac == 0:
+            motivos.append("✅ Vacância zero")
+        elif perfil == 1 and vac > 5:
+            motivos.append(f"⚠️  Vacância: {vac:.1f}% (risco ao DY)")
+        elif vac > 10:
+            motivos.append(f"⚠️  Vacância: {vac:.1f}%")
 
     return round(score * 100, 1), motivos[:4]
 
-# ── Funções de busca com fallback ──────────────────────────────────────────────
+# ── Funções de busca (sem BRAPI) ──────────────────────────────────────────────
 
 def _buscar_acoes_status_invest() -> list[dict]:
     try:
@@ -255,41 +264,31 @@ def _buscar_acoes_status_invest() -> list[dict]:
         logger.warning(f"Status Invest falhou: {e}")
         return []
 
-def _buscar_acoes_brapi() -> list[dict]:
-    try:
-        client = BrapiClient()
-        tickers = ["PETR4", "VALE3", "ITUB4", "BBDC4", "ABEV3", "BBAS3", "WEGE3", "RENT3", "MGLU3", "B3SA3"]
-        dados = []
-        for t in tickers:
-            try:
-                q = client.get_quote(t)
-                dados.append({
-                    "ticker": t,
-                    "nome": q.get("longName", ""),
-                    "cotacao": q.get("regularMarketPrice", 0),
-                    "dy": 0,
-                    "pl": q.get("priceEarnings", 0),
-                    "pvp": 0,
-                    "roe": 0,
-                    "liquidez": 0,
-                    "mktcap_proxy": q.get("marketCap", 0),
-                })
-            except Exception:
-                continue
-        return dados
-    except Exception as e:
-        logger.warning(f"BRAPI falhou: {e}")
-        return []
+# ── Validação para FIIs (filtra outliers) ─────────────────────────────────────
+
+def _validar_fiis(fiis: list[dict]) -> list[dict]:
+    """Remove FIIs com dados suspeitos (DY > 30%, P/VP > 3.0, etc.)"""
+    validos = []
+    for f in fiis:
+        dy = float(f.get("dy", 0) or 0)
+        pvp = float(f.get("pvp", 0) or 0)
+        # DY > 30% é quase sempre erro de dado (dividendo extraordinário)
+        if dy > 30.0:
+            logger.debug(f"FII {f.get('ticker')}: DY {dy:.1f}% > 30% (excluído)")
+            continue
+        if pvp > 3.0:
+            logger.debug(f"FII {f.get('ticker')}: P/VP {pvp:.2f} > 3.0 (excluído)")
+            continue
+        if dy < 0 or pvp < 0:
+            continue
+        validos.append(f)
+    return validos
 
 # ── Top N ações ──────────────────────────────────────────────────────────────────
 
 def top_acoes(perfil: int, n: int = 5) -> list[dict]:
-    """
-    Usa Fundamentus (bulk) como fonte primária e enriquece com BRAPI.
-    """
     universo = []
 
-    # 1. Tenta Fundamentus
     if USE_FUNDAMENTUS:
         try:
             bulk_data = get_all_bulk()
@@ -299,44 +298,40 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         except Exception as e:
             logger.warning(f"Fundamentus bulk falhou: {e}")
 
-    # 2. Fallback para Status Invest
     if not universo:
         logger.info("Fallback: buscando ações via Status Invest...")
         universo = _buscar_acoes_status_invest()
     if not universo:
-        logger.info("Fallback: buscando ações via BRAPI...")
-        universo = _buscar_acoes_brapi()
-    if not universo:
         logger.error("Nenhuma fonte de dados para ações disponível.")
         return []
 
-    # ── FILTRO DE LIQUIDEZ ──────────────────────────────────────────────────
+    # Liquidez
     liquidos = [a for a in universo if float(a.get("liquidez", 0) or 0) >= MIN_LIQUIDEZ_ACOES]
     if not liquidos:
         liquidos = universo
 
-    # ── ENRIQUECE COM BRAPI (Market Cap e consistência de dividendos) ──────
+    # Enriquecimento com Yahoo Finance
     enriquecidos = []
     for ind in liquidos:
         ticker = ind.get('ticker')
         if ticker:
             try:
-                dados_br = merge_ticker_data(ticker)
-                ind['mktcap_proxy'] = dados_br.get('market_cap', 0)
-                ind['dividendos_consistentes'] = dados_br.get('dividendos_consistentes', False)
+                dados_yf = merge_ticker_data(ticker)
+                ind['mktcap_proxy'] = dados_yf.get('market_cap', 0)
+                ind['dividendos_consistentes'] = dados_yf.get('dividendos_consistentes', False)
                 if not ind.get('pl'):
-                    ind['pl'] = dados_br.get('pl', 0)
+                    ind['pl'] = dados_yf.get('pl', 0)
                 if not ind.get('cotacao'):
-                    ind['cotacao'] = dados_br.get('preco', 0)
+                    ind['cotacao'] = dados_yf.get('cotacao', 0)
                 if not ind.get('divida_patrimonio'):
-                    ind['divida_patrimonio'] = dados_br.get('divida_patrimonio', 0)
+                    ind['divida_patrimonio'] = dados_yf.get('divida_patrimonio', 0)
                 if not ind.get('crescimento_receita'):
-                    ind['crescimento_receita'] = dados_br.get('receita_cagr_5a', 0) / 100.0
+                    ind['crescimento_receita'] = dados_yf.get('receita_cagr_5a', 0) / 100.0
             except Exception as e:
-                logger.debug(f"Erro ao enriquecer {ticker} com BRAPI: {e}")
+                logger.debug(f"Erro ao enriquecer {ticker}: {e}")
         enriquecidos.append(ind)
 
-    # ── FILTRO DE MARKET CAP ─────────────────────────────────────────────────
+    # Filtro Market Cap
     mktcap_min = LIMITE_MKTCAP.get(perfil, 1_000_000_000)
     liquidos_filtrados = []
     for a in enriquecidos:
@@ -346,19 +341,19 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         elif mcap >= mktcap_min:
             liquidos_filtrados.append(a)
         else:
-            logger.debug(f"Excluído {a.get('ticker')} - market cap R${mcap/1e9:.2f}B (min: R${mktcap_min/1e9:.1f}B)")
+            logger.debug(f"Excluído {a.get('ticker')} - market cap R${mcap/1e9:.2f}B")
     if liquidos_filtrados:
         liquidos = liquidos_filtrados
     else:
-        logger.warning("Nenhum ativo passou no filtro de market cap. Usando todos (fallback).")
+        logger.warning("Nenhum ativo passou no filtro de market cap. Usando todos.")
 
-    # ── VALIDAÇÃO ESTATÍSTICA ──────────────────────────────────────────────
+    # Validação estatística
     liquidos_validados, descartados = validar_universo(liquidos)
     if descartados:
         logger.warning(resumo_validacao(descartados))
     liquidos = liquidos_validados
 
-    # ── FILTROS POR PERFIL ──────────────────────────────────────────────────
+    # Filtros por perfil
     if perfil == 1:
         com_dy = [a for a in liquidos if float(a.get("dy", 0) or 0) >= 3.0]
         liquidos = com_dy if com_dy else liquidos
@@ -366,7 +361,7 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         com_roe = [a for a in liquidos if float(a.get("roe", 0) or 0) >= 10.0]
         liquidos = com_roe if com_roe else liquidos
 
-    # ── SCORE E RANKING ──────────────────────────────────────────────────────
+    # Score e ranking
     tamanho_peso = PESO_TAMANHO_ACOES.get(perfil, 0.18)
     candidatos = {}
     for ind in liquidos:
@@ -379,36 +374,35 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         score_fund, motivos = _score_acao(ind, perfil)
 
         liq_m      = float(ind.get("liquidez",     0) or 0) / 1_000_000
-        patrimony_b = float(ind.get("mktcap_proxy", 0) or 0) / 1_000_000_000
-        # mktcap_proxy armazena patrimônio líquido puro (sem pvp)
+        mktcap_b   = float(ind.get("mktcap_proxy", 0) or 0) / 1_000_000_000
 
         if liq_m > 0:
             score_liq = min(1.0, math.log10(max(liq_m, 0.001)) / math.log10(LIQ_REF_MAX_M))
         else:
             score_liq = 0.0
 
-        if patrimony_b >= MKTCAP_REF_MIN_B:
-            score_pat = min(1.0, math.log10(patrimony_b / MKTCAP_REF_MIN_B) /
-                                  math.log10(MKTCAP_REF_MAX_B / MKTCAP_REF_MIN_B))
+        if mktcap_b >= MKTCAP_REF_MIN_B:
+            score_mktcap = min(1.0, math.log10(mktcap_b / MKTCAP_REF_MIN_B) /
+                                     math.log10(MKTCAP_REF_MAX_B / MKTCAP_REF_MIN_B))
         else:
-            score_pat = 0.0
+            score_mktcap = 0.0
 
-        # 2/3 patrimônio + 1/3 liquidez quando disponível; 100% liquidez como fallback
-        if score_pat > 0:
-            score_tamanho = score_pat * 0.667 + score_liq * 0.333
+        if score_mktcap > 0:
+            score_tamanho = score_mktcap * 0.667 + score_liq * 0.333
         else:
             score_tamanho = score_liq
 
         confianca = ind.get("confianca", 1.0)
-        score = (score_fund * (1 - tamanho_peso) + score_tamanho * 100 * tamanho_peso) * confianca
+        # score_fund já está em 0-100; score_tamanho em 0-1
+        score_final = (score_fund * (1 - tamanho_peso) + score_tamanho * 100 * tamanho_peso) * confianca
 
         base = re.sub(r"\d+$", "", ind.get("ticker", ""))
-        if base not in candidatos or score > candidatos[base]["score"]:
+        if base not in candidatos or score_final > candidatos[base]["score"]:
             candidatos[base] = {
                 "ticker":    ind.get("ticker", ""),
                 "nome":      ind.get("nome", ""),
                 "preco":     float(ind.get("cotacao", 0) or 0),
-                "score":     round(score, 1),
+                "score":     round(score_final, 1),
                 "motivos":   motivos,
                 "dy":        dy,
                 "roe":       roe,
@@ -417,7 +411,7 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
                 "setor":     ind.get("setor", ""),
             }
 
-    # ── FILTROS DE SETOR E GOVERNANÇA ──────────────────────────────────────
+    # Filtros de setor e governança
     lista_para_filtrar = list(candidatos.values())
     if FILTRO_SETORES:
         lista_para_filtrar = filtrar_por_setor(lista_para_filtrar, FILTRO_SETORES)
@@ -425,22 +419,11 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
         lista_para_filtrar = filtrar_por_governanca(lista_para_filtrar, FILTRO_GOVERNANCA)
     candidatos = {a['ticker']: a for a in lista_para_filtrar}
 
-    # ── CROSS-VALIDAÇÃO COM BRAPI ──────────────────────────────────────────
-    candidatos_lista = list(candidatos.values())
-    if candidatos_lista:
-        candidatos_lista = validar_com_brapi(candidatos_lista)
-        candidatos = {a['ticker']: a for a in candidatos_lista}
-
-    ranking = sorted(candidatos.values(), key=lambda x: -x["score"])
-    return diversificar(ranking, n, perfil)
+    return sorted(candidatos.values(), key=lambda x: -x["score"])[:n]
 
 # ── Top FIIs ──────────────────────────────────────────────────────────────────
 
 def top_fiis(perfil: int, n: int = 5) -> list[dict]:
-    """
-    Usa get_fiis_bulk() para obter FIIs do Fundamentus.
-    Fallback para Status Invest se o Fundamentus falhar.
-    """
     fiis_data = get_fiis_bulk()
     if not fiis_data:
         logger.warning("Fundamentus FIIs bulk vazio, tentando Status Invest...")
@@ -457,6 +440,13 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
         return []
 
     todos_fiis = list(fiis_data.values())
+    
+    # Aplica validação para remover outliers
+    todos_fiis = _validar_fiis(todos_fiis)
+    if not todos_fiis:
+        logger.warning("Nenhum FII válido após validação.")
+        return []
+
     liquidos = [f for f in todos_fiis if f.get('liquidez', 0) >= MIN_LIQUIDEZ_FIIS]
     if not liquidos:
         liquidos = todos_fiis
@@ -466,6 +456,10 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
         dy  = float(ind.get("dy",  0) or 0)
         pvp = float(ind.get("pvp", 0) or 0)
         if dy == 0 and pvp == 0:
+            continue
+
+        # Filtro adicional: se DY > 30% e veio do Status Invest, descarta (já foi feito, mas reforça)
+        if dy > 30.0:
             continue
 
         score, motivos = _score_fii(ind, perfil)

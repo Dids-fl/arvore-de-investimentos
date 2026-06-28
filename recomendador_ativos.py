@@ -7,14 +7,15 @@ Classes suportadas e fonte dos dados
   etf    → etfs.screener_etf.top_etfs()   (BRAPI /api/v2/tickers + yfinance)
   fiis   → acoes_fiis.screener.top_fiis() (Fundamentus + fallback Status Invest)
   cripto → cripto.screener_cripto.top_cripto() (CoinGecko)
-  rf     → rf_fundos.rf_mercado.calcular_rf() (SELIC/IPCA/CDI)
+  rf     → rf_fundos.rf_dynamic.rankear_rf() (busca dinâmica em fontes online)
   fundos → rf_fundos.rf_mercado.calcular_fundos() (taxas e spreads)
 """
 
 from core.categorias import RK
 from acoes_fiis.screener import top_acoes, top_fiis, _score_acao
 from cripto.screener_cripto import top_cripto
-from rf_fundos.rf_mercado import calcular_rf, calcular_fundos
+from rf_fundos.rf_mercado import calcular_fundos
+from rf_fundos.rf_dynamic import rankear_rf
 from etfs.screener_etf import top_etfs
 from utils.logging_config import get_logger
 
@@ -62,25 +63,13 @@ _LABEL: dict[str, str] = {
 MIN_PCT = 5   # alocação mínima no portfólio para gerar sugestão da classe
 
 
-# ── Filtros de RF por perfil ──────────────────────────────────────────────────
-
-_RF_PERFIL: dict[int, list[str]] = {
-    1: ["SELIC", "CDB-DI", "LCI/LCA"],
-    2: ["SELIC", "CDB-DI", "LCI/LCA", "IPCA+", "DEBN"],
-    3: ["IPCA+", "DEBN", "CRI/CRA", "CDB-DI"],
-}
+# ── Filtros de Fundos por perfil (mantido do rf_mercado) ────────────────────
 
 _FUNDOS_PERFIL: dict[int, list[str]] = {
     1: ["FDO-RF", "FDO-PREV"],
     2: ["FDO-MULTI", "FDO-DEBN", "FDO-RF", "FDO-PREV"],
     3: ["FDO-LONG", "IVVB11", "FDO-MULTI", "FDO-DEBN"],
 }
-
-
-def _filtrar_rf_por_perfil(todos: list[dict], perfil: int, n: int) -> list[dict]:
-    permitidos = set(_RF_PERFIL.get(perfil, _RF_PERFIL[2]))
-    filtrados = [p for p in todos if p.get("ticker") in permitidos]
-    return filtrados[:n]
 
 
 def _filtrar_fundos_por_perfil(todos: list[dict], perfil: int, n: int) -> list[dict]:
@@ -103,14 +92,8 @@ def recomendar_por_portfolio(
     Recebe o portfólio completo e retorna os top N ativos de cada classe
     que tiver alocação >= MIN_PCT no portfólio.
 
-    RF e Fundos usam as taxas reais passadas (selic, ipca, ibov_cagr)
-    para calcular retorno líquido real e rankear dinamicamente.
-
-    ETFs são rankeados com base em performance histórica (yfinance) e
-    pré-seleção via BRAPI (liquidez e retorno 12m).
-
-    Retorna dict com chaves: "rf", "fundos", "fiis", "acoes", "etf", "cripto"
-    (apenas as classes presentes no portfólio).
+    RF usa busca dinâmica (rankear_rf) com dados reais do Tesouro, Yubb, ANBIMA.
+    Fundos usam cálculos de retorno líquido real com base em taxas (rf_mercado).
     """
     classes: set[str] = {
         _CLASSE[rk]
@@ -141,8 +124,8 @@ def recomendar_por_portfolio(
                 resultado["cripto"] = top_cripto(perfil_risco, n=min(n, 4))
 
             elif classe == "rf":
-                todos_rf = calcular_rf(selic, ipca, ibov_cagr)
-                resultado["rf"] = _filtrar_rf_por_perfil(todos_rf, perfil_risco, n)
+                # NOVA FONTE DINÂMICA
+                resultado["rf"] = rankear_rf(perfil_risco, n=n, selic=selic, ipca=ipca)
 
             elif classe == "fundos":
                 todos_fundos = calcular_fundos(selic, ipca, ibov_cagr)
@@ -187,7 +170,7 @@ def recomendar_ativos(
         if classe == "cripto":
             return top_cripto(perfil_risco, n=min(n, 4))
         if classe == "rf":
-            return _filtrar_rf_por_perfil(calcular_rf(selic, ipca), perfil_risco, n)
+            return rankear_rf(perfil_risco, n=n, selic=selic, ipca=ipca)
         if classe == "fundos":
             return _filtrar_fundos_por_perfil(calcular_fundos(selic, ipca, ibov_cagr), perfil_risco, n)
     except Exception as e:
