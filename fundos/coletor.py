@@ -1,141 +1,432 @@
 # fundos/coletor.py
-import logging
-import pandas as pd
+
 from pathlib import Path
-from datetime import datetime, timedelta
-from .cvm_sqlite import CVMDataProcessor
+import logging
+import sqlite3
+
+import pandas as pd
+
+from .cvm_downloader import download_cadastro
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / "cvm_data.db"
-CVM_URL_FUNDOS = "https://dados.cvm.gov.br/dados/FI"
+# ---------------------------------------------------------------------
+# Configurações
+# ---------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).parent
+
+DB_PATH = BASE_DIR / "data" / "fundos_cache.db"
+
+
+# ---------------------------------------------------------------------
+# Classe principal
+# ---------------------------------------------------------------------
 
 
 class ColetorFundosCVM:
-    def __init__(self, db_path=None, cvm_url=None):
-        self.db_path = str(db_path or DB_PATH)
-        self.cvm_url = CVM_URL_FUNDOS
-        self.processor = None
-        self._inicializar()
 
-    def _inicializar(self):
-        logger.info(f"Inicializando CVMDataProcessor com URL: {self.cvm_url}")
-        # Remove banco residual para garantir uma base limpa (opcional, mas recomendado)
-        db_file = Path(self.db_path)
-        if db_file.exists():
-            try:
-                db_file.unlink(missing_ok=True)
-                logger.info("Banco residual removido para evitar inconsistências.")
-            except Exception as e:
-                logger.warning(f"Não foi possível remover banco residual: {e}")
+    def __init__(
+        self,
+        db_path=None,
+        atualizar=True,
+    ):
 
-        self.processor = CVMDataProcessor(
-            db_path=self.db_path,
-            cvm_url=self.cvm_url,
-            verbose=False
+        self.db_path = Path(db_path or DB_PATH)
+
+        self.db_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
         )
-        self.processor.run()
-        logger.info("Processamento CVM concluído.")
 
-    def listar_fundos(self, limit=1000):
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.row_factory = sqlite3.Row
+
+        # Melhor desempenho do SQLite
+        self.conn.execute(
+            "PRAGMA journal_mode=WAL"
+        )
+
+        self.conn.execute(
+            "PRAGMA synchronous=NORMAL"
+        )
+
+        self._criar_tabelas()
+
+        if atualizar:
+            self.atualizar_cadastro()
+
+    # -------------------------------------------------------------
+
+    def _criar_tabelas(self):
+
+        cursor = self.conn.cursor()
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cad_fi(
+
+                CNPJ_Classe TEXT PRIMARY KEY,
+
+                Denominacao_Social TEXT,
+
+                Situacao TEXT,
+
+                Tipo_Classe TEXT,
+
+                Classificacao TEXT,
+
+                Classificacao_Anbima TEXT,
+
+                Indicador_Desempenho TEXT,
+
+                Publico_Alvo TEXT,
+
+                Classe_ESG TEXT,
+
+                Forma_Condominio TEXT,
+
+                Patrimonio_Liquido REAL,
+
+                Data_Registro TEXT,
+
+                Data_Inicio TEXT
+
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_nome
+            ON cad_fi(Denominacao_Social)
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_classe
+            ON cad_fi(Classificacao_Anbima)
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_situacao
+            ON cad_fi(Situacao)
+            """
+        )
+
+        self.conn.commit()
+
+    # -------------------------------------------------------------
+
+    def atualizar_cadastro(
+        self,
+        force=False,
+    ):
+
+        csv_path = download_cadastro(
+            force=force
+        )
+
+        logger.info(
+            "Carregando cadastro da CVM..."
+        )
+
+        df = pd.read_csv(
+            csv_path,
+            sep=";",
+            encoding="latin1",
+            low_memory=False,
+        )
+
+        colunas = [
+
+            "CNPJ_Classe",
+
+            "Denominacao_Social",
+
+            "Situacao",
+
+            "Tipo_Classe",
+
+            "Classificacao",
+
+            "Classificacao_Anbima",
+
+            "Indicador_Desempenho",
+
+            "Publico_Alvo",
+
+            "Classe_ESG",
+
+            "Forma_Condominio",
+
+            "Patrimonio_Liquido",
+
+            "Data_Registro",
+
+            "Data_Inicio",
+
+        ]
+
+        existentes = [
+
+            coluna
+
+            for coluna in colunas
+
+            if coluna in df.columns
+
+        ]
+
+        df = df[existentes]
+
+        df = df.dropna(subset=["CNPJ_Classe"])
+        df = df.drop_duplicates(
+            subset="CNPJ_Classe",
+            keep="first",
+        )
+
+        # Garante que o CNPJ seja sempre texto
+        df["CNPJ_Classe"] = (
+            df["CNPJ_Classe"]
+            .astype(str)
+            .str.zfill(14)
+        )
+
+        df["Patrimonio_Liquido"] = (
+
+            pd.to_numeric(
+
+                df["Patrimonio_Liquido"],
+
+                errors="coerce",
+
+            )
+
+            .fillna(0)
+
+            .clip(lower=0)
+
+        )
+
+        with self.conn:
+
+            self.conn.execute(
+                "DELETE FROM cad_fi"
+            )
+
+            df.to_sql(
+                "cad_fi",
+                self.conn,
+                if_exists="append",
+                index=False,
+            )
+
+        logger.info(
+            "%d fundos carregados.",
+            len(df),
+        )
+
+    # -------------------------------------------------------------
+
+    def listar_fundos(self):
+
+        query = """
+        SELECT *
+        FROM cad_fi
         """
-        Retorna DataFrame com fundos ativos a partir do atributo processado.
+
+        return pd.read_sql_query(
+            query,
+            self.conn,
+        )
+
+    # -------------------------------------------------------------
+
+    def listar_fundos_ativos(self):
+
+        query = """
+        SELECT *
+        FROM cad_fi
+        WHERE
+            upper(Situacao) =
+            'EM FUNCIONAMENTO NORMAL'
         """
+
+        return pd.read_sql_query(
+            query,
+            self.conn,
+        )
+
+    # -------------------------------------------------------------
+
+    def buscar_por_nome(
+        self,
+        texto,
+    ):
+
+        query = """
+        SELECT *
+        FROM cad_fi
+        WHERE
+            upper(Denominacao_Social)
+            LIKE upper(?)
+        ORDER BY
+            Denominacao_Social
+        """
+
+        return pd.read_sql_query(
+            query,
+            self.conn,
+            params=(f"%{texto}%",),
+        )
+
+    # -------------------------------------------------------------
+
+    def buscar_por_cnpj(
+        self,
+        cnpj,
+    ):
+
+        cnpj = str(cnpj).zfill(14)
+
+        query = """
+        SELECT *
+        FROM cad_fi
+        WHERE
+            CNPJ_Classe=?
+        """
+
+        df = pd.read_sql_query(
+            query,
+            self.conn,
+            params=(cnpj,),
+        )
+
+        if df.empty:
+            return None
+
+        return df.iloc[0].to_dict()
+
+    # -------------------------------------------------------------
+
+    def listar_por_classe(
+        self,
+        classe,
+    ):
+
+        query = """
+        SELECT *
+        FROM cad_fi
+        WHERE
+
+            upper(Classificacao_Anbima)
+            LIKE upper(?)
+
+            OR
+
+            upper(Classificacao)
+            LIKE upper(?)
+
+        ORDER BY
+            Patrimonio_Liquido DESC
+        """
+
+        return pd.read_sql_query(
+            query,
+            self.conn,
+            params=(
+                f"%{classe}%",
+                f"%{classe}%",
+            ),
+        )
+
+    # -------------------------------------------------------------
+
+    def total_fundos(self):
+
+        cursor = self.conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM cad_fi
+            """
+        )
+
+        return cursor.fetchone()[0]
+
+    # -------------------------------------------------------------
+
+    def fechar(self):
+
+        if self.conn:
+
+            self.conn.close()
+
+    # -------------------------------------------------------------
+
+    def __del__(self):
+
         try:
-            # Tenta acessar o DataFrame de cadastro (pode estar em self.processor.fi_cad_fi ou similar)
-            df = getattr(self.processor, 'fi_cad_fi', None)
-            if df is None:
-                # Fallback: tenta acessar via propriedade 'cad_fi' ou outros nomes
-                df = getattr(self.processor, 'cad_fi', None)
-            if df is None:
-                # Último recurso: tenta buscar no banco via SQL (mas com nome correto)
-                logger.warning("DataFrame de cadastro não encontrado no processador. Tentando via SQL...")
-                conn = self.processor.db.conn
-                # Descobre qual tabela de cadastro existe
-                cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%cad%' OR name LIKE '%fi%')")
-                tables = cursor.fetchall()
-                for (table_name,) in tables:
-                    if 'cad' in table_name.lower() or 'fi' in table_name.lower():
-                        df = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT {limit}", conn)
-                        break
-                if df is None:
-                    logger.error("Não foi possível localizar tabela de cadastro.")
-                    return pd.DataFrame()
 
-            if df.empty:
-                return df
+            if getattr(self, "conn", None):
+                self.conn.close()
 
-            # Filtra fundos ativos (coluna pode ser 'SIT' ou 'SITUACAO')
-            sit_col = None
-            for col in df.columns:
-                if col.upper() in ('SIT', 'SITUACAO'):
-                    sit_col = col
-                    break
-            if sit_col:
-                df = df[df[sit_col] == 'EM FUNCIONAMENTO NORMAL']
-
-            df = df.head(limit)
-            logger.info(f"Cadastro carregado: {len(df)} fundos ativos.")
-            return df
-
-        except Exception as e:
-            logger.error(f"Erro em listar_fundos: {e}")
-            return pd.DataFrame()
-
-    def buscar_cotas_em_lote(self, lista_cnpjs, dias=365):
-        """
-        Retorna cotas de múltiplos fundos a partir do DataFrame de inf_diario_fi.
-        """
-        if not lista_cnpjs:
-            return pd.DataFrame()
-
-        try:
-            # Tenta acessar o DataFrame de informes diários
-            df_cotas = getattr(self.processor, 'fi_inf_diario_fi', None)
-            if df_cotas is None:
-                df_cotas = getattr(self.processor, 'inf_diario_fi', None)
-            if df_cotas is None:
-                logger.warning("DataFrame de cotas não encontrado. Tentando via SQL...")
-                conn = self.processor.db.conn
-                cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%inf_diario%'")
-                tables = cursor.fetchall()
-                if not tables:
-                    logger.error("Nenhuma tabela de cotas encontrada.")
-                    return pd.DataFrame()
-                # Usa a primeira tabela de cotas
-                table_name = tables[0][0]
-                df_cotas = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
-
-            if df_cotas.empty:
-                return df_cotas
-
-            # Filtra pelos CNPJs e pelo período
-            data_corte = datetime.now() - timedelta(days=dias)
-            df_cotas = df_cotas[df_cotas['CNPJ_FUNDO'].isin(lista_cnpjs)]
-            df_cotas['DT_COMPTC'] = pd.to_datetime(df_cotas['DT_COMPTC'])
-            df_cotas = df_cotas[df_cotas['DT_COMPTC'] >= data_corte]
-            df_cotas = df_cotas.sort_values(['CNPJ_FUNDO', 'DT_COMPTC'])
-            logger.info(f"Cotas carregadas: {len(df_cotas)} registros.")
-            return df_cotas
-
-        except Exception as e:
-            logger.error(f"Erro em buscar_cotas_em_lote: {e}")
-            return pd.DataFrame()
+        except Exception:
+            pass
 
 
+# ---------------------------------------------------------------------
 # Singleton
-_coletor_instance = None
+# ---------------------------------------------------------------------
+
+_instance = None
+
 
 def get_coletor():
-    global _coletor_instance
-    if _coletor_instance is None:
-        _coletor_instance = ColetorFundosCVM()
-    return _coletor_instance
 
-def listar_fundos(limit=1000):
-    return get_coletor().listar_fundos(limit)
+    global _instance
 
-def buscar_cotas_em_lote(lista_cnpjs, dias=365):
-    return get_coletor().buscar_cotas_em_lote(lista_cnpjs, dias)
+    if _instance is None:
+
+        _instance = ColetorFundosCVM()
+
+    return _instance
+
+
+# ---------------------------------------------------------------------
+# API pública
+# ---------------------------------------------------------------------
+
+def listar_fundos():
+
+    return get_coletor().listar_fundos()
+
+
+def listar_fundos_ativos():
+
+    return get_coletor().listar_fundos_ativos()
+
+
+def buscar_por_nome(nome):
+
+    return get_coletor().buscar_por_nome(nome)
+
+
+def buscar_por_cnpj(cnpj):
+
+    return get_coletor().buscar_por_cnpj(cnpj)
+
+
+def listar_por_classe(classe):
+
+    return get_coletor().listar_por_classe(classe)
+
+
+def total_fundos():
+
+    return get_coletor().total_fundos()
