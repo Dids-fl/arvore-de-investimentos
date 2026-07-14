@@ -6,7 +6,7 @@ import sqlite3
 
 import pandas as pd
 
-from .cvm_downloader import download_cadastro
+from .cvm_cadastro_downloader import download_cadastro
 
 logger = logging.getLogger(__name__)
 
