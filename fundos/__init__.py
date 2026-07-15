@@ -1,14 +1,8 @@
 # fundos/__init__.py
-
 """
 Módulo de Fundos de Investimento.
 
-Este pacote fornece:
-
-- Download automático do cadastro oficial da CVM
-- Cache local em SQLite
-- Busca de fundos
-- Ranking por perfil de investidor
+Fornece download, cache local, indicadores e ranking por perfil.
 """
 
 from .cadastro_coletor import (
@@ -20,20 +14,20 @@ from .cadastro_coletor import (
     listar_por_classe,
 )
 
-from .ranker import (
-    rankear_fundos,
-    calcular_score,
+from .ranker import rankear_fundos, calcular_score
+from .indicadores import (
+    calcular_indicadores,
+    calcular_indicadores_df,
+    serie_cotas,
+    serie_patrimonio,
+    serie_cotistas,
 )
-
-from cvm_downloader import (
-    download_cadastro,
-)
+from .sharpe_sortino import calcular_indicadores_risco
+from .cvm_cadastro_downloader import download_cadastro
 
 __all__ = [
-
     # Downloader
     "download_cadastro",
-
     # Coletor
     "get_coletor",
     "listar_fundos",
@@ -41,20 +35,15 @@ __all__ = [
     "buscar_por_nome",
     "buscar_por_cnpj",
     "listar_por_classe",
-
+    # Indicadores
+    "calcular_indicadores",
+    "calcular_indicadores_df",
+    "serie_cotas",
+    "serie_patrimonio",
+    "serie_cotistas",
+    # Risco
+    "calcular_indicadores_risco",
     # Ranking
     "rankear_fundos",
     "calcular_score",
-
-]
-
-# fundos/__init__.py
-from .ranker import rankear_fundos
-from .indicadores import calcular_indicadores
-from .sharpe_sortino import calcular_indicadores_risco
-
-__all__ = [
-    "rankear_fundos",
-    "calcular_indicadores",
-    "calcular_indicadores_risco",
 ]
