@@ -47,3 +47,14 @@ __all__ = [
     "calcular_score",
 
 ]
+
+# fundos/__init__.py
+from .ranker import rankear_fundos
+from .indicadores import calcular_indicadores
+from .sharpe_sortino import calcular_indicadores_risco
+
+__all__ = [
+    "rankear_fundos",
+    "calcular_indicadores",
+    "calcular_indicadores_risco",
+]

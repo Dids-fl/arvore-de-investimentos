@@ -1,96 +1,794 @@
 # fundos/ranker.py
+
 import logging
-from .coletor import listar_fundos, buscar_cotas_em_lote
+
+from .cadastro_coletor import (
+    listar_fundos_ativos,
+)
+
+from .indicadores import (
+    calcular_indicadores,
+)
 
 logger = logging.getLogger(__name__)
 
-def _obter_coluna(df, possiveis):
-    for col in possiveis:
-        if col in df.columns:
-            return col
-    raise KeyError(f"Nenhuma das colunas {possiveis} encontrada no DataFrame.")
+# ---------------------------------------------------------------------
+# Configurações
+# ---------------------------------------------------------------------
 
-def _calcular_score(fundo, perfil):
-    rent = fundo.get("rentabilidade_12m", 0)
-    taxa_adm = fundo.get("taxa_adm", 0)
-    classe = fundo.get("classe", "")
-    rent_liquida = rent - taxa_adm
-    bonus = 0
-    if perfil == 1:  # Conservador
-        if classe and "Renda Fixa" in classe:
-            bonus = 0.05
-        else:
-            bonus = -0.10
-        if taxa_adm > 0.01:
-            bonus -= 0.02
-    elif perfil == 3:  # Agressivo
-        if classe and ("Ações" in classe or "Multimercado" in classe):
-            bonus = 0.08
-        else:
-            bonus = -0.05
-    else:  # Moderado
-        if classe and "Multimercado" in classe:
-            bonus = 0.02
-    score_final = rent_liquida + bonus
-    nota = (score_final * 100)
-    return float(max(0, min(nota, 10)))
+PERFIL_CONSERVADOR = 1
+PERFIL_MODERADO = 2
+PERFIL_AGRESSIVO = 3
 
-def rankear_fundos(perfil: int = 2, limite: int = 10):
+
+# ---------------------------------------------------------------------
+# Pesos
+# ---------------------------------------------------------------------
+
+PESOS = {
+
+    PERFIL_CONSERVADOR: {
+
+        "retorno_12m": 0.20,
+
+        "volatilidade": 0.35,
+
+        "drawdown": 0.25,
+
+        "fluxo": 0.10,
+
+        "patrimonio": 0.10,
+
+    },
+
+    PERFIL_MODERADO: {
+
+        "retorno_12m": 0.35,
+
+        "volatilidade": 0.25,
+
+        "drawdown": 0.15,
+
+        "fluxo": 0.15,
+
+        "patrimonio": 0.10,
+
+    },
+
+    PERFIL_AGRESSIVO: {
+
+        "retorno_12m": 0.50,
+
+        "volatilidade": 0.10,
+
+        "drawdown": 0.10,
+
+        "fluxo": 0.20,
+
+        "patrimonio": 0.10,
+
+    },
+
+}
+
+
+# ---------------------------------------------------------------------
+# Utilidades
+# ---------------------------------------------------------------------
+
+def _numero(valor):
+
     try:
-        df_cadastro = listar_fundos(limit=200)
-        if df_cadastro.empty:
-            logger.warning("Nenhum fundo encontrado no cadastro.")
-            return []
 
-        # Identifica colunas chave dinamicamente
-        cnpj_col = _obter_coluna(df_cadastro, ['CNPJ_FUNDO', 'CNPJ', 'cnpj'])
-        nome_col = _obter_coluna(df_cadastro, ['DENOM_SOCIAL', 'NOME', 'nome'])
-        classe_col = _obter_coluna(df_cadastro, ['CLASSE', 'CLASSE_ANBIMA'])
-        patrimonio_col = _obter_coluna(df_cadastro, ['VL_PATRIM_LIQ', 'PATRIM_LIQ', 'PATRIMONIO'])
+        if valor is None:
+            return 0.0
 
-        cnpjs_validos = df_cadastro[cnpj_col].tolist()
-        df_cotas = buscar_cotas_em_lote(cnpjs_validos, dias=365)
-        if df_cotas.empty:
-            logger.warning("Nenhuma cota encontrada para os fundos.")
-            return []
+        return float(valor)
 
-        # Identifica colunas de cotas
-        cnpj_cotas_col = _obter_coluna(df_cotas, ['CNPJ_FUNDO', 'CNPJ', 'cnpj'])
-        data_col = _obter_coluna(df_cotas, ['DT_COMPTC', 'DATA'])
-        cota_col = _obter_coluna(df_cotas, ['VL_QUOTA', 'COTA'])
+    except Exception:
 
-        fundos = []
-        for cnpj, group in df_cotas.groupby(cnpj_cotas_col):
-            dados_cad = df_cadastro[df_cadastro[cnpj_col] == cnpj].iloc[0]
-            group = group.sort_values(data_col)
-            if len(group) < 2:
+        return 0.0
+
+
+def _limitar(
+
+    valor,
+
+    minimo,
+
+    maximo,
+
+):
+
+    return max(
+
+        minimo,
+
+        min(
+
+            valor,
+
+            maximo,
+
+        ),
+
+    )
+
+
+# ---------------------------------------------------------------------
+# Normalizações
+# ---------------------------------------------------------------------
+
+def _score_retorno(
+
+    retorno,
+
+):
+
+    if retorno is None:
+        return 0.0
+
+    retorno = _numero(retorno)
+
+    # -50% -> 0
+    # +50% -> 10
+
+    score = (
+
+        (retorno + 0.50)
+
+        / 1.00
+
+    ) * 10
+
+    return _limitar(
+
+        score,
+
+        0,
+
+        10,
+
+    )
+
+
+def _score_volatilidade(
+
+    volatilidade,
+
+):
+
+    if volatilidade is None:
+        return 0.0
+
+    volatilidade = _numero(volatilidade)
+
+    # Quanto menor, melhor
+
+    score = 10 - (
+
+        volatilidade * 20
+
+    )
+
+    return _limitar(
+
+        score,
+
+        0,
+
+        10,
+
+    )
+
+
+def _score_drawdown(
+
+    drawdown,
+
+):
+
+    if drawdown is None:
+        return 0.0
+
+    drawdown = abs(
+
+        _numero(drawdown)
+
+    )
+
+    score = 10 - (
+
+        drawdown * 20
+
+    )
+
+    return _limitar(
+
+        score,
+
+        0,
+
+        10,
+
+    )
+
+# ---------------------------------------------------------------------
+# Continuação das normalizações
+# ---------------------------------------------------------------------
+
+def _score_fluxo(
+    fluxo,
+):
+    """
+    Fluxo líquido positivo indica entrada
+    de investidores.
+    """
+
+    if fluxo is None:
+        return 0.0
+
+    fluxo = _numero(fluxo)
+
+    if fluxo <= 0:
+        return 5.0
+
+    score = 5 + min(
+        fluxo / 100_000_000,
+        5,
+    )
+
+    return _limitar(
+        score,
+        0,
+        10,
+    )
+
+
+def _score_patrimonio(
+    patrimonio,
+):
+    """
+    Fundos maiores tendem a ser mais
+    consolidados.
+    """
+
+    if patrimonio is None:
+        return 0.0
+
+    patrimonio = _numero(
+        patrimonio
+    )
+
+    if patrimonio <= 0:
+        return 0
+
+    if patrimonio >= 10_000_000_000:
+        return 10
+
+    if patrimonio >= 5_000_000_000:
+        return 9
+
+    if patrimonio >= 1_000_000_000:
+        return 8
+
+    if patrimonio >= 500_000_000:
+        return 7
+
+    if patrimonio >= 100_000_000:
+        return 6
+
+    return 5
+
+
+# ---------------------------------------------------------------------
+# Score
+# ---------------------------------------------------------------------
+
+def calcular_score(
+    indicadores,
+    perfil=PERFIL_MODERADO,
+):
+
+    pesos = PESOS[
+        perfil
+    ]
+
+    score_retorno = _score_retorno(
+
+        indicadores[
+            "retorno_12m"
+        ]
+
+    )
+
+    score_volatilidade = (
+        _score_volatilidade(
+
+            indicadores[
+                "volatilidade"
+            ]
+
+        )
+    )
+
+    score_drawdown = (
+        _score_drawdown(
+
+            indicadores[
+                "drawdown"
+            ]
+
+        )
+    )
+
+    score_fluxo = (
+        _score_fluxo(
+
+            indicadores[
+                "fluxo_liquido"
+            ]
+
+        )
+    )
+
+    score_patrimonio = (
+        _score_patrimonio(
+
+            indicadores[
+                "patrimonio_atual"
+            ]
+
+        )
+    )
+
+    score = (
+
+        score_retorno
+        * pesos["retorno_12m"]
+
+        +
+
+        score_volatilidade
+        * pesos["volatilidade"]
+
+        +
+
+        score_drawdown
+        * pesos["drawdown"]
+
+        +
+
+        score_fluxo
+        * pesos["fluxo"]
+
+        +
+
+        score_patrimonio
+        * pesos["patrimonio"]
+
+    )
+
+    return {
+
+        "score": round(
+            score,
+            2,
+        ),
+
+        "retorno": round(
+            score_retorno,
+            2,
+        ),
+
+        "volatilidade": round(
+            score_volatilidade,
+            2,
+        ),
+
+        "drawdown": round(
+            score_drawdown,
+            2,
+        ),
+
+        "fluxo": round(
+            score_fluxo,
+            2,
+        ),
+
+        "patrimonio": round(
+            score_patrimonio,
+            2,
+        ),
+
+    }
+
+# ---------------------------------------------------------------------
+# Classe principal
+# ---------------------------------------------------------------------
+
+class RankerFundos:
+
+    def __init__(
+        self,
+        perfil=PERFIL_MODERADO,
+    ):
+
+        self.perfil = perfil
+
+    # -------------------------------------------------------------
+
+    def _rankear_fundo(
+        self,
+        fundo,
+    ):
+
+        indicadores = calcular_indicadores(
+            fundo["CNPJ_Classe"]
+        )
+
+        score = calcular_score(
+
+            indicadores,
+
+            self.perfil,
+
+        )
+
+        return {
+
+            "cnpj": indicadores["cnpj"],
+
+            "nome": indicadores["nome"],
+
+            "classe": indicadores["classe"],
+
+            "tipo": indicadores["tipo"],
+
+            "score": score["score"],
+
+            "subscores": {
+
+                "retorno": score["retorno"],
+
+                "volatilidade":
+                    score["volatilidade"],
+
+                "drawdown":
+                    score["drawdown"],
+
+                "fluxo":
+                    score["fluxo"],
+
+                "patrimonio":
+                    score["patrimonio"],
+
+            },
+
+            "indicadores": indicadores,
+
+        }
+
+    # -------------------------------------------------------------
+
+    def gerar_ranking(
+        self,
+    ):
+
+        fundos = listar_fundos_ativos()
+
+        ranking = []
+
+        total = len(fundos)
+
+        logger.info(
+            "Rankeando %d fundos...",
+            total,
+        )
+
+        for indice, fundo in fundos.iterrows():
+
+            try:
+
+                ranking.append(
+
+                    self._rankear_fundo(
+                        fundo
+                    )
+
+                )
+
+            except Exception as e:
+
+                logger.debug(
+
+                    "%s -> %s",
+
+                    fundo[
+                        "CNPJ_Classe"
+                    ],
+
+                    e,
+
+                )
+
+        ranking.sort(
+
+            key=lambda x: x["score"],
+
+            reverse=True,
+
+        )
+
+        return ranking
+    
+# -------------------------------------------------------------
+# Filtros
+# -------------------------------------------------------------
+
+    def top(
+        self,
+        quantidade=20,
+    ):
+
+        ranking = self.gerar_ranking()
+
+        return ranking[
+            :quantidade
+        ]
+
+
+    def buscar_cnpj(
+        self,
+        cnpj,
+    ):
+
+        ranking = self.gerar_ranking()
+
+        cnpj = (
+            str(cnpj)
+            .replace(".", "")
+            .replace("/", "")
+            .replace("-", "")
+            .zfill(14)
+        )
+
+        for fundo in ranking:
+
+            if fundo["cnpj"] == cnpj:
+
+                return fundo
+
+        return None
+
+
+    def buscar_nome(
+        self,
+        texto,
+    ):
+
+        ranking = self.gerar_ranking()
+
+        texto = texto.upper()
+
+        encontrados = []
+
+        for fundo in ranking:
+
+            nome = fundo["nome"]
+
+            if nome is None:
                 continue
-            cota_inicial = group.iloc[0][cota_col]
-            cota_final = group.iloc[-1][cota_col]
-            if cota_inicial <= 0:
-                continue
-            rentabilidade = (cota_final / cota_inicial) - 1
-            classe = str(dados_cad.get(classe_col, ''))
-            patrimonio = float(dados_cad.get(patrimonio_col, 0))
-            taxa_adm = 0.01  # estimativa
-            fundos.append({
-                "cnpj": cnpj,
-                "nome": dados_cad.get(nome_col, 'Fundo'),
-                "classe": classe,
-                "taxa_adm": taxa_adm,
-                "patrimonio": patrimonio,
-                "rentabilidade_12m": float(rentabilidade),
-            })
 
-        if not fundos:
-            logger.warning("Nenhum fundo com rentabilidade calculada.")
-            return []
+            if texto in nome.upper():
 
-        for f in fundos:
-            f["score"] = _calcular_score(f, perfil)
+                encontrados.append(
+                    fundo
+                )
 
-        return sorted(fundos, key=lambda x: x.get("score", 0), reverse=True)[:limite]
+        return encontrados
 
-    except Exception as e:
-        logger.error(f"Erro no rankeamento: {e}")
-        return []
+
+    def por_classe(
+        self,
+        classe,
+    ):
+
+        ranking = self.gerar_ranking()
+
+        classe = classe.upper()
+
+        encontrados = []
+
+        for fundo in ranking:
+
+            nome_classe = (
+                fundo["classe"]
+                or ""
+            ).upper()
+
+            if classe in nome_classe:
+
+                encontrados.append(
+                    fundo
+                )
+
+        return encontrados
+
+
+# -------------------------------------------------------------
+# Estatísticas
+# -------------------------------------------------------------
+
+    def estatisticas(self):
+
+        ranking = self.gerar_ranking()
+
+        if not ranking:
+
+            return {}
+
+        scores = [
+
+            fundo["score"]
+
+            for fundo in ranking
+
+        ]
+
+        return {
+
+            "fundos": len(
+                ranking
+            ),
+
+            "score_medio": round(
+
+                sum(scores)
+
+                / len(scores),
+
+                2,
+
+            ),
+
+            "score_maximo": max(
+                scores
+            ),
+
+            "score_minimo": min(
+                scores
+            ),
+
+        }
+    
+# ---------------------------------------------------------------------
+# API pública
+# ---------------------------------------------------------------------
+
+def gerar_ranking(
+    perfil=PERFIL_MODERADO,
+):
+    """
+    Gera o ranking completo.
+    """
+
+    return RankerFundos(
+        perfil
+    ).gerar_ranking()
+
+
+def top_fundos(
+    quantidade=20,
+    perfil=PERFIL_MODERADO,
+):
+    """
+    Retorna os melhores fundos.
+    """
+
+    return RankerFundos(
+        perfil
+    ).top(
+        quantidade
+    )
+
+
+def buscar_fundo_cnpj(
+    cnpj,
+    perfil=PERFIL_MODERADO,
+):
+
+    return RankerFundos(
+        perfil
+    ).buscar_cnpj(
+        cnpj
+    )
+
+
+def buscar_fundo_nome(
+    nome,
+    perfil=PERFIL_MODERADO,
+):
+
+    return RankerFundos(
+        perfil
+    ).buscar_nome(
+        nome
+    )
+
+
+def fundos_por_classe(
+    classe,
+    perfil=PERFIL_MODERADO,
+):
+
+    return RankerFundos(
+        perfil
+    ).por_classe(
+        classe
+    )
+
+
+# ---------------------------------------------------------------------
+# Teste
+# ---------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    logging.basicConfig(
+
+        level=logging.INFO,
+
+        format="%(levelname)s - %(message)s",
+
+    )
+
+    ranking = top_fundos(
+        quantidade=10,
+        perfil=PERFIL_MODERADO,
+    )
+
+    print()
+
+    print("=" * 100)
+    print("TOP 10 FUNDOS")
+    print("=" * 100)
+
+    for posicao, fundo in enumerate(
+        ranking,
+        start=1,
+    ):
+
+        print()
+
+        print(
+            f"{posicao:02d}º"
+        )
+
+        print(
+            f"Nome : {fundo['nome']}"
+        )
+
+        print(
+            f"Classe : {fundo['classe']}"
+        )
+
+        print(
+            f"Score : {fundo['score']:.2f}"
+        )
+
+        print(
+            "Subscores:"
+        )
+
+        for chave, valor in fundo[
+            "subscores"
+        ].items():
+
+            print(
+                f"   {chave:15}: {valor:.2f}"
+            )
+
+    print()
+
+    print("=" * 100)
