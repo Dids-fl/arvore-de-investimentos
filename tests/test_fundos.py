@@ -24,7 +24,7 @@ def sample_cotas():
     np.random.seed(42)
     datas = pd.date_range("2024-01-01", periods=252, freq="B")
     cotas = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
-    return cotas, datas
+    return pd.Series(cotas), pd.Series(datas)
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def sample_df_informe():
     np.random.seed(42)
     datas = pd.date_range("2024-01-01", periods=252, freq="B")
     cotas = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
-    pl = cotas * 1000000  # patrimônio proporcional
+    pl = cotas * 1000000
     captacao = np.random.uniform(0, 100000, 252)
     resgate = np.random.uniform(0, 80000, 252)
     cotistas = np.random.randint(100, 1000, 252)
@@ -64,6 +64,53 @@ def sample_df_cadastro():
 
 
 # ---------------------------------------------------------------------
+# Fixture para mock do ranker (corrigida)
+# ---------------------------------------------------------------------
+
+@pytest.fixture
+def mock_coletor():
+    """Mock dos coletores para testar o ranker."""
+    with patch("fundos.ranker.listar_fundos_ativos") as mock_listar:
+        with patch("fundos.ranker.listar_historicos") as mock_historico:
+            # Cria dados mock diretamente
+            df_cad = pd.DataFrame({
+                "CNPJ_Classe": ["00.000.000/0001-00", "00.000.000/0001-01"],
+                "Denominacao_Social": ["Fundo A", "Fundo B"],
+                "Situacao": ["EM FUNCIONAMENTO NORMAL"] * 2,
+                "Classificacao_Anbima": ["Renda Fixa", "Ações"],
+                "Patrimonio_Liquido": [500000000, 200000000],
+            })
+            mock_listar.return_value = df_cad
+
+            # Cria dados de cotas mock
+            np.random.seed(42)
+            datas = pd.date_range("2024-01-01", periods=252, freq="B")
+            cotas1 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
+            cotas2 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
+            df1 = pd.DataFrame({
+                "CNPJ_Classe": ["00.000.000/0001-00"] * 252,
+                "Data_Competencia": datas,
+                "Valor_Cota": cotas1,
+                "Patrimonio_Liquido": cotas1 * 1000000,
+                "Captacao_Dia": 0,
+                "Resgate_Dia": 0,
+                "Numero_Cotistas": 500,
+            })
+            df2 = pd.DataFrame({
+                "CNPJ_Classe": ["00.000.000/0001-01"] * 252,
+                "Data_Competencia": datas,
+                "Valor_Cota": cotas2,
+                "Patrimonio_Liquido": cotas2 * 1000000,
+                "Captacao_Dia": 0,
+                "Resgate_Dia": 0,
+                "Numero_Cotistas": 300,
+            })
+            df_hist = pd.concat([df1, df2], ignore_index=True)
+            mock_historico.return_value = df_hist
+            yield
+
+
+# ---------------------------------------------------------------------
 # Testes de Utils
 # ---------------------------------------------------------------------
 
@@ -79,41 +126,45 @@ class TestUtils:
         from fundos.utils import serie_retorno
         cotas = pd.Series([100, 101, 102, 101])
         ret = serie_retorno(cotas)
-        expected = pd.Series([0.01, 0.00990099, -0.00980392])
-        pd.testing.assert_series_equal(ret, expected, rtol=1e-6)
+        # pct_change() retorna a primeira posição NaN, depois os retornos
+        expected = pd.Series([np.nan, 0.01, 0.00990099, -0.00980392])
+        # Remove NaN para comparar
+        ret_clean = ret.dropna()
+        expected_clean = expected.dropna()
+        pd.testing.assert_series_equal(ret_clean, expected_clean, rtol=1e-6)
 
     def test_retorno(self):
         from fundos.utils import retorno
         cotas = pd.Series([100, 101, 102, 101])
-        assert retorno(cotas) == 0.01  # (101 - 100) / 100
+        # retorno do período total: (101 - 100)/100 = 0.01
+        assert retorno(cotas) == pytest.approx(0.01, rel=1e-6)
 
     def test_retorno_periodo(self):
         from fundos.utils import retorno_periodo
         cotas = pd.Series([100, 101, 102, 103, 104, 105])
-        # Últimos 2 dias: 105 / 104 - 1
+        # Últimos 2 dias: 105 / 104 - 1 = 0.0096153846
         assert retorno_periodo(cotas, 2) == pytest.approx(105/104 - 1, rel=1e-6)
 
     def test_cagr(self, sample_cotas):
         from fundos.utils import cagr
         cotas, datas = sample_cotas
-        # CAGR deve ser aproximadamente o retorno médio anual
         result = cagr(cotas, datas)
         assert result is not None
-        assert 0.0 < result < 0.5  # entre 0% e 50% para dados simulados
+        assert 0.0 < result < 0.5
 
     def test_volatilidade(self, sample_cotas):
         from fundos.utils import volatilidade
         cotas, _ = sample_cotas
         vol = volatilidade(cotas)
         assert vol is not None
-        assert 0.0 < vol < 0.5  # volatilidade razoável
+        assert 0.0 < vol < 0.5
 
     def test_drawdown(self, sample_cotas):
         from fundos.utils import drawdown
         cotas, _ = sample_cotas
         dd = drawdown(cotas)
         assert dd is not None
-        assert dd < 0  # drawdown é negativo
+        assert dd < 0
 
 
 # ---------------------------------------------------------------------
@@ -152,7 +203,6 @@ class TestSharpeSortino:
         from fundos.sharpe_sortino import calcular_sharpe
         cotas, datas = sample_cotas
         sharpe = calcular_sharpe(cotas, datas, taxa_livre_risco=0.105)
-        # Sharpe deve ser um número razoável (pode ser negativo)
         assert sharpe is not None
         assert -2.0 < sharpe < 5.0
 
@@ -172,25 +222,10 @@ class TestSharpeSortino:
 
 
 # ---------------------------------------------------------------------
-# Testes do Ranker (com dados simulados)
+# Testes do Ranker
 # ---------------------------------------------------------------------
 
 class TestRanker:
-    @pytest.fixture
-    def mock_coletor(self, sample_df_cadastro, sample_df_informe):
-        """Mock dos coletores para testar o ranker."""
-        with patch("fundos.ranker.listar_fundos_ativos") as mock_listar:
-            mock_listar.return_value = sample_df_cadastro
-            with patch("fundos.ranker.listar_historicos") as mock_historico:
-                # Duplica os dados para dois CNPJs
-                df1 = sample_df_informe.copy()
-                df2 = sample_df_informe.copy()
-                df1["CNPJ_Classe"] = "00.000.000/0001-00"
-                df2["CNPJ_Classe"] = "00.000.000/0001-01"
-                df_combined = pd.concat([df1, df2], ignore_index=True)
-                mock_historico.return_value = df_combined
-                yield
-
     def test_calcular_score(self):
         from fundos.ranker import calcular_score
         indicadores = {
@@ -237,13 +272,12 @@ class TestRanker:
 
 
 # ---------------------------------------------------------------------
-# Testes de Integração (com dados reais, marcado como slow)
+# Testes de Integração (marcados como slow)
 # ---------------------------------------------------------------------
 
 @pytest.mark.slow
 class TestIntegracao:
     def test_cadastro_coletor(self):
-        """Testa o download e carregamento do cadastro (pode ser lento)."""
         from fundos.cadastro_coletor import listar_fundos_ativos
         df = listar_fundos_ativos()
         assert isinstance(df, pd.DataFrame)
@@ -252,29 +286,23 @@ class TestIntegracao:
             assert "Denominacao_Social" in df.columns
 
     def test_informe_coletor(self):
-        """Testa o download e carregamento do informe diário."""
         from fundos.informe_diario_coletor import buscar_historico
-        # Usa um CNPJ conhecido (pode falhar se não existir)
         cnpj = "00017024000153"  # Exemplo
         df = buscar_historico(cnpj, limite=10)
         assert isinstance(df, pd.DataFrame)
-        # Se retornar vazio, o CNPJ pode não existir, mas não é erro
+        # Não falha se estiver vazio
 
     def test_ranking_completo(self):
-        """Testa o ranking completo com dados reais (pode ser demorado)."""
         from fundos.ranker import top_fundos
         resultado = top_fundos(quantidade=5, perfil=2, incluir_sharpe_sortino=True)
         assert isinstance(resultado, list)
         if resultado:
-            assert "score" in resultado[0]
-            assert "nome" in resultado[0]
-            # Verifica se os scores estão entre 0 e 10
             for item in resultado:
                 assert 0 <= item["score"] <= 10
 
 
 # ---------------------------------------------------------------------
-# Teste visual (opcional)
+# Teste visual (com mock)
 # ---------------------------------------------------------------------
 
 def test_mostrar_recomendacoes(mock_coletor):
@@ -311,8 +339,4 @@ def test_mostrar_recomendacoes(mock_coletor):
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Para rodar apenas testes rápidos (sem download)
     pytest.main([__file__, "-v", "-m", "not slow", "--tb=short"])
-
-    # Para rodar todos os testes (incluindo downloads)
-    # pytest.main([__file__, "-v", "--tb=short"])

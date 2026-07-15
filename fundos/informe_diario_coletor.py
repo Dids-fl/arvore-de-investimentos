@@ -139,6 +139,13 @@ class InformeDiarioColetorCVM:
             .str.zfill(14)
         )
 
+        df["Data_Competencia"] = pd.to_datetime(
+            df["Data_Competencia"],
+            errors="coerce",
+        ).dt.strftime("%Y-%m-%d")
+
+        df = df.dropna(subset=["Data_Competencia"])
+
         numericas = [
             "Valor_Total",
             "Valor_Cota",
@@ -154,9 +161,12 @@ class InformeDiarioColetorCVM:
                 .clip(lower=0)
             )
 
-        # DELETE remove TODO o histórico. Isso funciona porque recarregamos
-        # o arquivo completo do mês. Se no futuro atualizarmos apenas um mês
-        # incrementalmente, esta lógica precisará ser alterada para UPSERT.
+        # Remove duplicatas
+        df = df.drop_duplicates(
+            subset=["CNPJ_Classe", "Data_Competencia"],
+            keep="last",
+        )
+
         with self.conn:
             self.conn.execute("DELETE FROM informe_diario")
             df.to_sql(
@@ -252,13 +262,13 @@ class InformeDiarioColetorCVM:
         )
 
     # -------------------------------------------------------------
-    # OTIMIZAÇÃO EM LOTE PARA RANKING
+    # OTIMIZAÇÃO EM LOTE PARA RANKING (COM CHUNKING)
     # -------------------------------------------------------------
 
     def listar_historicos(self, lista_cnpjs, limite=252):
         """
         Retorna histórico dos últimos 'limite' registros para MÚLTIPLOS fundos
-        em uma ÚNICA consulta SQL.
+        em uma ÚNICA consulta SQL, dividindo em chunks para evitar limite de 999 variáveis.
 
         NOTA: Esta query usa ROW_NUMBER() (window function),
         disponível apenas em SQLite >= 3.25.
@@ -277,25 +287,39 @@ class InformeDiarioColetorCVM:
             )
             cnpjs_padronizados.append(cnpj)
 
-        placeholders = ",".join(["?" for _ in cnpjs_padronizados])
-        query = f"""
-            SELECT *
-            FROM (
-                SELECT *,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY CNPJ_Classe
-                        ORDER BY Data_Competencia DESC
-                    ) AS rn
-                FROM informe_diario
-                WHERE CNPJ_Classe IN ({placeholders})
-            ) sub
-            WHERE rn <= ?
-            ORDER BY CNPJ_Classe, Data_Competencia
-        """
-        params = cnpjs_padronizados + [limite]
+        # SQLite tem limite de ~999 variáveis por consulta
+        chunk_size = 500
+        dfs = []
 
-        df = pd.read_sql_query(query, self.conn, params=params)
-        return df
+        for i in range(0, len(cnpjs_padronizados), chunk_size):
+            chunk = cnpjs_padronizados[i:i+chunk_size]
+            placeholders = ",".join(["?" for _ in chunk])
+            query = f"""
+                SELECT *
+                FROM (
+                    SELECT *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY CNPJ_Classe
+                            ORDER BY Data_Competencia DESC
+                        ) AS rn
+                    FROM informe_diario
+                    WHERE CNPJ_Classe IN ({placeholders})
+                ) sub
+                WHERE rn <= ?
+                ORDER BY CNPJ_Classe, Data_Competencia
+            """
+            params = chunk + [limite]
+            try:
+                df_chunk = pd.read_sql_query(query, self.conn, params=params)
+                if not df_chunk.empty:
+                    dfs.append(df_chunk)
+            except Exception as e:
+                logger.warning(f"Erro no chunk: {e}")
+
+        if not dfs:
+            return pd.DataFrame()
+
+        return pd.concat(dfs, ignore_index=True)
 
     # -------------------------------------------------------------
     # MÉTODOS LEGADO (mantidos para compatibilidade)

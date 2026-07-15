@@ -5,8 +5,27 @@ Funções utilitárias compartilhadas entre os módulos de fundos.
 
 import math
 import pandas as pd
+import numpy as np
 
 DIAS_ANO = 252
+
+
+def _para_series(dados):
+    """Converte para pd.Series se for array-like."""
+    if isinstance(dados, (np.ndarray, list)):
+        return pd.Series(dados)
+    return dados
+
+
+def _para_datetime_index(datas):
+    """Garante que datas seja um Index ou Series, e converte para datetime se necessário."""
+    if isinstance(datas, pd.DatetimeIndex):
+        return datas
+    if isinstance(datas, pd.Series):
+        return pd.to_datetime(datas)
+    if isinstance(datas, (np.ndarray, list)):
+        return pd.to_datetime(datas)
+    return datas
 
 
 def to_float(valor):
@@ -21,10 +40,12 @@ def to_float(valor):
 
 
 def serie_retorno(cotas):
+    cotas = _para_series(cotas)
     return cotas.pct_change().dropna()
 
 
 def retorno(cotas):
+    cotas = _para_series(cotas)
     if len(cotas) < 2:
         return 0.0
     inicial = to_float(cotas.iloc[0])
@@ -35,6 +56,7 @@ def retorno(cotas):
 
 
 def retorno_periodo(cotas, dias):
+    cotas = _para_series(cotas)
     if len(cotas) < dias + 1:
         return None
     serie = cotas.iloc[-(dias + 1):]
@@ -42,11 +64,21 @@ def retorno_periodo(cotas, dias):
 
 
 def cagr(cotas, datas):
+    cotas = _para_series(cotas)
+    datas = _para_datetime_index(datas)
     if len(cotas) < 2 or len(datas) < 2:
         return None
-    if not isinstance(datas.iloc[0], pd.Timestamp):
-        datas = pd.to_datetime(datas)
-    dias_totais = (datas.iloc[-1] - datas.iloc[0]).days
+    # datas pode ser um Index ou Series
+    if isinstance(datas, pd.DatetimeIndex):
+        data_inicio = datas[0]
+        data_fim = datas[-1]
+    else:
+        data_inicio = datas.iloc[0]
+        data_fim = datas.iloc[-1]
+    if not isinstance(data_inicio, pd.Timestamp):
+        data_inicio = pd.to_datetime(data_inicio)
+        data_fim = pd.to_datetime(data_fim)
+    dias_totais = (data_fim - data_inicio).days
     if dias_totais <= 0:
         return None
     anos = dias_totais / 365.25
@@ -60,6 +92,7 @@ def cagr(cotas, datas):
 
 
 def volatilidade(cotas):
+    cotas = _para_series(cotas)
     retornos = serie_retorno(cotas)
     if retornos.empty:
         return None
@@ -67,6 +100,7 @@ def volatilidade(cotas):
 
 
 def drawdown(cotas):
+    cotas = _para_series(cotas)
     if len(cotas) < 2:
         return None
     maximos = cotas.cummax()
@@ -76,6 +110,7 @@ def drawdown(cotas):
 
 def downside_volatilidade(cotas):
     """Calcula o downside deviation (volatilidade negativa)."""
+    cotas = _para_series(cotas)
     retornos = serie_retorno(cotas)
     if retornos.empty:
         return None

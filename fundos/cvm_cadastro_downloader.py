@@ -1,4 +1,4 @@
-# fundos/cvm_downloader.py
+# fundos/cvm_cadastro_downloader.py
 
 from pathlib import Path
 from datetime import datetime, timezone
@@ -28,7 +28,6 @@ ZIP_PATH = DATA_DIR / "registro_fundo_classe.zip"
 
 TIMEOUT = 120
 
-# Reutiliza conexão HTTP
 SESSION = requests.Session()
 atexit.register(SESSION.close)
 
@@ -42,67 +41,38 @@ def _garantir_pasta():
 
 
 def _arquivo_csv_existe():
-
-    return any(
-        csv.stat().st_size > 0
-        for csv in DATA_DIR.glob("*.csv")
-    )
+    return any(csv.stat().st_size > 0 for csv in DATA_DIR.glob("*.csv"))
 
 
 def _arquivo_zip_existe():
-
     return ZIP_PATH.exists() and ZIP_PATH.stat().st_size > 0
 
 
 def _ultima_modificacao_servidor():
-    """
-    Retorna datetime UTC do arquivo da CVM.
-
-    Caso não seja possível verificar, retorna None.
-    """
-
     try:
-
         response = SESSION.head(
             URL_CADASTRO,
             timeout=15,
             allow_redirects=True,
         )
-
         response.raise_for_status()
 
-        last_modified = response.headers.get(
-            "Last-Modified"
-        )
-
+        last_modified = response.headers.get("Last-Modified")
         if not last_modified:
             return None
 
-        dt = parsedate_to_datetime(
-            last_modified
-        )
-
+        dt = parsedate_to_datetime(last_modified)
         if dt.tzinfo is None:
-            dt = dt.replace(
-                tzinfo=timezone.utc
-            )
+            dt = dt.replace(tzinfo=timezone.utc)
 
-        return dt.astimezone(
-            timezone.utc
-        )
+        return dt.astimezone(timezone.utc)
 
     except Exception as e:
-
-        logger.warning(
-            f"Não foi possível verificar "
-            f"atualização da CVM: {e}"
-        )
-
+        logger.warning(f"Não foi possível verificar atualização da CVM: {e}")
         return None
 
 
 def _precisa_atualizar():
-
     if not _arquivo_zip_existe():
         return True
 
@@ -111,18 +81,12 @@ def _precisa_atualizar():
 
     servidor = _ultima_modificacao_servidor()
 
-
     if servidor is None:
         logger.info("Não foi possível verificar se há uma versão mais recente.")
         return False
 
-    local = datetime.fromtimestamp(
-        ZIP_PATH.stat().st_mtime,
-        tz=timezone.utc,
-    )
-
+    local = datetime.fromtimestamp(ZIP_PATH.stat().st_mtime, tz=timezone.utc)
     atualizar = servidor.timestamp() > (local.timestamp() + 1)
-
     return atualizar
 
 
@@ -131,66 +95,30 @@ def _precisa_atualizar():
 # ---------------------------------------------------------------------
 
 def _baixar_zip():
-
     _garantir_pasta()
-    
-    logger.info(
-        "Baixando cadastro da CVM..."
-    )
+    logger.info("Baixando cadastro da CVM...")
 
     tmp_path = None
 
     try:
-
-        with NamedTemporaryFile(
-            delete=False,
-            suffix=".tmp",
-            dir=DATA_DIR,
-        ) as tmp:
-
+        with NamedTemporaryFile(delete=False, suffix=".tmp", dir=DATA_DIR) as tmp:
             tmp_path = Path(tmp.name)
 
-            with SESSION.get(
-                URL_CADASTRO,
-                stream=True,
-                timeout=TIMEOUT,
-            ) as response:
-
+            with SESSION.get(URL_CADASTRO, stream=True, timeout=TIMEOUT) as response:
                 response.raise_for_status()
-
-                for chunk in response.iter_content(
-                    1024 * 1024
-                ):
-
+                for chunk in response.iter_content(1024 * 1024):
                     if chunk:
                         tmp.write(chunk)
 
         if not zipfile.is_zipfile(tmp_path):
+            raise RuntimeError("O arquivo baixado não é um ZIP válido.")
 
-            raise RuntimeError(
-                "O arquivo baixado não "
-                "é um ZIP válido."
-            )
-
-        shutil.move(
-            tmp_path,
-            ZIP_PATH,
-        )
-
-        logger.info(
-            "Download concluído."
-        )
+        shutil.move(tmp_path, ZIP_PATH)
+        logger.info("Download concluído.")
 
     finally:
-
-        if (
-            tmp_path is not None
-            and tmp_path.exists()
-        ):
-
-            tmp_path.unlink(
-                missing_ok=True
-            )
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------
@@ -198,28 +126,15 @@ def _baixar_zip():
 # ---------------------------------------------------------------------
 
 def _extrair_zip():
+    logger.info("Extraindo arquivos...")
 
-    logger.info(
-        "Extraindo arquivos..."
-    )
-
-    # Remove CSVs antigos
     for csv in DATA_DIR.glob("*.csv"):
+        csv.unlink(missing_ok=True)
 
-        csv.unlink(
-            missing_ok=True
-        )
-
-    with zipfile.ZipFile(
-        ZIP_PATH,
-        "r",
-    ) as z:
-
+    with zipfile.ZipFile(ZIP_PATH, "r") as z:
         z.extractall(DATA_DIR)
 
-    logger.info(
-        "Extração concluída."
-    )
+    logger.info("Extração concluída.")
 
 
 # ---------------------------------------------------------------------
@@ -227,48 +142,22 @@ def _extrair_zip():
 # ---------------------------------------------------------------------
 
 def _localizar_csv():
-
-    csvs = sorted(
-        DATA_DIR.glob("*.csv")
-    )
+    csvs = sorted(DATA_DIR.glob("*.csv"))
 
     if not csvs:
+        raise FileNotFoundError("Nenhum CSV encontrado.")
 
-        raise FileNotFoundError(
-            "Nenhum CSV encontrado."
-        )
-
-    # Procura o cadastro correto
     for csv in csvs:
-
         try:
-
-            with open(
-                csv,
-                encoding="latin1",
-            ) as f:
-
+            with open(csv, encoding="latin1") as f:
                 header = f.readline()
 
-            if (
-                "CNPJ_Classe" in header
-                and
-                "Denominacao_Social"
-                in header
-            ):
-
+            if "CNPJ_Classe" in header and "Denominacao_Social" in header:
                 return str(csv)
-
         except Exception:
-
             pass
 
-    logger.warning(
-        "Não foi possível identificar "
-        "o CSV principal. "
-        "Utilizando o primeiro."
-    )
-
+    logger.warning("Não foi possível identificar o CSV principal. Utilizando o primeiro.")
     return str(csvs[0])
 
 
@@ -277,19 +166,13 @@ def _localizar_csv():
 # ---------------------------------------------------------------------
 
 def download_cadastro(force=False):
-
     _garantir_pasta()
 
     if force or _precisa_atualizar():
-
         logger.info("Atualizando cadastro...")
-
         _baixar_zip()
-
         _extrair_zip()
-
     else:
-
         logger.info("Cadastro já está atualizado.")
 
     return _localizar_csv()
@@ -300,19 +183,9 @@ def download_cadastro(force=False):
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-
-    logging.basicConfig(
-
-        level=logging.INFO,
-
-        format="%(levelname)s - %(message)s",
-
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
     caminho = download_cadastro()
-
     print()
-
     print("Cadastro disponível em:")
-
     print(caminho)

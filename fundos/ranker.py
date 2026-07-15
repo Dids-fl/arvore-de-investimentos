@@ -342,6 +342,9 @@ def top_fundos(quantidade=20, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=Tru
 
 
 def rankear_fundos(perfil=PERFIL_MODERADO, limite=10, incluir_sharpe_sortino=True):
+    """
+    Função principal para o recomendador.
+    """
     ranking = RankerFundos(perfil, incluir_sharpe_sortino).gerar_ranking()
     return ranking[:limite]
 
@@ -368,7 +371,7 @@ if __name__ == "__main__":
     ranking = top_fundos(quantidade=10, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True)
 
     print("\n" + "=" * 100)
-    print("TOP 10 FUNDOS (COM CACHE - UMA ÚNICA CONSULTA)")
+    print("TOP 10 FUNDOS (OTIMIZADO - UMA ÚNICA CONSULTA)")
     print("=" * 100)
 
     for pos, fundo in enumerate(ranking, start=1):

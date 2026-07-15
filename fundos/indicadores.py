@@ -253,7 +253,10 @@ def serie_cotistas(cnpj):
     """
     return IndicadoresFundos(cnpj).serie_cotistas()
 
-# fundos/indicadores.py (complemento)
+
+# ---------------------------------------------------------------------
+# Calcular indicadores a partir de DataFrame (para lote)
+# ---------------------------------------------------------------------
 
 def calcular_indicadores_df(df, cadastro=None):
     """
@@ -307,6 +310,8 @@ def calcular_indicadores_df(df, cadastro=None):
         indicadores["tipo"] = cadastro.get("Tipo_Classe")
 
     return indicadores
+
+
 # ---------------------------------------------------------------------
 # Teste rápido
 # ---------------------------------------------------------------------

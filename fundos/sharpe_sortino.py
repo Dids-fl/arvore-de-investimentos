@@ -10,10 +10,15 @@ from .utils import cagr, volatilidade, downside_volatilidade
 def _obter_cdi_para_periodo(datas):
     if len(datas) < 2:
         return None
-    if not isinstance(datas.iloc[0], pd.Timestamp):
-        datas = pd.to_datetime(datas)
-    data_inicio = datas.iloc[0].strftime("%Y-%m-%d")
-    data_fim = datas.iloc[-1].strftime("%Y-%m-%d")
+    # datas pode ser pd.DatetimeIndex ou pd.Series
+    if isinstance(datas, pd.DatetimeIndex):
+        data_inicio = datas[0].strftime("%Y-%m-%d")
+        data_fim = datas[-1].strftime("%Y-%m-%d")
+    else:
+        if not isinstance(datas.iloc[0], pd.Timestamp):
+            datas = pd.to_datetime(datas)
+        data_inicio = datas.iloc[0].strftime("%Y-%m-%d")
+        data_fim = datas.iloc[-1].strftime("%Y-%m-%d")
     return obter_cdi_periodo(data_inicio, data_fim)
 
 
