@@ -46,7 +46,8 @@ class InformeDiarioColetorCVM:
         self._criar_tabelas()
 
         if atualizar:
-            self.atualizar_informe()
+            # Carrega os últimos 3 meses por padrão
+            self.carregar_ultimos_meses(3)
 
     # -------------------------------------------------------------
 
@@ -81,28 +82,15 @@ class InformeDiarioColetorCVM:
 
     # -------------------------------------------------------------
 
-    def atualizar_informe(
-        self,
-        ano=None,
-        mes=None,
-        force=False,
-    ):
-        csv_path = download_informe_diario(
-            ano=ano,
-            mes=mes,
-            force=force,
-        )
+    def _processar_chunk(self, chunk):
+        """
+        Processa um chunk do CSV: renomeia colunas, normaliza, e insere no banco.
+        """
+        if chunk.empty:
+            return
 
-        logger.info("Carregando Informe Diário...")
-        df = pd.read_csv(
-            csv_path,
-            sep=";",
-            encoding="latin1",
-            low_memory=False,
-        )
-
-        # Padroniza nomes
-        df = df.rename(
+        # Renomeia colunas
+        chunk = chunk.rename(
             columns={
                 "CNPJ_FUNDO_CLASSE": "CNPJ_Classe",
                 "DT_COMPTC": "Data_Competencia",
@@ -116,6 +104,7 @@ class InformeDiarioColetorCVM:
             }
         )
 
+        # Seleciona apenas as colunas necessárias
         colunas = [
             "CNPJ_Classe",
             "Data_Competencia",
@@ -127,11 +116,14 @@ class InformeDiarioColetorCVM:
             "Resgate_Dia",
             "Numero_Cotistas",
         ]
-        df = df[colunas]
-        df = df.dropna(subset=["CNPJ_Classe", "Data_Competencia"])
+        chunk = chunk[colunas]
 
-        df["CNPJ_Classe"] = (
-            df["CNPJ_Classe"]
+        # Remove linhas com CNPJ ou data inválidos
+        chunk = chunk.dropna(subset=["CNPJ_Classe", "Data_Competencia"])
+
+        # Normaliza CNPJ
+        chunk["CNPJ_Classe"] = (
+            chunk["CNPJ_Classe"]
             .astype(str)
             .str.replace("/", "", regex=False)
             .str.replace(".", "", regex=False)
@@ -139,13 +131,14 @@ class InformeDiarioColetorCVM:
             .str.zfill(14)
         )
 
-        df["Data_Competencia"] = pd.to_datetime(
-            df["Data_Competencia"],
+        # Normaliza data
+        chunk["Data_Competencia"] = pd.to_datetime(
+            chunk["Data_Competencia"],
             errors="coerce",
         ).dt.strftime("%Y-%m-%d")
+        chunk = chunk.dropna(subset=["Data_Competencia"])
 
-        df = df.dropna(subset=["Data_Competencia"])
-
+        # Converte colunas numéricas
         numericas = [
             "Valor_Total",
             "Valor_Cota",
@@ -154,29 +147,86 @@ class InformeDiarioColetorCVM:
             "Resgate_Dia",
             "Numero_Cotistas",
         ]
-        for coluna in numericas:
-            df[coluna] = (
-                pd.to_numeric(df[coluna], errors="coerce")
+        for col in numericas:
+            chunk[col] = (
+                pd.to_numeric(chunk[col], errors="coerce")
                 .fillna(0)
                 .clip(lower=0)
             )
 
-        # Remove duplicatas
-        df = df.drop_duplicates(
+        # Remove duplicatas dentro do chunk
+        chunk = chunk.drop_duplicates(
             subset=["CNPJ_Classe", "Data_Competencia"],
             keep="last",
         )
 
-        with self.conn:
-            self.conn.execute("DELETE FROM informe_diario")
-            df.to_sql(
-                "informe_diario",
-                self.conn,
-                if_exists="append",
-                index=False,
-            )
+        # Insere no banco (ignora duplicatas)
+        chunk.to_sql(
+            "informe_diario",
+            self.conn,
+            if_exists="append",
+            index=False,
+        )
 
-        logger.info("%d registros carregados.", len(df))
+    # -------------------------------------------------------------
+
+    def atualizar_informe(
+        self,
+        ano=None,
+        mes=None,
+        force=False,
+    ):
+        """
+        Baixa e carrega um mês específico do Informe Diário.
+        Não deleta dados existentes — insere apenas os novos.
+        """
+        csv_path = download_informe_diario(
+            ano=ano,
+            mes=mes,
+            force=force,
+        )
+
+        logger.info(f"Carregando Informe Diário {ano}-{mes:02d}...")
+
+        # Lê o CSV em chunks para evitar estouro de memória
+        chunk_size = 50000
+        total_registros = 0
+
+        for chunk in pd.read_csv(
+            csv_path,
+            sep=";",
+            encoding="latin1",
+            low_memory=False,
+            chunksize=chunk_size,
+        ):
+            self._processar_chunk(chunk)
+            total_registros += len(chunk)
+            logger.debug(f"  Processado chunk com {len(chunk)} registros")
+
+        logger.info(f"  {total_registros} registros inseridos para {ano}-{mes:02d}.")
+
+    # -------------------------------------------------------------
+
+    def carregar_ultimos_meses(self, quantidade=3):
+        """
+        Carrega os últimos 'quantidade' meses de Informe Diário.
+        """
+        from datetime import datetime, timedelta
+
+        hoje = datetime.now()
+        meses_carregados = 0
+
+        for i in range(quantidade):
+            data = hoje - timedelta(days=i * 30)
+            ano, mes = data.year, data.month
+
+            try:
+                self.atualizar_informe(ano=ano, mes=mes, force=False)
+                meses_carregados += 1
+            except Exception as e:
+                logger.warning(f"Erro ao carregar {ano}-{mes:02d}: {e}")
+
+        logger.info(f"Carregados {meses_carregados} meses de Informe Diário.")
 
     # -------------------------------------------------------------
     # MÉTODOS DE CONSULTA
@@ -213,7 +263,6 @@ class InformeDiarioColetorCVM:
     def buscar_historico(self, cnpj, limite=252):
         """
         Retorna os últimos 'limite' registros do fundo.
-        Isso é aproximadamente equivalente a 'limite' dias úteis.
         """
         cnpj = (
             str(cnpj)
@@ -269,9 +318,6 @@ class InformeDiarioColetorCVM:
         """
         Retorna histórico dos últimos 'limite' registros para MÚLTIPLOS fundos
         em uma ÚNICA consulta SQL, dividindo em chunks para evitar limite de 999 variáveis.
-
-        NOTA: Esta query usa ROW_NUMBER() (window function),
-        disponível apenas em SQLite >= 3.25.
         """
         if not lista_cnpjs:
             return pd.DataFrame()
@@ -336,6 +382,17 @@ class InformeDiarioColetorCVM:
             "SELECT COUNT(*) FROM informe_diario"
         ).fetchone()[0]
 
+    def listar_cnpjs_distintos(self):
+        """
+        Retorna apenas os CNPJs distintos presentes no informe.
+        Muito mais eficiente que listar_informe() que carrega todos os registros.
+        """
+        df = pd.read_sql_query(
+            "SELECT DISTINCT CNPJ_Classe FROM informe_diario",
+            self.conn,
+        )
+        return df
+
     def fechar(self):
         if self.conn:
             self.conn.close()
@@ -394,12 +451,30 @@ def total_registros():
     return get_informe_coletor().total_registros()
 
 
+def listar_cnpjs_distintos():
+    """Retorna DataFrame com CNPJs distintos no informe (leve e rápido)."""
+    return get_informe_coletor().listar_cnpjs_distintos()
+
+
+def carregar_ultimos_meses(quantidade=3):
+    """Carrega os últimos N meses de Informe Diário."""
+    return get_informe_coletor().carregar_ultimos_meses(quantidade)
+
+
+# ---------------------------------------------------------------------
+# Teste rápido
+# ---------------------------------------------------------------------
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(levelname)s - %(message)s",
     )
 
+    # Carrega os últimos 3 meses
+    carregar_ultimos_meses(3)
+
+    # Testa um CNPJ
     cnpj = "00017024000153"
 
     try:

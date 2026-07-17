@@ -3,6 +3,7 @@
 from pathlib import Path
 import logging
 import sqlite3
+import threading
 
 import pandas as pd
 
@@ -168,23 +169,22 @@ class ColetorFundosCVM:
 
     # -------------------------------------------------------------
 
-    def listar_fundos(self):
-        query = """
-        SELECT *
-        FROM cad_fi
-        """
-
+    def listar_fundos(self, limit=None):
+        query = "SELECT * FROM cad_fi"
+        if limit is not None:
+            query += f" LIMIT {limit}"
         return pd.read_sql_query(query, self.conn)
 
     # -------------------------------------------------------------
 
-    def listar_fundos_ativos(self):
+    def listar_fundos_ativos(self, limit=None):
         query = """
         SELECT *
         FROM cad_fi
         WHERE upper(Situacao) = 'EM FUNCIONAMENTO NORMAL'
         """
-
+        if limit is not None:
+            query += f" LIMIT {limit}"
         return pd.read_sql_query(query, self.conn)
 
     # -------------------------------------------------------------
@@ -266,12 +266,15 @@ class ColetorFundosCVM:
 # ---------------------------------------------------------------------
 
 _instance = None
+_lock = threading.Lock()
 
 
 def get_coletor():
     global _instance
     if _instance is None:
-        _instance = ColetorFundosCVM()
+        with _lock:
+            if _instance is None:  # double-checked locking
+                _instance = ColetorFundosCVM()
     return _instance
 
 
@@ -279,12 +282,12 @@ def get_coletor():
 # API pública
 # ---------------------------------------------------------------------
 
-def listar_fundos():
-    return get_coletor().listar_fundos()
+def listar_fundos(limit=None):
+    return get_coletor().listar_fundos(limit)
 
 
-def listar_fundos_ativos():
-    return get_coletor().listar_fundos_ativos()
+def listar_fundos_ativos(limit=None):
+    return get_coletor().listar_fundos_ativos(limit)
 
 
 def buscar_por_nome(nome):
