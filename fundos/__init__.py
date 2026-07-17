@@ -24,6 +24,7 @@ from .informe_diario_coletor import (
     listar_cnpjs_distintos,
     total_registros,
     carregar_ultimos_meses,
+    carregar_historico,
 )
 
 # Deixamos esses imports comentados até criar os arquivos
@@ -53,6 +54,7 @@ __all__ = [
     "listar_cnpjs_distintos",
     "total_registros",
     "carregar_ultimos_meses",
+    "carregar_historico",
     # "calcular_indicadores",
     # "calcular_indicadores_df",
     # "serie_cotas",

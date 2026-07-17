@@ -24,6 +24,71 @@ DB_PATH = (
     / "informe_diario_cache.db"
 )
 
+# Tempo (ms) que uma conexão espera por um lock antes de desistir.
+# Ajuda em pastas sincronizadas (OneDrive/Dropbox) e quando leitura e escrita
+# acontecem em processos/conexões diferentes ao mesmo tempo.
+BUSY_TIMEOUT_MS = 30_000
+
+# Colunas (e ordem) usadas para inserir/atualizar registros na tabela.
+COLUNAS_INFORME = [
+    "CNPJ_Classe",
+    "Data_Competencia",
+    "Tipo_Classe",
+    "Valor_Total",
+    "Valor_Cota",
+    "Patrimonio_Liquido",
+    "Captacao_Dia",
+    "Resgate_Dia",
+    "Numero_Cotistas",
+]
+
+# Layout ATUAL do Informe Diário (pós Resolução CVM 175 - fundo/classe),
+# em vigor desde o fim de 2023 / início de 2024.
+MAPA_COLUNAS_NOVO = {
+    "CNPJ_FUNDO_CLASSE": "CNPJ_Classe",
+    "DT_COMPTC": "Data_Competencia",
+    "TP_FUNDO_CLASSE": "Tipo_Classe",
+    "VL_TOTAL": "Valor_Total",
+    "VL_QUOTA": "Valor_Cota",
+    "VL_PATRIM_LIQ": "Patrimonio_Liquido",
+    "CAPTC_DIA": "Captacao_Dia",
+    "RESG_DIA": "Resgate_Dia",
+    "NR_COTST": "Numero_Cotistas",
+}
+
+# Layout ANTIGO (pré Resolução CVM 175), usado nos arquivos mensais mais
+# antigos: os fundos ainda não eram reportados por "classe de cotas".
+MAPA_COLUNAS_ANTIGO = {
+    "CNPJ_FUNDO": "CNPJ_Classe",
+    "DT_COMPTC": "Data_Competencia",
+    "TP_FUNDO": "Tipo_Classe",
+    "VL_TOTAL": "Valor_Total",
+    "VL_QUOTA": "Valor_Cota",
+    "VL_PATRIM_LIQ": "Patrimonio_Liquido",
+    "CAPTC_DIA": "Captacao_Dia",
+    "RESG_DIA": "Resgate_Dia",
+    "NR_COTST": "Numero_Cotistas",
+}
+
+LAYOUTS_CONHECIDOS = [MAPA_COLUNAS_NOVO, MAPA_COLUNAS_ANTIGO]
+
+
+class LayoutColunasDesconhecido(Exception):
+    """Levantada quando o CSV da CVM não bate com nenhum layout de colunas conhecido."""
+
+
+def _mapear_colunas(colunas_disponiveis):
+    """
+    Identifica qual layout de colunas o CSV está usando (novo ou antigo) e
+    retorna o dicionário de renomeação correspondente, ou None se nenhum
+    layout conhecido bater.
+    """
+    colunas_disponiveis = set(colunas_disponiveis)
+    for mapa in LAYOUTS_CONHECIDOS:
+        if set(mapa.keys()).issubset(colunas_disponiveis):
+            return mapa
+    return None
+
 
 # ---------------------------------------------------------------------
 # Classe principal
@@ -38,16 +103,19 @@ class InformeDiarioColetorCVM:
         self.db_path = Path(db_path or DB_PATH)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, timeout=BUSY_TIMEOUT_MS / 1000)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
         self._criar_tabelas()
 
         if atualizar:
-            # Carrega os últimos 3 meses por padrão
-            self.carregar_ultimos_meses(3)
+            # Garante 3 anos de histórico no banco. Meses antigos que já
+            # estão completos são pulados; apenas os mais recentes (que a
+            # CVM ainda pode atualizar/retificar) são sempre reprocessados.
+            self.carregar_historico(anos=3)
 
     # -------------------------------------------------------------
 
@@ -84,39 +152,35 @@ class InformeDiarioColetorCVM:
 
     def _processar_chunk(self, chunk):
         """
-        Processa um chunk do CSV: renomeia colunas, normaliza, e insere no banco.
+        Processa um chunk do CSV: renomeia colunas, normaliza, e faz
+        upsert (INSERT OR REPLACE) no banco.
+
+        Usamos INSERT OR REPLACE (em vez de chunk.to_sql com if_exists="append")
+        porque a chave primária é (CNPJ_Classe, Data_Competencia). Como o
+        coletor recarrega os últimos meses toda vez que é inicializado, um
+        INSERT puro falharia com "UNIQUE constraint failed" assim que
+        encontrasse um registro já existente — e a exceção derrubava o
+        carregamento do mês inteiro, inclusive descartando dias novos
+        publicados pela CVM. Com upsert, registros existentes são
+        atualizados e novos registros são inseridos normalmente.
         """
         if chunk.empty:
-            return
+            return 0
 
-        # Renomeia colunas
-        chunk = chunk.rename(
-            columns={
-                "CNPJ_FUNDO_CLASSE": "CNPJ_Classe",
-                "DT_COMPTC": "Data_Competencia",
-                "TP_FUNDO_CLASSE": "Tipo_Classe",
-                "VL_TOTAL": "Valor_Total",
-                "VL_QUOTA": "Valor_Cota",
-                "VL_PATRIM_LIQ": "Patrimonio_Liquido",
-                "CAPTC_DIA": "Captacao_Dia",
-                "RESG_DIA": "Resgate_Dia",
-                "NR_COTST": "Numero_Cotistas",
-            }
-        )
+        # Identifica o layout de colunas (novo, pós Resolução 175, ou antigo)
+        # e renomeia de acordo. Levanta LayoutColunasDesconhecido se nenhum
+        # dos dois bater — isso é tratado em atualizar_informe para abortar
+        # o mês de forma limpa, sem repetir o erro em todos os chunks.
+        mapa = _mapear_colunas(chunk.columns)
+        if mapa is None:
+            raise LayoutColunasDesconhecido(
+                f"Nenhum layout conhecido bateu. Colunas do CSV: {list(chunk.columns)}"
+            )
+
+        chunk = chunk.rename(columns=mapa)
 
         # Seleciona apenas as colunas necessárias
-        colunas = [
-            "CNPJ_Classe",
-            "Data_Competencia",
-            "Tipo_Classe",
-            "Valor_Total",
-            "Valor_Cota",
-            "Patrimonio_Liquido",
-            "Captacao_Dia",
-            "Resgate_Dia",
-            "Numero_Cotistas",
-        ]
-        chunk = chunk[colunas]
+        chunk = chunk[COLUNAS_INFORME]
 
         # Remove linhas com CNPJ ou data inválidos
         chunk = chunk.dropna(subset=["CNPJ_Classe", "Data_Competencia"])
@@ -154,19 +218,27 @@ class InformeDiarioColetorCVM:
                 .clip(lower=0)
             )
 
-        # Remove duplicatas dentro do chunk
+        # Remove duplicatas dentro do próprio chunk
         chunk = chunk.drop_duplicates(
             subset=["CNPJ_Classe", "Data_Competencia"],
             keep="last",
         )
 
-        # Insere no banco (ignora duplicatas)
-        chunk.to_sql(
-            "informe_diario",
-            self.conn,
-            if_exists="append",
-            index=False,
-        )
+        if chunk.empty:
+            return 0
+
+        # Upsert manual via INSERT OR REPLACE
+        placeholders = ", ".join(["?"] * len(COLUNAS_INFORME))
+        colunas_sql = ", ".join(COLUNAS_INFORME)
+        sql = f"INSERT OR REPLACE INTO informe_diario ({colunas_sql}) VALUES ({placeholders})"
+
+        registros = list(chunk[COLUNAS_INFORME].itertuples(index=False, name=None))
+
+        cursor = self.conn.cursor()
+        cursor.executemany(sql, registros)
+        self.conn.commit()
+
+        return len(registros)
 
     # -------------------------------------------------------------
 
@@ -177,8 +249,9 @@ class InformeDiarioColetorCVM:
         force=False,
     ):
         """
-        Baixa e carrega um mês específico do Informe Diário.
-        Não deleta dados existentes — insere apenas os novos.
+        Baixa e carrega (upsert) um mês específico do Informe Diário.
+        Seguro para rodar múltiplas vezes: registros existentes são
+        atualizados, não duplicados nem rejeitados.
         """
         csv_path = download_informe_diario(
             ano=ano,
@@ -188,9 +261,9 @@ class InformeDiarioColetorCVM:
 
         logger.info(f"Carregando Informe Diário {ano}-{mes:02d}...")
 
-        # Lê o CSV em chunks para evitar estouro de memória
         chunk_size = 50000
         total_registros = 0
+        chunks_com_erro = 0
 
         for chunk in pd.read_csv(
             csv_path,
@@ -199,34 +272,127 @@ class InformeDiarioColetorCVM:
             low_memory=False,
             chunksize=chunk_size,
         ):
-            self._processar_chunk(chunk)
-            total_registros += len(chunk)
-            logger.debug(f"  Processado chunk com {len(chunk)} registros")
+            try:
+                total_registros += self._processar_chunk(chunk)
+            except Exception:
+                chunks_com_erro += 1
+                logger.exception(
+                    f"Erro ao processar um chunk de {ano}-{mes:02d} "
+                    f"(chunk ignorado, seguindo para o próximo)"
+                )
 
-        logger.info(f"  {total_registros} registros inseridos para {ano}-{mes:02d}.")
+        if chunks_com_erro:
+            logger.warning(
+                f"  {chunks_com_erro} chunk(s) com erro em {ano}-{mes:02d} "
+                f"(ver traceback acima)."
+            )
+
+        logger.info(f"  {total_registros} registros gravados para {ano}-{mes:02d}.")
 
     # -------------------------------------------------------------
 
     def carregar_ultimos_meses(self, quantidade=3):
         """
-        Carrega os últimos 'quantidade' meses de Informe Diário.
+        Carrega (upsert) os últimos 'quantidade' meses de Informe Diário,
+        SEMPRE reprocessando cada um (útil para forçar atualização de um
+        período curto). Para carregar um histórico longo (anos) de forma
+        eficiente, prefira `carregar_historico`.
         """
-        from datetime import datetime, timedelta
-
-        hoje = datetime.now()
+        meses = self._gerar_lista_meses(quantidade)
         meses_carregados = 0
 
-        for i in range(quantidade):
-            data = hoje - timedelta(days=i * 30)
-            ano, mes = data.year, data.month
-
+        for ano, mes in meses:
             try:
                 self.atualizar_informe(ano=ano, mes=mes, force=False)
                 meses_carregados += 1
-            except Exception as e:
-                logger.warning(f"Erro ao carregar {ano}-{mes:02d}: {e}")
+            except Exception:
+                logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
         logger.info(f"Carregados {meses_carregados} meses de Informe Diário.")
+
+    # -------------------------------------------------------------
+
+    def _gerar_lista_meses(self, quantidade):
+        """Retorna os últimos 'quantidade' meses (ano, mes), do mais recente ao mais antigo."""
+        from datetime import datetime
+
+        hoje = datetime.now()
+        ano, mes = hoje.year, hoje.month
+
+        meses = []
+        for _ in range(quantidade):
+            meses.append((ano, mes))
+            mes -= 1
+            if mes == 0:
+                mes = 12
+                ano -= 1
+
+        return meses
+
+    # -------------------------------------------------------------
+
+    def mes_ja_carregado(self, ano, mes):
+        """Verifica se já existe ao menos um registro para o mês informado no banco."""
+        data_inicio = f"{ano:04d}-{mes:02d}-01"
+        if mes == 12:
+            prox = f"{ano + 1:04d}-01-01"
+        else:
+            prox = f"{ano:04d}-{mes + 1:02d}-01"
+
+        row = self.conn.execute(
+            """
+            SELECT 1 FROM informe_diario
+            WHERE Data_Competencia >= ? AND Data_Competencia < ?
+            LIMIT 1
+            """,
+            (data_inicio, prox),
+        ).fetchone()
+
+        return row is not None
+
+    # -------------------------------------------------------------
+
+    def carregar_historico(self, anos=3, meses_recentes_forcar=3, force=False):
+        """
+        Garante que os últimos `anos` anos de Informe Diário estejam
+        carregados no banco, de forma eficiente:
+
+        - Os `meses_recentes_forcar` meses mais recentes são SEMPRE
+          reprocessados (a CVM publica atualizações diárias no mês corrente
+          e às vezes retifica o mês anterior).
+        - Meses mais antigos que já têm dados no banco são PULADOS (não
+          reprocessa milhões de linhas de novo a cada execução).
+        - Meses antigos que ainda não foram carregados (ex.: primeira
+          execução, ou um gap) são carregados normalmente.
+
+        Use force=True para ignorar o cache e reprocessar tudo (ex.: depois
+        de suspeitar de dados corrompidos).
+        """
+        quantidade = anos * 12
+        meses = self._gerar_lista_meses(quantidade)
+
+        carregados = 0
+        pulados = 0
+        com_erro = 0
+
+        for i, (ano, mes) in enumerate(meses):
+            recente = i < meses_recentes_forcar
+
+            if not recente and not force and self.mes_ja_carregado(ano, mes):
+                pulados += 1
+                continue
+
+            try:
+                self.atualizar_informe(ano=ano, mes=mes, force=force)
+                carregados += 1
+            except Exception:
+                com_erro += 1
+                logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
+
+        logger.info(
+            f"Histórico ({anos} ano(s)): {carregados} mês(es) carregado(s)/atualizado(s), "
+            f"{pulados} já presente(s) e pulado(s), {com_erro} com erro."
+        )
 
     # -------------------------------------------------------------
     # MÉTODOS DE CONSULTA
@@ -359,8 +525,8 @@ class InformeDiarioColetorCVM:
                 df_chunk = pd.read_sql_query(query, self.conn, params=params)
                 if not df_chunk.empty:
                     dfs.append(df_chunk)
-            except Exception as e:
-                logger.warning(f"Erro no chunk: {e}")
+            except Exception:
+                logger.exception(f"Erro no chunk {i // chunk_size}")
 
         if not dfs:
             return pd.DataFrame()
@@ -457,8 +623,13 @@ def listar_cnpjs_distintos():
 
 
 def carregar_ultimos_meses(quantidade=3):
-    """Carrega os últimos N meses de Informe Diário."""
+    """Carrega os últimos N meses de Informe Diário (sempre reprocessando)."""
     return get_informe_coletor().carregar_ultimos_meses(quantidade)
+
+
+def carregar_historico(anos=3, meses_recentes_forcar=3, force=False):
+    """Garante N anos de histórico no banco, pulando meses antigos já carregados."""
+    return get_informe_coletor().carregar_historico(anos, meses_recentes_forcar, force)
 
 
 # ---------------------------------------------------------------------

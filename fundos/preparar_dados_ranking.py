@@ -1,62 +1,106 @@
 # fundos/preparar_dados_ranking.py
 """
-Script para extrair dados mensais dos informes diários para cada CNPJ da interseção,
-agregar métricas relevantes e salvar em um arquivo temporário para uso posterior no ranking.
+Prepara os dados MENSAIS (formato longo: uma linha por CNPJ + mês) dos fundos
+da interseção e salva em um arquivo temporário (Parquet).
+
+Este script NÃO calcula o ranking — apenas extrai e organiza, mês a mês, as
+métricas relevantes de cada fundo (cota final, PL, cotistas, fluxo líquido).
+O cálculo de ranking (retorno, volatilidade, Sharpe, etc.) deve ser feito
+depois, lendo o arquivo gerado aqui via `carregar_dados_ranking()`.
 """
 
-import pandas as pd
-import sqlite3
-from pathlib import Path
-from datetime import datetime, timedelta
-import logging
-import tempfile
 import atexit
+import glob
+import logging
 import os
+import sqlite3
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pandas as pd
 
 from .intersecao import carregar_interseccao_dataframe
 from .informe_diario_coletor import DB_PATH
 
 logger = logging.getLogger(__name__)
 
+# SQLite tem um limite de ~999 variáveis por consulta (SQLITE_MAX_VARIABLE_NUMBER).
+# Sem esse chunking, uma interseção grande de CNPJs pode estourar o limite.
+CHUNK_CNPJS = 500
+
+# Tempo (ms) que a conexão de LEITURA espera por um lock antes de desistir.
+# Importante quando o banco está em pasta sincronizada (OneDrive/Dropbox) ou
+# quando outro processo (ex.: o coletor atualizando os últimos meses) está
+# escrevendo no mesmo arquivo ao mesmo tempo.
+BUSY_TIMEOUT_MS = 30_000
+
+
+def _conectar_leitura():
+    conn = sqlite3.connect(DB_PATH, timeout=BUSY_TIMEOUT_MS / 1000)
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    return conn
+
 
 def listar_meses_disponiveis():
     """Retorna lista de tuplas (ano, mes) com os meses disponíveis no banco de informes."""
-    conn = sqlite3.connect(DB_PATH)
-    query = "SELECT DISTINCT strftime('%Y', Data_Competencia) as ano, strftime('%m', Data_Competencia) as mes FROM informe_diario ORDER BY ano, mes"
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    meses = [(int(row['ano']), int(row['mes'])) for _, row in df.iterrows()]
-    return meses
+    conn = _conectar_leitura()
+    try:
+        query = """
+            SELECT DISTINCT strftime('%Y', Data_Competencia) AS ano,
+                            strftime('%m', Data_Competencia) AS mes
+            FROM informe_diario
+            ORDER BY ano, mes
+        """
+        df = pd.read_sql_query(query, conn)
+    finally:
+        conn.close()
+    return [(int(r["ano"]), int(r["mes"])) for _, r in df.iterrows()]
 
 
-def listar_por_mes(ano, mes, cnpjs=None):
-    """
-    Retorna dados do Informe Diário para um mês específico, opcionalmente filtrado por CNPJs.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    data_inicio = f"{ano:04d}-{mes:02d}-01"
-    if mes == 12:
-        data_fim = f"{ano+1:04d}-01-01"
-    else:
-        data_fim = f"{ano:04d}-{mes+1:02d}-01"
-    data_fim = (datetime.strptime(data_fim, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    query = """
-        SELECT CNPJ_Classe, Data_Competencia, Valor_Cota, Patrimonio_Liquido, Numero_Cotistas,
-               Captacao_Dia, Resgate_Dia
+def _listar_por_mes_chunk(conn, data_inicio, data_fim, cnpjs_chunk):
+    placeholders = ",".join(["?"] * len(cnpjs_chunk))
+    query = f"""
+        SELECT CNPJ_Classe, Data_Competencia, Valor_Cota, Patrimonio_Liquido,
+               Numero_Cotistas, Captacao_Dia, Resgate_Dia
         FROM informe_diario
         WHERE Data_Competencia BETWEEN ? AND ?
+          AND CNPJ_Classe IN ({placeholders})
     """
-    params = [data_inicio, data_fim]
+    params = [data_inicio, data_fim, *cnpjs_chunk]
+    return pd.read_sql_query(query, conn, params=params)
 
-    if cnpjs:
-        placeholders = ",".join(["?" for _ in cnpjs])
-        query += f" AND CNPJ_Classe IN ({placeholders})"
-        params.extend(cnpjs)
 
-    df = pd.read_sql_query(query, conn, params=params)
-    conn.close()
-    return df
+def listar_por_mes(ano, mes, cnpjs):
+    """
+    Retorna dados do Informe Diário para um mês específico, filtrado pelos CNPJs
+    informados. A lista de CNPJs é dividida em blocos de CHUNK_CNPJS para não
+    estourar o limite de variáveis do SQLite.
+    """
+    if not cnpjs:
+        return pd.DataFrame()
+
+    data_inicio = f"{ano:04d}-{mes:02d}-01"
+    if mes == 12:
+        prox = f"{ano + 1:04d}-01-01"
+    else:
+        prox = f"{ano:04d}-{mes + 1:02d}-01"
+    data_fim = (datetime.strptime(prox, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    conn = _conectar_leitura()
+    try:
+        partes = []
+        for i in range(0, len(cnpjs), CHUNK_CNPJS):
+            bloco = cnpjs[i:i + CHUNK_CNPJS]
+            df_bloco = _listar_por_mes_chunk(conn, data_inicio, data_fim, bloco)
+            if not df_bloco.empty:
+                partes.append(df_bloco)
+    finally:
+        conn.close()
+
+    if not partes:
+        return pd.DataFrame()
+    return pd.concat(partes, ignore_index=True)
 
 
 def extrair_metricas_mensais(df_mes):
@@ -70,139 +114,91 @@ def extrair_metricas_mensais(df_mes):
     if df_mes.empty:
         return pd.DataFrame()
 
-    # Ordena por data para garantir que o último registro seja o mais recente
     df_mes = df_mes.sort_values(["CNPJ_Classe", "Data_Competencia"])
 
-    # Agrupa por CNPJ e pega o último registro de cada mês
-    ultimo = df_mes.groupby("CNPJ_Classe").last().reset_index()
-    ultimo = ultimo[["CNPJ_Classe", "Valor_Cota", "Patrimonio_Liquido", "Numero_Cotistas"]]
-    ultimo.rename(columns={
-        "Valor_Cota": "Cota_Final",
-        "Patrimonio_Liquido": "PL_Final",
-        "Numero_Cotistas": "Cotistas_Final"
-    }, inplace=True)
+    ultimo = (
+        df_mes.groupby("CNPJ_Classe")
+        .last()[["Valor_Cota", "Patrimonio_Liquido", "Numero_Cotistas"]]
+        .reset_index()
+        .rename(columns={
+            "Valor_Cota": "Cota_Final",
+            "Patrimonio_Liquido": "PL_Final",
+            "Numero_Cotistas": "Cotistas_Final",
+        })
+    )
 
-    # Calcula captação líquida mensal
-    captacao = df_mes.groupby("CNPJ_Classe").apply(
-        lambda g: (g["Captacao_Dia"].sum() - g["Resgate_Dia"].sum())
-    ).reset_index(name="Fluxo_Liquido_Mensal")
+    fluxo = (
+        df_mes.groupby("CNPJ_Classe")[["Captacao_Dia", "Resgate_Dia"]]
+        .sum()
+        .assign(Fluxo_Liquido_Mensal=lambda d: d["Captacao_Dia"] - d["Resgate_Dia"])
+        .reset_index()[["CNPJ_Classe", "Fluxo_Liquido_Mensal"]]
+    )
 
-    # Junta as métricas
-    metricas = ultimo.merge(captacao, on="CNPJ_Classe", how="left")
-    return metricas
+    return ultimo.merge(fluxo, on="CNPJ_Classe", how="left")
 
 
-def preparar_dados_ranking(arquivo_saida=None, meses_limite=12):
+def preparar_dados_ranking(arquivo_saida=None, meses_limite=36):
     """
-    Prepara os dados agregados para ranking.
-    
+    Prepara os dados mensais (formato longo: uma linha por CNPJ + mês) para os
+    fundos da interseção e salva em Parquet.
+
     Args:
-        arquivo_saida (str, optional): Caminho para salvar o arquivo. 
-            Se None, usa um arquivo temporário que será deletado ao final.
-        meses_limite (int): Número máximo de meses a considerar (mais recentes).
-    
+        arquivo_saida (str, optional): Caminho de saída. Se None, cria um
+            arquivo temporário .parquet (deletado automaticamente ao final
+            do processo via atexit).
+        meses_limite (int): Quantos meses (mais recentes) processar. Padrão
+            36 (3 anos), alinhado ao histórico mantido pelo coletor. Use um
+            valor menor (ex.: 12) se quiser um ranking baseado só no último ano.
+
     Returns:
-        Path: Caminho do arquivo salvo.
+        Path: Caminho do arquivo Parquet gerado.
     """
-    # 1. Obtém CNPJs da interseção
     df_cad = carregar_interseccao_dataframe()
     if df_cad.empty:
         raise ValueError("Interseção vazia.")
     cnpjs = df_cad["CNPJ_Classe"].tolist()
-    logger.info(f"Total de CNPJs na interseção: {len(cnpjs)}")
+    logger.info("Total de CNPJs na interseção: %d", len(cnpjs))
 
-    # 2. Lista meses disponíveis
     meses = listar_meses_disponiveis()
     if not meses:
         raise ValueError("Nenhum mês disponível no banco de informes.")
-    
-    # Pega apenas os últimos 'meses_limite' meses
-    meses = sorted(meses, reverse=True)[:meses_limite]
-    meses_ordenados = sorted(meses)  # ordem cronológica para cálculo de retorno
-    logger.info(f"Meses a processar: {meses_ordenados}")
 
-    # 3. Dicionário para acumular séries temporais por CNPJ
-    series = {cnpj: {"datas": [], "cotas": [], "pl": [], "cotistas": [], "fluxo": []} for cnpj in cnpjs}
+    meses_ordenados = sorted(sorted(meses, reverse=True)[:meses_limite])
+    logger.info("Meses a processar: %s", meses_ordenados)
 
-    # 4. Processa mês a mês (na ordem cronológica)
+    linhas = []
     for ano, mes in meses_ordenados:
-        logger.info(f"Processando {ano}-{mes:02d}...")
+        logger.info("Processando %s-%02d...", ano, mes)
         try:
             df_mes = listar_por_mes(ano, mes, cnpjs)
-        except Exception as e:
-            logger.warning(f"Erro ao carregar {ano}-{mes:02d}: {e}")
+        except Exception:
+            # logger.exception grava o traceback completo — essencial para
+            # descobrir a causa real (ex.: "database is locked",
+            # "disk image is malformed", etc.) em vez de só "Execution failed".
+            logger.exception("Erro ao carregar %s-%02d", ano, mes)
             continue
 
         if df_mes.empty:
+            logger.info("  Sem dados para %s-%02d, pulando.", ano, mes)
             continue
 
-        # Extrai métricas mensais
         metricas = extrair_metricas_mensais(df_mes)
         if metricas.empty:
             continue
 
-        # Adiciona aos dicionários
-        data_ref = f"{ano}-{mes:02d}-01"
-        for _, row in metricas.iterrows():
-            cnpj = row["CNPJ_Classe"]
-            if cnpj not in series:
-                continue
-            series[cnpj]["datas"].append(data_ref)
-            series[cnpj]["cotas"].append(row["Cota_Final"])
-            series[cnpj]["pl"].append(row["PL_Final"])
-            series[cnpj]["cotistas"].append(row["Cotistas_Final"])
-            series[cnpj]["fluxo"].append(row["Fluxo_Liquido_Mensal"])
+        metricas["Ano"] = ano
+        metricas["Mes"] = mes
+        metricas["Data_Referencia"] = f"{ano}-{mes:02d}-01"
+        linhas.append(metricas)
 
-    # 5. Constrói DataFrame final com métricas agregadas por CNPJ
-    dados = []
-    for cnpj, s in series.items():
-        if len(s["datas"]) == 0:
-            continue
-        
-        # Últimos valores (mês mais recente)
-        ult_cota = s["cotas"][-1]
-        ult_pl = s["pl"][-1]
-        ult_cotistas = s["cotistas"][-1]
-        
-        # Retorno acumulado no período (último mês / primeiro mês - 1)
-        if len(s["cotas"]) >= 2:
-            cota_inicial = s["cotas"][0]
-            cota_final = s["cotas"][-1]
-            if cota_inicial != 0:
-                retorno_periodo = (cota_final / cota_inicial) - 1
-            else:
-                retorno_periodo = None
-        else:
-            retorno_periodo = None
-        
-        # Fluxo líquido total
-        fluxo_total = sum(s["fluxo"])
-        
-        # Patrimônio médio
-        pl_medio = sum(s["pl"]) / len(s["pl"]) if s["pl"] else 0
-        
-        dados.append({
-            "CNPJ_Classe": cnpj,
-            "Cota_Atual": ult_cota,
-            "PL_Atual": ult_pl,
-            "Cotistas_Atuais": ult_cotistas,
-            "Retorno_Periodo": retorno_periodo,
-            "Fluxo_Liquido_Total": fluxo_total,
-            "PL_Medio": pl_medio,
-            "Meses_Historico": len(s["datas"]),
-            "Series_Cotas": s["cotas"],
-            "Series_Datas": s["datas"],
-        })
+    if not linhas:
+        raise ValueError("Nenhum dado válido para gerar o arquivo de ranking.")
 
-    df_final = pd.DataFrame(dados)
-    logger.info(f"Total de fundos com dados agregados: {len(df_final)}")
+    df_final = pd.concat(linhas, ignore_index=True)
+    df_final = df_final.sort_values(["CNPJ_Classe", "Ano", "Mes"]).reset_index(drop=True)
+    logger.info("Total de linhas (CNPJ x mês): %d", len(df_final))
 
-    if df_final.empty:
-        raise ValueError("Nenhum dado válido para gerar ranking.")
-
-    # 6. Salva em arquivo
     if arquivo_saida is None:
-        # Cria arquivo temporário com extensão .parquet
         fd, caminho = tempfile.mkstemp(suffix=".parquet", prefix="dados_ranking_")
         os.close(fd)
         caminho = Path(caminho)
@@ -210,21 +206,18 @@ def preparar_dados_ranking(arquivo_saida=None, meses_limite=12):
     else:
         caminho = Path(arquivo_saida)
 
-    # Salva em formato Parquet (compacto e rápido)
     df_final.to_parquet(caminho, index=False)
-    logger.info(f"Dados salvos em: {caminho}")
+    logger.info("Dados salvos em: %s", caminho)
     return caminho
 
 
 def carregar_dados_ranking(arquivo=None):
     """
-    Carrega os dados de ranking de um arquivo (parquet) e retorna um DataFrame.
-    Se arquivo for None, tenta carregar de um arquivo temporário existente ou chama preparar_dados_ranking().
+    Carrega os dados mensais preparados (formato longo) de um Parquet.
+    Se `arquivo` for None, procura o temporário mais recente ou gera um novo.
     """
     if arquivo is None:
-        # Tenta encontrar um arquivo temporário (ex: dados_ranking_*.parquet)
-        import glob
-        tmp_files = glob.glob("dados_ranking_*.parquet")
+        tmp_files = glob.glob(os.path.join(tempfile.gettempdir(), "dados_ranking_*.parquet"))
         if tmp_files:
             arquivo = max(tmp_files, key=os.path.getctime)
         else:
@@ -237,9 +230,10 @@ def carregar_dados_ranking(arquivo=None):
 # ---------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    caminho = preparar_dados_ranking(meses_limite=6)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+    caminho = preparar_dados_ranking(meses_limite=36)
     print(f"Arquivo gerado: {caminho}")
     df = pd.read_parquet(caminho)
     print(f"Shape: {df.shape}")
-    print(df.head())
+    print(df.head(10))
+    print(df["CNPJ_Classe"].nunique(), "fundos distintos")
