@@ -21,24 +21,38 @@ from .informe_diario_coletor import (
     buscar_historico_completo,
     buscar_ultimo_registro,
     listar_historicos,
+    listar_metricas_agregadas,
     listar_cnpjs_distintos,
     total_registros,
     carregar_ultimos_meses,
     carregar_historico,
 )
 
-# Deixamos esses imports comentados até criar os arquivos
-# from .ranker import rankear_fundos, calcular_score
-# from .indicadores import (
-#     calcular_indicadores,
-#     calcular_indicadores_df,
-#     serie_cotas,
-#     serie_patrimonio,
-#     serie_cotistas,
-# )
-# from .sharpe_sortino import calcular_indicadores_risco
+from .indicadores import (
+    calcular_indicadores,
+    calcular_indicadores_df,
+    serie_cotas,
+    serie_patrimonio,
+    serie_cotistas,
+)
 
-# Deixamos também o __all__ apenas com o que já existe
+from .sharpe_sortino import calcular_indicadores_risco
+
+from .filtros import FiltroFundos, filtrar_para_ranking
+
+from .ranker import (
+    rankear_fundos,
+    calcular_score,
+    gerar_ranking,
+    top_fundos,
+    buscar_fundo_cnpj,
+    buscar_fundo_nome,
+    fundos_por_classe,
+    PERFIL_CONSERVADOR,
+    PERFIL_MODERADO,
+    PERFIL_AGRESSIVO,
+)
+
 __all__ = [
     "download_cadastro",
     "get_coletor",
@@ -51,16 +65,27 @@ __all__ = [
     "buscar_historico_completo",
     "buscar_ultimo_registro",
     "listar_historicos",
+    "listar_metricas_agregadas",
     "listar_cnpjs_distintos",
     "total_registros",
     "carregar_ultimos_meses",
     "carregar_historico",
-    # "calcular_indicadores",
-    # "calcular_indicadores_df",
-    # "serie_cotas",
-    # "serie_patrimonio",
-    # "serie_cotistas",
-    # "calcular_indicadores_risco",
-    # "rankear_fundos",
-    # "calcular_score",
+    "calcular_indicadores",
+    "calcular_indicadores_df",
+    "serie_cotas",
+    "serie_patrimonio",
+    "serie_cotistas",
+    "calcular_indicadores_risco",
+    "FiltroFundos",
+    "filtrar_para_ranking",
+    "rankear_fundos",
+    "calcular_score",
+    "gerar_ranking",
+    "top_fundos",
+    "buscar_fundo_cnpj",
+    "buscar_fundo_nome",
+    "fundos_por_classe",
+    "PERFIL_CONSERVADOR",
+    "PERFIL_MODERADO",
+    "PERFIL_AGRESSIVO",
 ]

@@ -179,9 +179,13 @@ class FiltroFundos:
     """
     Aplica filtros qualitativos ao cadastro de fundos.
 
-    Uso:
+    Uso (caminho eficiente, recomendado para milhares de fundos):
         filtro = FiltroFundos(perfil=2)
-        df_filtrado = filtro.aplicar(df_cadastro, df_informe)
+        df_filtrado = filtro.aplicar(df_cadastro, df_metricas=df_metricas_agregadas)
+
+    Uso (caminho antigo, recebe o informe diário bruto linha a linha):
+        filtro = FiltroFundos(perfil=2)
+        df_filtrado = filtro.aplicar(df_cadastro, df_informe=df_informe_diario)
     """
 
     def __init__(self, perfil: int = 2, **kwargs):
@@ -206,25 +210,61 @@ class FiltroFundos:
         self.cotistas_global_minimo = kwargs.get("cotistas_global_minimo", 0)
 
     # -------------------------------------------------------------
-    # Pré-cálculo de métricas auxiliares (vetorizado)
+    # Pré-cálculo de métricas auxiliares
     # -------------------------------------------------------------
 
     @staticmethod
-    def _preparar_metricas(df_cadastro: pd.DataFrame, df_informe: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def _preparar_metricas(
+        df_cadastro: pd.DataFrame,
+        df_informe: Optional[pd.DataFrame] = None,
+        df_metricas: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
         """
         Adiciona colunas auxiliares ao cadastro para acelerar filtros.
+
+        Dois caminhos possíveis:
+        - df_metricas: DataFrame JÁ AGREGADO por CNPJ (ex.: saída de
+          informe_diario_coletor.listar_metricas_agregadas), com colunas
+          Dias_Historico, Ultimo_Cotistas, Proporcao_Resgate e,
+          opcionalmente, Patrimonio_Liquido. Caminho RÁPIDO — recomendado
+          quando há milhares de fundos, pois evita carregar linha a linha
+          o histórico diário em memória.
+        - df_informe: histórico diário BRUTO (uma linha por fundo por dia).
+          Caminho antigo, mais pesado, mantido por compatibilidade.
         """
         df = df_cadastro.copy()
 
         # 1. Categoria (calculada uma única vez, vetorizada)
         df["Categoria"] = df["Classificacao_Anbima"].apply(_classificar_fundo)
 
-        # 2. Dias de histórico (se informe disponível)
-        if df_informe is not None and not df_informe.empty:
+        if df_metricas is not None and not df_metricas.empty:
+            # Caminho rápido: métricas já vieram agregadas (via SQL)
+            metricas = df_metricas.set_index("CNPJ_Classe")
+
+            df["Dias_Historico"] = (
+                df["CNPJ_Classe"].map(metricas["Dias_Historico"]).fillna(0)
+            )
+            df["Ultimo_Cotistas"] = (
+                df["CNPJ_Classe"].map(metricas["Ultimo_Cotistas"]).fillna(0)
+            )
+            df["Proporcao_Resgate"] = (
+                df["CNPJ_Classe"].map(metricas["Proporcao_Resgate"]).fillna(0)
+            )
+
+            # Se o PL mais recente do informe estiver disponível, ele é mais
+            # atual que o valor estático do cadastro — usamos preferencialmente.
+            if "Patrimonio_Liquido" in metricas.columns:
+                pl_informe = df["CNPJ_Classe"].map(metricas["Patrimonio_Liquido"])
+                if "Patrimonio_Liquido" in df.columns:
+                    df["Patrimonio_Liquido"] = pl_informe.fillna(df["Patrimonio_Liquido"])
+                else:
+                    df["Patrimonio_Liquido"] = pl_informe.fillna(0)
+
+        elif df_informe is not None and not df_informe.empty:
+            # Caminho antigo: recebe o informe diário bruto e agrega em pandas
             dias_por_fundo = df_informe.groupby("CNPJ_Classe")["Data_Competencia"].nunique()
             df["Dias_Historico"] = df["CNPJ_Classe"].map(dias_por_fundo).fillna(0)
 
-            # 3. Último número de cotistas
             cotistas_por_fundo = (
                 df_informe
                 .sort_values("Data_Competencia")
@@ -233,7 +273,6 @@ class FiltroFundos:
             )
             df["Ultimo_Cotistas"] = df["CNPJ_Classe"].map(cotistas_por_fundo).fillna(0)
 
-            # 4. Proporção de resgate sobre patrimônio
             grupo_resgate = df_informe.groupby("CNPJ_Classe").agg({
                 "Resgate_Dia": "sum",
                 "Patrimonio_Liquido": "mean",
@@ -308,7 +347,7 @@ class FiltroFundos:
         return df[mascara].copy()
 
     def filtrar_historico_minimo(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filtra por histórico mínimo por categoria."""
+        """Filtra por histórico mínimo (em dias) por categoria."""
         if "Dias_Historico" not in df.columns:
             return df
 
@@ -365,9 +404,18 @@ class FiltroFundos:
     # Método principal
     # -------------------------------------------------------------
 
-    def aplicar(self, df_cadastro: pd.DataFrame, df_informe: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def aplicar(
+        self,
+        df_cadastro: pd.DataFrame,
+        df_informe: Optional[pd.DataFrame] = None,
+        df_metricas: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
         """
         Aplica todos os filtros ao cadastro de fundos.
+
+        Passe df_metricas (métricas já agregadas via SQL — ver
+        informe_diario_coletor.listar_metricas_agregadas) sempre que possível:
+        é muito mais rápido que passar df_informe bruto para milhares de fundos.
 
         Returns:
             DataFrame com fundos que passaram em todos os filtros.
@@ -379,7 +427,7 @@ class FiltroFundos:
         total_inicial = len(df_cadastro)
 
         # Pré-calcula métricas auxiliares
-        df_filtrado = self._preparar_metricas(df_cadastro, df_informe)
+        df_filtrado = self._preparar_metricas(df_cadastro, df_informe=df_informe, df_metricas=df_metricas)
 
         # 1. Remove não classificados (OUTROS) logo após o pré-processamento,
         #    para não gastar cálculo de PL/histórico/cotistas com fundos
@@ -429,11 +477,15 @@ class FiltroFundos:
 def filtrar_para_ranking(
     df_cadastro: pd.DataFrame,
     df_informe: Optional[pd.DataFrame] = None,
+    df_metricas: Optional[pd.DataFrame] = None,
     perfil: int = 2,
     **kwargs,
 ) -> pd.DataFrame:
     """
     Função de alto nível para aplicar filtros antes do ranking.
+
+    Prefira passar df_metricas (agregado via SQL) em vez de df_informe
+    (bruto) quando estiver filtrando milhares de fundos de uma vez.
     """
     filtro = FiltroFundos(perfil=perfil, **kwargs)
-    return filtro.aplicar(df_cadastro, df_informe)
+    return filtro.aplicar(df_cadastro, df_informe=df_informe, df_metricas=df_metricas)

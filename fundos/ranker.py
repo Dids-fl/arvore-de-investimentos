@@ -1,14 +1,28 @@
 # fundos/ranker.py
 """
-Ranker otimizado para Fundos de Investimento.
-Usa listar_historicos() para carregar todos os históricos em uma única consulta.
-O ranking é cacheadado para evitar recálculos desnecessários.
+Ranker de Fundos de Investimento, por perfil (conservador/moderado/agressivo).
+
+Pipeline em 3 estágios, do mais barato para o mais caro:
+
+1. INTERSEÇÃO  — só considera fundos com cadastro ativo E dados no Informe
+   Diário (fundos.intersecao).
+2. PRÉ-FILTRO QUALITATIVO — usa métricas agregadas calculadas via SQL
+   (fundos.informe_diario_coletor.listar_metricas_agregadas) e o
+   fundos.filtros.FiltroFundos para descartar, por perfil, fundos fora de
+   categoria, com PL/histórico/cotistas insuficientes, restritos, etc.
+   Isso reduz a lista de ~25 mil fundos para dezenas/centenas de candidatos
+   ANTES de qualquer cálculo pesado.
+3. CÁLCULO COMPLETO — só para os candidatos que sobraram, busca o histórico
+   diário (listar_historicos) e calcula retorno, volatilidade, drawdown,
+   Sharpe e Sortino, then aplica o score ponderado por perfil.
 """
 
 import logging
 import pandas as pd
-from .cadastro_coletor import listar_fundos_ativos
-from .informe_diario_coletor import listar_historicos
+
+from .intersecao import carregar_interseccao_dataframe
+from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
+from .filtros import filtrar_para_ranking
 from .indicadores import calcular_indicadores_df
 from .sharpe_sortino import calcular_indicadores_risco
 
@@ -207,13 +221,22 @@ def calcular_score(indicadores, perfil, incluir_sharpe_sortino=True):
 
 
 # ---------------------------------------------------------------------
-# Ranker principal (OTIMIZADO COM CACHE)
+# Ranker principal (interseção -> pré-filtro -> cálculo completo)
 # ---------------------------------------------------------------------
 
 class RankerFundos:
-    def __init__(self, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True):
+    def __init__(self, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
+        """
+        Args:
+            perfil: 1=Conservador, 2=Moderado, 3=Agressivo
+            incluir_sharpe_sortino: se True, calcula Sharpe/Sortino (precisa
+                do CDI do período — ver fundos.sharpe_sortino)
+            **filtro_kwargs: repassado para fundos.filtros.FiltroFundos
+                (ex.: esg=True, permitir_restrito=True, pl_global_minimo=...)
+        """
         self.perfil = perfil
         self.incluir_sharpe_sortino = incluir_sharpe_sortino
+        self.filtro_kwargs = filtro_kwargs
         self._ranking = None  # Cache do ranking
 
     def _obter_ranking(self):
@@ -228,35 +251,63 @@ class RankerFundos:
 
     def _gerar_ranking(self):
         """Executa o cálculo do ranking (chamado apenas quando necessário)."""
-        # 1. Carrega cadastro e lista de CNPJs
-        df_cad = listar_fundos_ativos()
+
+        # -----------------------------------------------------------
+        # ESTÁGIO 1: interseção (cadastro ativo + tem dado no informe)
+        # -----------------------------------------------------------
+        df_cad = carregar_interseccao_dataframe()
         if df_cad.empty:
-            logger.warning("Nenhum fundo ativo encontrado.")
+            logger.warning("Interseção vazia — nenhum fundo com cadastro e informe ao mesmo tempo.")
             return []
 
         cnpjs = df_cad["CNPJ_Classe"].tolist()
+        logger.info(f"Interseção: {len(cnpjs)} fundos candidatos.")
 
-        # 2. Carrega histórico em lote (UMA ÚNICA CONSULTA)
-        logger.info(f"Carregando histórico em lote para {len(cnpjs)} fundos...")
-        df_hist = listar_historicos(cnpjs, limite=DIAS_ANO * 2)
+        # -----------------------------------------------------------
+        # ESTÁGIO 2: pré-filtro qualitativo (métricas agregadas via SQL,
+        # sem carregar histórico diário linha a linha para todo mundo)
+        # -----------------------------------------------------------
+        df_metricas = listar_metricas_agregadas(cnpjs)
+        if df_metricas.empty:
+            logger.warning("Não foi possível calcular métricas agregadas.")
+            return []
+
+        df_filtrado = filtrar_para_ranking(
+            df_cad,
+            df_metricas=df_metricas,
+            perfil=self.perfil,
+            **self.filtro_kwargs,
+        )
+        if df_filtrado.empty:
+            logger.warning(f"Nenhum fundo passou no pré-filtro (perfil {self.perfil}).")
+            return []
+
+        cnpjs_filtrados = df_filtrado["CNPJ_Classe"].tolist()
+        logger.info(
+            f"Pré-filtro (perfil {self.perfil}): {len(cnpjs)} -> {len(cnpjs_filtrados)} "
+            f"fundos vão para o cálculo completo (Sharpe/Sortino)."
+        )
+
+        # -----------------------------------------------------------
+        # ESTÁGIO 3: cálculo completo — histórico diário só dos
+        # candidatos que sobraram, indicadores, Sharpe/Sortino e score
+        # -----------------------------------------------------------
+        df_hist = listar_historicos(cnpjs_filtrados, limite=DIAS_ANO * 2)
         if df_hist.empty:
-            logger.warning("Nenhum histórico encontrado.")
+            logger.warning("Nenhum histórico diário encontrado para os fundos filtrados.")
             return []
 
         ranking = []
 
-        # 3. Processa cada fundo a partir do DataFrame consolidado
         for cnpj, group in df_hist.groupby("CNPJ_Classe"):
-            cad_row = df_cad[df_cad["CNPJ_Classe"] == cnpj]
+            cad_row = df_filtrado[df_filtrado["CNPJ_Classe"] == cnpj]
             if cad_row.empty:
                 continue
 
-            # Calcula indicadores básicos
             indicadores = calcular_indicadores_df(group, cad_row.iloc[0].to_dict())
             if indicadores is None or indicadores.get("cagr") is None:
                 continue
 
-            # Calcula Sharpe e Sortino (se habilitado)
             if self.incluir_sharpe_sortino:
                 risco = calcular_indicadores_risco(
                     group["Valor_Cota"],
@@ -265,14 +316,12 @@ class RankerFundos:
                 indicadores["sharpe"] = risco.get("sharpe")
                 indicadores["sortino"] = risco.get("sortino")
 
-            # Calcula o score
             score = calcular_score(
                 indicadores,
                 self.perfil,
                 incluir_sharpe_sortino=self.incluir_sharpe_sortino,
             )
 
-            # Monta o resultado
             ranking.append({
                 "cnpj": cnpj,
                 "nome": indicadores.get("nome"),
@@ -284,6 +333,7 @@ class RankerFundos:
             })
 
         ranking.sort(key=lambda x: x["score"], reverse=True)
+        logger.info(f"Ranking final: {len(ranking)} fundos com score calculado.")
         return ranking
 
     # -------------------------------------------------------------
@@ -333,19 +383,19 @@ class RankerFundos:
 # API pública
 # ---------------------------------------------------------------------
 
-def gerar_ranking(perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True):
-    return RankerFundos(perfil, incluir_sharpe_sortino).gerar_ranking()
+def gerar_ranking(perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
+    return RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking()
 
 
-def top_fundos(quantidade=20, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True):
-    return RankerFundos(perfil, incluir_sharpe_sortino).top(quantidade)
+def top_fundos(quantidade=20, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
+    return RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).top(quantidade)
 
 
-def rankear_fundos(perfil=PERFIL_MODERADO, limite=10, incluir_sharpe_sortino=True):
+def rankear_fundos(perfil=PERFIL_MODERADO, limite=10, incluir_sharpe_sortino=True, **filtro_kwargs):
     """
     Função principal para o recomendador.
     """
-    ranking = RankerFundos(perfil, incluir_sharpe_sortino).gerar_ranking()
+    ranking = RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking()
     return ranking[:limite]
 
 
@@ -371,7 +421,7 @@ if __name__ == "__main__":
     ranking = top_fundos(quantidade=10, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True)
 
     print("\n" + "=" * 100)
-    print("TOP 10 FUNDOS (OTIMIZADO - UMA ÚNICA CONSULTA)")
+    print("TOP 10 FUNDOS (interseção -> pré-filtro -> Sharpe/Sortino)")
     print("=" * 100)
 
     for pos, fundo in enumerate(ranking, start=1):

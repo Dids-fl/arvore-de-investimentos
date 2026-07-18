@@ -41,7 +41,12 @@ def to_float(valor):
 
 def serie_retorno(cotas):
     cotas = _para_series(cotas)
-    return cotas.pct_change().dropna()
+    retornos = cotas.pct_change()
+    # Remove +inf/-inf (ex.: cota anterior igual a 0 ou dado corrompido) além
+    # de NaN. inf não é removido por dropna() sozinho e, se sobrar na série,
+    # corrompe std()/volatilidade com RuntimeWarning e resultado NaN silencioso.
+    retornos = retornos.replace([np.inf, -np.inf], np.nan).dropna()
+    return retornos
 
 
 def retorno(cotas):
