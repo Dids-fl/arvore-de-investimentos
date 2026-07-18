@@ -202,20 +202,38 @@ class InformeDiarioColetorCVM:
         ).dt.strftime("%Y-%m-%d")
         chunk = chunk.dropna(subset=["Data_Competencia"])
 
-        # Converte colunas numéricas
-        numericas = [
-            "Valor_Total",
-            "Valor_Cota",
-            "Patrimonio_Liquido",
-            "Captacao_Dia",
-            "Resgate_Dia",
-            "Numero_Cotistas",
-        ]
-        for col in numericas:
+        # Converte colunas numéricas.
+        #
+        # Captacao_Dia, Resgate_Dia e Numero_Cotistas PODEM legitimamente ser 0,
+        # então valores ausentes/inválidos viram 0 normalmente.
+        #
+        # Valor_Total, Valor_Cota e Patrimonio_Liquido NUNCA fazem sentido como
+        # 0 para um fundo real — se vierem vazios/inválidos no CSV da CVM, é dado
+        # ruim. Zerá-los (como antes) corrompia o cálculo de retorno diário
+        # (pct_change vira +inf ao dividir por uma cota zerada), o que gerava
+        # RuntimeWarning e Sharpe/Sortino = NaN silenciosamente. Por isso agora
+        # a linha inteira é descartada em vez de zerada.
+        numericas_pode_zero = ["Captacao_Dia", "Resgate_Dia", "Numero_Cotistas"]
+        numericas_nao_pode_zero = ["Valor_Total", "Valor_Cota", "Patrimonio_Liquido"]
+
+        for col in numericas_pode_zero:
             chunk[col] = (
                 pd.to_numeric(chunk[col], errors="coerce")
                 .fillna(0)
                 .clip(lower=0)
+            )
+
+        for col in numericas_nao_pode_zero:
+            chunk[col] = pd.to_numeric(chunk[col], errors="coerce")
+
+        antes = len(chunk)
+        chunk = chunk[
+            (chunk["Valor_Cota"] > 0) & (chunk["Patrimonio_Liquido"] > 0)
+        ]
+        removidos = antes - len(chunk)
+        if removidos:
+            logger.debug(
+                f"{removidos} linha(s) descartada(s) por Valor_Cota/Patrimonio_Liquido inválido (0, negativo ou vazio)."
             )
 
         # Remove duplicatas dentro do próprio chunk
@@ -534,6 +552,89 @@ class InformeDiarioColetorCVM:
         return pd.concat(dfs, ignore_index=True)
 
     # -------------------------------------------------------------
+
+    def listar_metricas_agregadas(self, lista_cnpjs):
+        """
+        Calcula, DIRETO NO SQL (sem carregar as linhas diárias em pandas),
+        as métricas agregadas por CNPJ necessárias para o pré-filtro
+        qualitativo (fundos.filtros.FiltroFundos):
+
+        - Dias_Historico: quantidade de dias com registro no banco
+        - Patrimonio_Liquido: PL do registro mais recente (mais atual que
+          o valor estático do cadastro)
+        - Ultimo_Cotistas: número de cotistas do registro mais recente
+        - Proporcao_Resgate: soma de resgates / PL médio no período
+
+        Isso permite filtrar dezenas de milhares de fundos rapidamente,
+        antes de buscar o histórico diário completo (caro) só dos
+        fundos que sobrarem.
+        """
+        if not lista_cnpjs:
+            return pd.DataFrame()
+
+        cnpjs_padronizados = []
+        for cnpj in lista_cnpjs:
+            cnpj = (
+                str(cnpj)
+                .replace(".", "")
+                .replace("/", "")
+                .replace("-", "")
+                .zfill(14)
+            )
+            cnpjs_padronizados.append(cnpj)
+
+        chunk_size = 500
+        dfs = []
+
+        for i in range(0, len(cnpjs_padronizados), chunk_size):
+            chunk = cnpjs_padronizados[i:i + chunk_size]
+            placeholders = ",".join(["?" for _ in chunk])
+            query = f"""
+                WITH base AS (
+                    SELECT
+                        CNPJ_Classe,
+                        Patrimonio_Liquido,
+                        Numero_Cotistas,
+                        Resgate_Dia,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY CNPJ_Classe
+                            ORDER BY Data_Competencia DESC
+                        ) AS rn
+                    FROM informe_diario
+                    WHERE CNPJ_Classe IN ({placeholders})
+                )
+                SELECT
+                    CNPJ_Classe,
+                    COUNT(*) AS Dias_Historico,
+                    SUM(Resgate_Dia) AS Resgate_Total,
+                    AVG(Patrimonio_Liquido) AS PL_Medio,
+                    MAX(CASE WHEN rn = 1 THEN Patrimonio_Liquido END) AS Patrimonio_Liquido,
+                    MAX(CASE WHEN rn = 1 THEN Numero_Cotistas END) AS Ultimo_Cotistas
+                FROM base
+                GROUP BY CNPJ_Classe
+            """
+            try:
+                df_chunk = pd.read_sql_query(query, self.conn, params=chunk)
+                if not df_chunk.empty:
+                    dfs.append(df_chunk)
+            except Exception:
+                logger.exception(f"Erro ao calcular métricas agregadas no chunk {i // chunk_size}")
+
+        if not dfs:
+            return pd.DataFrame()
+
+        df = pd.concat(dfs, ignore_index=True)
+        df["Proporcao_Resgate"] = df["Resgate_Total"] / (df["PL_Medio"] + 1e-9)
+
+        return df[[
+            "CNPJ_Classe",
+            "Dias_Historico",
+            "Patrimonio_Liquido",
+            "Ultimo_Cotistas",
+            "Proporcao_Resgate",
+        ]]
+
+    # -------------------------------------------------------------
     # MÉTODOS LEGADO (mantidos para compatibilidade)
     # -------------------------------------------------------------
 
@@ -611,6 +712,10 @@ def buscar_ultimo_registro(cnpj):
 
 def listar_historicos(lista_cnpjs, limite=252):
     return get_informe_coletor().listar_historicos(lista_cnpjs, limite)
+
+
+def listar_metricas_agregadas(lista_cnpjs):
+    return get_informe_coletor().listar_metricas_agregadas(lista_cnpjs)
 
 
 def total_registros():
