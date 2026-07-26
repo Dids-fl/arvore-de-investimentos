@@ -227,7 +227,7 @@ class TestSharpeSortino:
 
 class TestRanker:
     def test_calcular_score(self):
-        from fundos.ranker import calcular_score
+        from fundos.ranker_fundos import calcular_score
         indicadores = {
             "retorno_12m": 0.15,
             "volatilidade": 0.12,
@@ -240,7 +240,7 @@ class TestRanker:
         assert 0 <= score["score"] <= 10
 
     def test_calcular_score_com_sharpe_sortino(self):
-        from fundos.ranker import calcular_score
+        from fundos.ranker_fundos import calcular_score
         indicadores = {
             "retorno_12m": 0.15,
             "volatilidade": 0.12,
@@ -255,7 +255,7 @@ class TestRanker:
         assert "sortino" in score
 
     def test_rankear_fundos(self, mock_coletor):
-        from fundos.ranker import rankear_fundos
+        from fundos.ranker_fundos import rankear_fundos
         resultado = rankear_fundos(perfil=2, limite=3, incluir_sharpe_sortino=False)
         assert isinstance(resultado, list)
         assert len(resultado) <= 3
@@ -265,7 +265,7 @@ class TestRanker:
             assert "score" in resultado[0]
 
     def test_top_fundos(self, mock_coletor):
-        from fundos.ranker import top_fundos
+        from fundos.ranker_fundos import top_fundos
         resultado = top_fundos(quantidade=2, perfil=1)
         assert isinstance(resultado, list)
         assert len(resultado) <= 2
@@ -293,7 +293,7 @@ class TestIntegracao:
         # Não falha se estiver vazio
 
     def test_ranking_completo(self):
-        from fundos.ranker import top_fundos
+        from fundos.ranker_fundos import top_fundos
         resultado = top_fundos(quantidade=5, perfil=2, incluir_sharpe_sortino=True)
         assert isinstance(resultado, list)
         if resultado:
@@ -310,7 +310,7 @@ def test_mostrar_recomendacoes(mock_coletor):
     Teste visual que exibe recomendações para cada perfil.
     Usa dados mock para ser rápido.
     """
-    from fundos.ranker import rankear_fundos
+    from fundos.ranker_fundos import rankear_fundos
 
     print("\n" + "="*70)
     print("📊 RECOMENDAÇÕES DE FUNDOS (DADOS MOCK)")

@@ -1,4 +1,4 @@
-# fundos/ranker.py
+# fundos/ranker_fundos.py
 """
 Ranker de Fundos de Investimento, por perfil (conservador/moderado/agressivo).
 

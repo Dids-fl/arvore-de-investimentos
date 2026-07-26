@@ -41,6 +41,10 @@ CATEGORIAS_ANBIMA = {
     "Crédito Privado Grau de Investimento": "RENDA_FIXA",
     "Credito Privado Grau de Investimento": "RENDA_FIXA",
     "Crédito Privado": "RENDA_FIXA",
+    # "RF" é a abreviação usada em várias classificações ANBIMA de fundos
+    # previdenciários (ex.: "Previdência RF Duração Livre Crédito Livre").
+    # Fica por último entre as chaves de Renda Fixa por ser mais genérica.
+    "RF": "RENDA_FIXA",
     # Multimercado
     "Multimercado Long Short": "MULTIMERCADO",
     "Multimercado Macro": "MULTIMERCADO",
@@ -98,8 +102,8 @@ def _classificar_fundo(classe_anbima: str) -> str:
 # Configurações centralizadas (evita duplicação)
 # ---------------------------------------------------------------------
 
-# Limites por categoria
-# Fundos não classificados (OUTROS) são excluídos, não recebem limites padrão
+# Limites por categoria -- usados por padrão para fundos comuns (varejo).
+# Fundos não classificados (OUTROS) são excluídos, não recebem limites padrão.
 PL_MINIMO_POR_CATEGORIA = {
     "RENDA_FIXA": 10_000_000,      # R$ 10M
     "MULTIMERCADO": 50_000_000,    # R$ 50M
@@ -131,6 +135,47 @@ COTISTAS_MINIMOS_POR_CATEGORIA = {
     "ALAVANCADO": 100,
     "EVENT_DRIVEN": 100,
     "CRIPTO": 20,
+}
+
+# ---------------------------------------------------------------------
+# Limites por categoria -- PREVIDÊNCIA (FIEs).
+#
+# FIEs de previdência costumam concentrar o capital no "fundo capa" da
+# seguradora: o PL e o nº de cotistas visíveis no próprio FIE tendem a
+# ser bem menores que em fundos de varejo equivalentes, mesmo quando o
+# fundo é robusto e líquido. Os valores abaixo são um PONTO DE PARTIDA
+# a partir da distribuição observada nos 17 FIEs com histórico no
+# Informe Diário (PL: 25%=~R$1,6M, mediana=~R$10,3M, 75%=~R$56,8M) --
+# ainda NÃO validados contra Dias_Historico/Ultimo_Cotistas reais.
+# Ajuste depois de rodar listar_metricas_agregadas() para esse universo.
+# ---------------------------------------------------------------------
+
+PL_MINIMO_POR_CATEGORIA_PREVIDENCIA = {
+    "RENDA_FIXA": 1_000_000,      # R$ 1M
+    "MULTIMERCADO": 5_000_000,    # R$ 5M
+    "ACOES": 10_000_000,          # R$ 10M
+    "CAMBIAL": 5_000_000,
+    "COMMODITIES": 10_000_000,
+    "ALAVANCADO": 20_000_000,
+    "EVENT_DRIVEN": 20_000_000,
+    "CRIPTO": 5_000_000,
+}
+
+# Histórico mínimo mantido igual ao de fundos comuns por ora -- não há
+# indício de que precise ser diferente, mas ainda não foi checado.
+DIAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA = dict(DIAS_MINIMOS_POR_CATEGORIA)
+
+# Nº de cotistas do FIE em si costuma ser baixo (às vezes só a própria
+# seguradora), então o piso é bem mais permissivo que no varejo.
+COTISTAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA = {
+    "RENDA_FIXA": 1,
+    "MULTIMERCADO": 1,
+    "ACOES": 1,
+    "CAMBIAL": 1,
+    "COMMODITIES": 1,
+    "ALAVANCADO": 1,
+    "EVENT_DRIVEN": 1,
+    "CRIPTO": 1,
 }
 
 # Público-alvo restrito
@@ -199,6 +244,13 @@ class FiltroFundos:
                 - esg (bool): Apenas fundos ESG?
                 - pl_global_minimo (float): PL mínimo global (sobrescreve categoria)
                 - cotistas_global_minimo (int): Cotistas mínimo global
+                - pl_minimo_por_categoria (dict): sobrescreve
+                  PL_MINIMO_POR_CATEGORIA por completo (ex.: para usar os
+                  limiares de previdência)
+                - dias_minimos_por_categoria (dict): sobrescreve
+                  DIAS_MINIMOS_POR_CATEGORIA por completo
+                - cotistas_minimos_por_categoria (dict): sobrescreve
+                  COTISTAS_MINIMOS_POR_CATEGORIA por completo
         """
         self.perfil = perfil
         self.categorias_permitidas = CATEGORIAS_PERMITIDAS.get(perfil, set())
@@ -208,6 +260,20 @@ class FiltroFundos:
         self.esg = kwargs.get("esg", False)
         self.pl_global_minimo = kwargs.get("pl_global_minimo", 0)
         self.cotistas_global_minimo = kwargs.get("cotistas_global_minimo", 0)
+
+        # Limiares por categoria -- por padrão, os de fundos comuns
+        # (module-level). Podem ser sobrescritos por completo via kwargs,
+        # o que é o que fundos/ranker_previdenciarios.py faz para usar
+        # os limiares de previdência sem alterar o comportamento padrão.
+        self.pl_minimo_por_categoria = kwargs.get(
+            "pl_minimo_por_categoria", PL_MINIMO_POR_CATEGORIA
+        )
+        self.dias_minimos_por_categoria = kwargs.get(
+            "dias_minimos_por_categoria", DIAS_MINIMOS_POR_CATEGORIA
+        )
+        self.cotistas_minimos_por_categoria = kwargs.get(
+            "cotistas_minimos_por_categoria", COTISTAS_MINIMOS_POR_CATEGORIA
+        )
 
     # -------------------------------------------------------------
     # Pré-cálculo de métricas auxiliares
@@ -337,7 +403,7 @@ class FiltroFundos:
         # Mapeamento vetorizado direto via dicionário (sem função por linha).
         # Categorias sem entrada no dicionário caem em +inf (reprovam sempre),
         # e o piso global é aplicado com clip, também vetorizado.
-        pl_minimos = df["Categoria"].map(PL_MINIMO_POR_CATEGORIA).fillna(float("inf"))
+        pl_minimos = df["Categoria"].map(self.pl_minimo_por_categoria).fillna(float("inf"))
         df["PL_Minimo"] = pl_minimos.clip(lower=self.pl_global_minimo)
 
         mascara = df["Patrimonio_Liquido"] >= df["PL_Minimo"]
@@ -351,7 +417,7 @@ class FiltroFundos:
         if "Dias_Historico" not in df.columns:
             return df
 
-        df["Dias_Minimo"] = df["Categoria"].map(DIAS_MINIMOS_POR_CATEGORIA).fillna(float("inf"))
+        df["Dias_Minimo"] = df["Categoria"].map(self.dias_minimos_por_categoria).fillna(float("inf"))
         mascara = df["Dias_Historico"] >= df["Dias_Minimo"]
         removidos = len(df) - mascara.sum()
         if removidos:
@@ -364,7 +430,7 @@ class FiltroFundos:
             return df
 
         # Mesmo padrão vetorizado usado em filtrar_patrimonio_minimo.
-        cotistas_minimos = df["Categoria"].map(COTISTAS_MINIMOS_POR_CATEGORIA).fillna(float("inf"))
+        cotistas_minimos = df["Categoria"].map(self.cotistas_minimos_por_categoria).fillna(float("inf"))
         df["Cotistas_Minimo"] = cotistas_minimos.clip(lower=self.cotistas_global_minimo)
 
         mascara = df["Ultimo_Cotistas"] >= df["Cotistas_Minimo"]

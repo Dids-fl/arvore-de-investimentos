@@ -40,7 +40,7 @@ from .sharpe_sortino import calcular_indicadores_risco
 
 from .filtros import FiltroFundos, filtrar_para_ranking
 
-from .ranker import (
+from .ranker_fundos import (
     rankear_fundos,
     calcular_score,
     gerar_ranking,
