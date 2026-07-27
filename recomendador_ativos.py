@@ -3,20 +3,34 @@ Traduz o portfólio em sugestões de ativos específicos por classe.
 
 Classes suportadas e fonte dos dados
 ─────────────────────────────────────
-  acoes  → acoes_fiis.screener.top_acoes() (Fundamentus + BRAPI)
-  etf    → etfs.screener_etf.top_etfs()   (BRAPI /api/v2/tickers + yfinance)
-  fiis   → acoes_fiis.screener.top_fiis() (Fundamentus + fallback Status Invest)
-  cripto → cripto.screener_cripto.top_cripto() (CoinGecko)
-  rf     → rf_fundos.rf_dynamic.rankear_rf() (busca dinâmica em fontes online)
-  fundos → rf_fundos.rf_mercado.calcular_fundos() (taxas e spreads)
+  acoes          → acoes_fiis.screener.top_acoes()        (Fundamentus + BRAPI)
+  etf            → etfs.screener_etf.top_etfs()            (BRAPI /api/v2/tickers + yfinance)
+  fiis           → acoes_fiis.screener.top_fiis()           (Fundamentus + fallback Status Invest)
+  cripto         → cripto.screener_cripto.top_cripto()      (CoinGecko)
+  rf             → renda_fixa.ranker.rankear_rf()            (Tesouro Direto + Selic/CDI via BCB SGS)
+  fundos         → fundos.ranker_fundos.rankear_fundos()     (CVM: cadastro + informe diário, com Sharpe/Sortino)
+  estruturados   → produtos_estruturados.ranker.rankear_estruturados()
+                   (CRA/CRI/Debêntures via B3, biblioteca `mercados`)
+
+NOTA DE MANUTENÇÃO (2026):
+Este arquivo importava anteriormente de `rf_fundos.rf_mercado` e
+`rf_fundos.rf_dynamic` — módulos que não existem mais no repositório
+(sobra de uma refatoração anterior). As classes "rf" e "fundos" foram
+corrigidas para usar os módulos reais e atuais: `renda_fixa.ranker` e
+`fundos.ranker_fundos`. Esses módulos já fazem sua própria busca de
+Selic/CDI/indicadores internamente, então os parâmetros `selic`, `ipca`
+e `ibov_cagr` de `recomendar_por_portfolio()` são mantidos apenas por
+compatibilidade com as chamadas existentes em `main.py`/`app.py` — hoje
+eles não são mais repassados a "rf"/"fundos"/"estruturados".
 """
 
 from core.categorias import RK
 from acoes_fiis.screener import top_acoes, top_fiis, _score_acao
 from cripto.screener_cripto import top_cripto
-from rf_fundos.rf_mercado import calcular_fundos
-from rf_fundos.rf_dynamic import rankear_rf
 from etfs.screener_etf import top_etfs
+from renda_fixa.ranker import rankear_rf
+from fundos.ranker_fundos import rankear_fundos
+from produtos_estruturados.ranker import rankear_estruturados
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -43,39 +57,35 @@ _CLASSE: dict[str, str] = {
     RK.RF_SELIC_CDB:     "rf",
     RK.RF_IPCA:          "rf",
     RK.RF_RESERVA:       "rf",
+    RK.RF_REAVALIE:      "rf",
+    RK.RF_EQUILIBRIO:    "rf",
     RK.FUNDOS_RF:        "rf",
     RK.FUNDOS_RF_LIQ:    "rf",
     # Fundos
     RK.FUNDOS:           "fundos",
     RK.FUNDOS_DIVERSIF:  "fundos",
     RK.FUNDOS_MULTI:     "fundos",
+    # Produtos Estruturados (CRA / CRI / Debêntures)
+    RK.ESTRUTURADOS:     "estruturados",
 }
 
 _LABEL: dict[str, str] = {
-    "acoes":  "AÇÕES",
-    "etf":    "ETFs (Ranking Dinâmico)",
-    "fiis":   "FIIs",
-    "cripto": "CRIPTO",
-    "rf":     "RENDA FIXA",
-    "fundos": "FUNDOS",
+    "acoes":        "AÇÕES",
+    "etf":          "ETFs (Ranking Dinâmico)",
+    "fiis":         "FIIs",
+    "cripto":       "CRIPTO",
+    "rf":           "RENDA FIXA",
+    "fundos":       "FUNDOS",
+    "estruturados": "PRODUTOS ESTRUTURADOS (CRA/CRI/Debêntures)",
 }
 
 MIN_PCT = 5   # alocação mínima no portfólio para gerar sugestão da classe
 
-
-# ── Filtros de Fundos por perfil (mantido do rf_mercado) ────────────────────
-
-_FUNDOS_PERFIL: dict[int, list[str]] = {
-    1: ["FDO-RF", "FDO-PREV"],
-    2: ["FDO-MULTI", "FDO-DEBN", "FDO-RF", "FDO-PREV"],
-    3: ["FDO-LONG", "IVVB11", "FDO-MULTI", "FDO-DEBN"],
-}
-
-
-def _filtrar_fundos_por_perfil(todos: list[dict], perfil: int, n: int) -> list[dict]:
-    permitidos = set(_FUNDOS_PERFIL.get(perfil, _FUNDOS_PERFIL[2]))
-    filtrados = [f for f in todos if f.get("ticker") in permitidos]
-    return filtrados[:n]
+# Ordem de exibição/busca. "estruturados" fica perto de "fundos" por ter
+# risco/complexidade parecida (RK.ESTRUTURADOS tem nível de risco 2, mas
+# normalmente só aparece para perfil com conhecimento avançado — ver
+# recomendador.py).
+_ORDEM: list[str] = ["rf", "fundos", "estruturados", "fiis", "acoes", "etf", "cripto"]
 
 
 # ── Função principal ──────────────────────────────────────────────────────────
@@ -84,16 +94,25 @@ def recomendar_por_portfolio(
     portfolio: dict,
     perfil_risco: int,
     n: int = 5,
-    selic: float = 0.1425,
-    ipca: float = 0.044,
+    selic: float | None = None,
+    ipca: float | None = None,
     ibov_cagr: float | None = None,
 ) -> dict[str, list]:
     """
     Recebe o portfólio completo e retorna os top N ativos de cada classe
     que tiver alocação >= MIN_PCT no portfólio.
 
-    RF usa busca dinâmica (rankear_rf) com dados reais do Tesouro, Yubb, ANBIMA.
-    Fundos usam cálculos de retorno líquido real com base em taxas (rf_mercado).
+      rf           → renda_fixa.ranker.rankear_rf() — Tesouro Direto, com
+                      Selic/CDI buscados dinamicamente via BCB SGS.
+      fundos       → fundos.ranker_fundos.rankear_fundos() — pipeline
+                      interseção → pré-filtro → Sharpe/Sortino sobre dados
+                      reais da CVM.
+      estruturados → produtos_estruturados.ranker.rankear_estruturados() —
+                      CRA/CRI/Debêntures via B3 (biblioteca `mercados`).
+
+    `selic`, `ipca` e `ibov_cagr` são aceitos apenas por compatibilidade
+    com chamadas existentes (main.py/app.py); os rankers atuais buscam
+    seus próprios indicadores internamente e não usam esses argumentos.
     """
     classes: set[str] = {
         _CLASSE[rk]
@@ -104,10 +123,9 @@ def recomendar_por_portfolio(
     if not classes:
         return {}
 
-    ordem = ["rf", "fundos", "fiis", "acoes", "etf", "cripto"]
     resultado: dict[str, list] = {}
 
-    for classe in ordem:
+    for classe in _ORDEM:
         if classe not in classes:
             continue
         try:
@@ -124,12 +142,13 @@ def recomendar_por_portfolio(
                 resultado["cripto"] = top_cripto(perfil_risco, n=min(n, 4))
 
             elif classe == "rf":
-                # NOVA FONTE DINÂMICA
-                resultado["rf"] = rankear_rf(perfil_risco, n=n, selic=selic, ipca=ipca)
+                resultado["rf"] = rankear_rf(perfil=perfil_risco, limite=n)
 
             elif classe == "fundos":
-                todos_fundos = calcular_fundos(selic, ipca, ibov_cagr)
-                resultado["fundos"] = _filtrar_fundos_por_perfil(todos_fundos, perfil_risco, n)
+                resultado["fundos"] = rankear_fundos(perfil=perfil_risco, limite=n)
+
+            elif classe == "estruturados":
+                resultado["estruturados"] = rankear_estruturados(perfil=perfil_risco, limite=n)
 
         except Exception as e:
             logger.error(f"Erro ao buscar classe {classe}: {e}")
@@ -150,12 +169,15 @@ def recomendar_ativos(
     rec_key: str,
     perfil_risco: int,
     n: int = 5,
-    selic: float = 0.1425,
-    ipca: float = 0.044,
+    selic: float | None = None,
+    ipca: float | None = None,
     ibov_cagr: float | None = None,
 ) -> list[dict] | None:
     """
     Versão legada — prefira recomendar_por_portfolio().
+
+    `selic`, `ipca` e `ibov_cagr` aceitos apenas por compatibilidade (ver
+    nota em recomendar_por_portfolio).
     """
     classe = _CLASSE.get(rec_key)
     if classe is None:
@@ -170,9 +192,11 @@ def recomendar_ativos(
         if classe == "cripto":
             return top_cripto(perfil_risco, n=min(n, 4))
         if classe == "rf":
-            return rankear_rf(perfil_risco, n=n, selic=selic, ipca=ipca)
+            return rankear_rf(perfil=perfil_risco, limite=n)
         if classe == "fundos":
-            return _filtrar_fundos_por_perfil(calcular_fundos(selic, ipca, ibov_cagr), perfil_risco, n)
+            return rankear_fundos(perfil=perfil_risco, limite=n)
+        if classe == "estruturados":
+            return rankear_estruturados(perfil=perfil_risco, limite=n)
     except Exception as e:
         return [{"ticker": "ERRO", "score": 0, "preco": 0,
                  "nome": "", "motivos": [f"Falha: {e}"]}]
