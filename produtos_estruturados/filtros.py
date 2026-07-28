@@ -44,32 +44,27 @@ def motivo_inelegibilidade(ativo: dict, perfil: int) -> str | None:
     """Retorna o motivo (string) pelo qual o ativo seria descartado, ou
     None se ele for elegível. Usado tanto por `elegivel()` quanto para
     diagnóstico em `filtrar_para_ranking()`."""
+    # Sanidade primeiro: taxa implausível (>35% a.a. equivalente) é quase
+    # sempre outlier de dado (negócio isolado de baixíssimo volume, erro
+    # na B3) ou dívida em estado de distress real. Nos dois casos, não é
+    # apropriado ranquear como "melhor opção" para conservador/moderado.
+    # Agressivo pode ver (o investidor assume o risco conscientemente),
+    # mas o ativo fica marcado com `taxa_suspeita=True` para o front-end
+    # sinalizar isso claramente ao usuário.
+    if ativo.get("taxa_suspeita") and perfil != 3:
+        return "taxa_implausivel_possivel_outlier"
+
     prazo_dias = ativo.get("prazo_dias")
 
     if prazo_dias is None:
-        # Caso especial: CRA/CRI sem cadastro oficial (fallback via
-        # negociação balcão — securitizadoras() desatualizado). Não temos
-        # como saber o vencimento real, então:
-        #   - perfil conservador: exige certeza sobre o prazo -> descarta.
-        #   - moderado/agressivo: aceita SE houver negociação recente
-        #     comprovada (senão seria especular sobre um ativo sem nenhum
-        #     dado confiável). O score, em ranker.py, já aplica penalidade
-        #     adicional para compensar essa incerteza.
-        if ativo.get("sem_cadastro_oficial") and ativo.get("tipo") in ("CRA", "CRI"):
-            if perfil == 1:
-                return "sem_data_vencimento"
-            if not ativo.get("tem_negociacao_recente"):
-                return "sem_data_vencimento_e_sem_negociacao"
-            # segue para os demais checks (liquidez, taxa) normalmente
-        else:
-            return "sem_data_vencimento"
-    else:
-        if prazo_dias < PRAZO_MIN_DIAS:
-            return "prazo_curto_demais"
+        return "sem_data_vencimento"
 
-        prazo_max = PRAZO_MAX_DIAS_PERFIL.get(perfil)
-        if prazo_max is not None and prazo_dias > prazo_max:
-            return "prazo_longo_demais_para_perfil"
+    if prazo_dias < PRAZO_MIN_DIAS:
+        return "prazo_curto_demais"
+
+    prazo_max = PRAZO_MAX_DIAS_PERFIL.get(perfil)
+    if prazo_max is not None and prazo_dias > prazo_max:
+        return "prazo_longo_demais_para_perfil"
 
     minimo_liquidez = SCORE_LIQUIDEZ_MINIMO.get(perfil, 2.0)
     if ativo.get("score_liquidez", 0) < minimo_liquidez:

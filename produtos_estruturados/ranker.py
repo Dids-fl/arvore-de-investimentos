@@ -47,10 +47,44 @@ def _limitar(valor, minimo=0, maximo=10):
     return max(minimo, min(valor, maximo))
 
 
-def _score_taxa(taxa):
-    """Taxa aqui é o spread/rentabilidade negociado (ex.: %CDI, IPCA+x%).
-    Sem um benchmark único entre CRA/CRI/Debênture, normalizamos de forma
-    simples: taxa em % a.a. equivalente, capado em 15% para o score máximo."""
+def _score_taxa(ativo):
+    """
+    Score de taxa baseado no SPREAD sobre o CDI (taxa - CDI), não na taxa
+    absoluta. Isso resolve um problema real observado em produção: com
+    Selic/CDI em ~14%, um cap fixo em 15% saturava o score (=10) para
+    praticamente qualquer ativo decente, fazendo o ranking degenerar em
+    puro desempate por liquidez.
+
+        spread = taxa - cdi                      (em pontos percentuais)
+        score  = 5 (neutro, spread=0) + spread * (5 / FAIXA_SPREAD_MAX_PP)
+                 limitado a [0, 10]
+
+    FAIXA_SPREAD_MAX_PP = spread necessário para saturar o score em 10.
+    Calibrado com dados reais de produção (jul/2026): CRAs de agronegócio
+    negociados em balcão mostraram spreads de 5 a 11pp sobre o CDI. Com a
+    primeira versão (spread cru, sem escala) qualquer coisa acima de 5pp
+    já saturava — quase todo o top 10 saturava de novo. Com FAIXA=15pp,
+    a faixa observada (5-11pp) fica bem distribuída entre score 6.7 e 8.8,
+    sem saturar tudo.
+
+    ATENÇÃO — limitação metodológica real: spread mais alto não é
+    necessariamente "melhor". Pode refletir prêmio de risco de crédito
+    mais alto (emissor mais arriscado), não só "melhor negócio". Este
+    ranking não tem acesso a rating de crédito (não é fornecido pela B3
+    via `mercados`), então usa o spread como proxy de atratividade — é
+    uma simplificação, não uma medida de risco-retorno ajustada.
+
+    Fallback: se `spread_cdi_pp` não estiver disponível (CDI não pôde ser
+    buscado — ver indicadores.py::_obter_cdi_atual), usa a fórmula antiga
+    baseada em taxa absoluta, só para não quebrar o ranking.
+    """
+    FAIXA_SPREAD_MAX_PP = 15.0
+
+    spread = ativo.get("spread_cdi_pp")
+    if spread is not None:
+        return _limitar(5 + spread * (5 / FAIXA_SPREAD_MAX_PP))
+
+    taxa = ativo.get("taxa")
     if taxa is None:
         return 0.0
     return _limitar((float(taxa) / 15) * 10)
@@ -75,7 +109,7 @@ def _score_ir(isento_ir):
 def _calcular_score(ativo, perfil):
     pesos = PESOS[perfil]
     scores = {
-        "taxa": _score_taxa(ativo.get("taxa")),
+        "taxa": _score_taxa(ativo),
         "liquidez": _limitar(ativo.get("score_liquidez", 0.0)),
         "prazo": _score_prazo(ativo.get("prazo_dias"), perfil),
         "ir": _score_ir(ativo.get("isento_ir", False)),
@@ -85,14 +119,6 @@ def _calcular_score(ativo, perfil):
     # Penalidade: sem negociação recente (taxa é estimativa/inexistente)
     if not ativo.get("tem_negociacao_recente"):
         total *= 0.7
-
-    # Penalidade adicional: CRA/CRI sem cadastro oficial (fallback via
-    # negociação balcão) não tem vencimento confirmado — o investidor não
-    # sabe o prazo real do papel. Isso é uma limitação de dados, não do
-    # ativo em si, mas precisa refletir no score para não competir de
-    # igual para igual com ativos com prazo confirmado.
-    if ativo.get("sem_cadastro_oficial"):
-        total *= 0.8
 
     return round(total, 2), scores
 
@@ -166,5 +192,7 @@ if __name__ == "__main__":
     print("=" * 100)
     for pos, ativo in enumerate(ranking, start=1):
         print(f"\n{pos:02d}º [{ativo['tipo']}] {ativo['identificador']}")
-        print(f"    Score: {ativo['score']:.2f}  |  Taxa: {ativo.get('taxa')}  |  "
-              f"Isento IR: {ativo['isento_ir']}  |  Prazo: {ativo.get('prazo_dias')} dias")
+        prazo_txt = f"{ativo['prazo_dias']} dias" if ativo.get("prazo_dias") is not None else "desconhecido"
+        spread_txt = f"{ativo['spread_cdi_pp']:+.2f}pp CDI" if ativo.get("spread_cdi_pp") is not None else "n/d"
+        print(f"    Score: {ativo['score']:.2f}  |  Taxa: {ativo.get('taxa')} ({spread_txt})  |  "
+              f"Isento IR: {ativo['isento_ir']}  |  Prazo: {prazo_txt}")

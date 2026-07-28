@@ -17,7 +17,17 @@ from mercados.b3 import B3
 
 logger = logging.getLogger(__name__)
 
-INSTRUMENTOS_ALVO = {"CRA", "CRI", "DEBENTURE", "DEBÊNTURE"}
+# Códigos reais confirmados em produção (jul/2026), via inspeção direta
+# do campo `instrumento` retornado por negociacao_balcao(): a B3 usa
+# SIGLAS curtas, não os nomes por extenso. O código antigo comparava
+# "DEBENTURE" (nome por extenso) contra o valor real "DEB" (sigla) — como
+# "DEBENTURE" nunca é substring de "DEB", isso zerava 100% das debêntures
+# capturadas, sem gerar nenhum erro (falha silenciosa).
+#
+# Outros códigos que aparecem na mesma consulta (fora do escopo desta
+# categoria, mas documentados aqui para referência futura): CFF (Cédula
+# de Crédito Financeiro?), COE, CPR, LF, LIG, CDCA, CBIO, LFSN, NC, LFSC.
+INSTRUMENTOS_ALVO = {"CRA", "CRI", "DEB"}
 
 
 def _dias_uteis(dias: int, referencia: date = None):
@@ -41,8 +51,8 @@ def coletar_negociacao_balcao(dias: int = 20, referencia: date = None):
     for dia in _dias_uteis(dias, referencia):
         try:
             for neg in b3.negociacao_balcao(dia):
-                instrumento = (neg.instrumento or "").upper()
-                if any(alvo in instrumento for alvo in INSTRUMENTOS_ALVO):
+                instrumento = (neg.instrumento or "").strip().upper()
+                if instrumento in INSTRUMENTOS_ALVO:
                     negociacoes.append(neg)
         except Exception as e:
             logger.warning(f"Falha ao coletar negociação balcão de {dia}: {e}")

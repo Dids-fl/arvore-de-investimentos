@@ -54,25 +54,23 @@ def test_filtro_conservador_exige_mais_liquidez():
     assert elegivel(ativo_pouco_liquido, perfil=PERFIL_AGRESSIVO)
 
 
-def test_cra_sem_cadastro_oficial_passa_para_moderado_se_tem_negociacao():
-    ativo = _ativo_exemplo(
-        tipo="CRA", prazo_dias=None, sem_cadastro_oficial=True,
-        tem_negociacao_recente=True, score_liquidez=5.0,
-    )
-    assert elegivel(ativo, perfil=2)
-    assert not elegivel(ativo, perfil=1)  # conservador exige prazo conhecido
-
-
-def test_cra_sem_cadastro_oficial_e_sem_negociacao_e_descartado():
-    # Sem cadastro E sem negociação = nenhum dado confiável, descarta em
-    # qualquer perfil (mesmo agressivo, que tolera prazo desconhecido mas
-    # não tolera ausência TOTAL de dado de mercado).
-    ativo = _ativo_exemplo(
-        tipo="CRA", prazo_dias=None, sem_cadastro_oficial=True,
-        tem_negociacao_recente=False, score_liquidez=0.0,
-    )
+def test_ativo_sem_prazo_e_sempre_descartado_em_qualquer_perfil():
+    # Sem fallback/mock: se o cadastro (CRA, CRI ou debênture) não trouxe
+    # data de vencimento, o ativo é descartado em qualquer perfil — não
+    # existe mais exceção especial para CRA/CRI "sem cadastro oficial".
+    ativo = _ativo_exemplo(tipo="CRA", prazo_dias=None)
+    assert not elegivel(ativo, perfil=1)
     assert not elegivel(ativo, perfil=2)
     assert not elegivel(ativo, perfil=3)
+
+
+def test_taxa_suspeita_descartada_no_moderado_mas_visivel_no_agressivo():
+    # Caso real de produção: CRA com taxa equivalente de 46,58% a.a.
+    # (outlier / possível erro de dado) no topo do ranking moderado.
+    ativo = _ativo_exemplo(taxa=46.58, taxa_suspeita=True)
+    assert not elegivel(ativo, perfil=1)
+    assert not elegivel(ativo, perfil=2)
+    assert elegivel(ativo, perfil=3)
 
 
 def test_montar_indicadores_gera_um_registro_por_ativo():

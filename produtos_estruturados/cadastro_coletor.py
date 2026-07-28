@@ -90,6 +90,13 @@ def _baixar_cadastro():
     b3 = B3()
 
     securitizadoras = _coletar_securitizadoras(b3)
+    logger.info(f"Securitizadoras encontradas: {len(securitizadoras)}")
+    if not securitizadoras:
+        logger.warning(
+            "securitizadoras() retornou vazio SEM lançar exceção — isso pode "
+            "ser instabilidade pontual da rede da B3 (mesmo com o patch "
+            "aplicado) em vez de um erro de código. Tente rodar de novo."
+        )
     cras, cris = _coletar_cras_cris(b3, securitizadoras)
     debentures = _coletar_debentures(b3)
 

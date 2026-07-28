@@ -31,6 +31,15 @@ logger = logging.getLogger(__name__)
 # sempre "% do CDI" (ex.: 89,99 = 89,99% do CDI), não uma taxa direta.
 LIMIAR_PROVAVEL_PERCENTUAL_CDI = 30.0
 
+# Sanidade: nenhum CRA/CRI/Debênture real negocia normalmente a mais de
+# ~20pp acima do CDI em condições de mercado usuais — isso seria dívida
+# de altíssimo risco (quase distressed) ou, mais provavelmente, um
+# artefato de dado (negócio isolado de baixíssimo volume, erro de
+# digitação na B3, etc.). Validado em produção (jul/2026): um CRA
+# apareceu com taxa equivalente de 46,58% a.a. (+32,43pp sobre o CDI) no
+# topo do ranking — earmark clássico de outlier, não de "melhor ativo".
+LIMIAR_TAXA_SUSPEITA_PP = 35.0
+
 
 def _normalizar_taxa(taxa_bruta, cdi_atual: float | None):
     """
@@ -155,42 +164,20 @@ def _score_liquidez(n_negocios: int, volume_total: float) -> float:
     return round(score_freq + score_vol, 2)
 
 
-def _fallback_cra_cri_via_negociacao(negociacao_agregada: dict) -> list[dict]:
-    """
-    Usado quando `cadastro['cras']`/`cadastro['cris']` vêm vazios (endpoint
-    `securitizadoras()` desatualizado — caso confirmado em produção).
-    Reconstrói um cadastro mínimo de CRA/CRI a partir dos próprios negócios
-    de balcão coletados, que já trazem instrumento, ISIN e emissor.
-
-    Limitação conhecida: só cobre ativos que negociaram na janela
-    consultada (ex.: últimos 20 dias) — não é o cadastro completo, mas
-    evita ficar com 0 CRA/CRI quando eles claramente existem e negociam
-    (como visto no log real: BRIMWLCRA1A7, BRRBRACIR2E1 etc.).
-    """
-    fallback = []
-    for isin, dados in negociacao_agregada.items():
-        instrumento = (dados.get("instrumento") or "").upper()
-        if instrumento not in ("CRA", "CRI"):
-            continue
-        fallback.append({
-            "isin": isin,
-            "_tipo": instrumento,
-            "emissor": dados.get("emissor"),
-            # Sem cadastro oficial não temos data de vencimento — fica None
-            # e o filtro por prazo trata isso corretamente (ver filtros.py).
-            "_origem": "negociacao_balcao (fallback, sem cadastro oficial)",
-        })
-    return fallback
-
-
 def montar_indicadores(cadastro: dict, negociacao_agregada: dict) -> list[dict]:
     """
     Retorna uma lista de dicts, um por ativo (CRA, CRI ou Debênture), com:
         tipo, identificador, emissor, isin, taxa, prazo_dias, isento_ir,
         score_liquidez, tem_negociacao_recente
-    Ativos sem ISIN localizável na negociação recente entram com
-    score_liquidez=0 e tem_negociacao_recente=False (ainda participam do
-    ranking, mas perdem pontos de liquidez — ver produtos_estruturados/filtros.py).
+
+    CRA/CRI dependem inteiramente do que `mercados.b3.B3.securitizadoras()`
+    /`cras()`/`cris()` retornarem — sem fallback, sem mock. Se o endpoint
+    da B3 estiver com problema (caso conhecido em jul/2026: retorna vazio
+    para todas as securitizadoras), `cadastro['cras']`/`cadastro['cris']`
+    simplesmente vêm vazios e esta função não gera nenhum ativo CRA/CRI —
+    o sistema segue funcionando normalmente só com debêntures. Quando a
+    lib for corrigida (nova versão via `pip install -U mercados`), CRA/CRI
+    voltam a aparecer automaticamente, sem precisar mudar nada aqui.
     """
     ativos = []
     cdi_atual = _obter_cdi_atual()
@@ -199,32 +186,26 @@ def montar_indicadores(cadastro: dict, negociacao_agregada: dict) -> list[dict]:
     cris = cadastro.get("cris", [])
 
     if not cras and not cris:
-        logger.warning(
-            "Cadastro de CRA/CRI veio vazio (securitizadoras() desatualizado?). "
-            "Usando fallback via negociação balcão — cobertura parcial."
+        logger.info(
+            "Nenhum CRA/CRI retornado pela lib mercados (cadastro['cras']/"
+            "['cris'] vazios). Ranking segue só com debêntures até a lib "
+            "cobrir CRA/CRI corretamente."
         )
-        fallback = _fallback_cra_cri_via_negociacao(negociacao_agregada)
-        cras = [f for f in fallback if f["_tipo"] == "CRA"]
-        cris = [f for f in fallback if f["_tipo"] == "CRI"]
 
     for tipo, registros in (("CRA", cras), ("CRI", cris)):
         for reg in registros:
             isin = _buscar_campo(reg, _CANDIDATOS_ISIN) or reg.get("isin")
             neg = negociacao_agregada.get(isin, {}) if isin else {}
             vencimento = _buscar_campo(reg, _CANDIDATOS_VENCIMENTO)
-            nome_base = (
-                _buscar_campo(reg, _CANDIDATOS_IDENTIFICADOR)
-                or _buscar_campo(reg, _CANDIDATOS_EMISSOR)
-                or isin
-            )
             taxa_bruta = neg.get("taxa_ultima")
             taxa, indexador_estimado = _normalizar_taxa(taxa_bruta, cdi_atual)
             ativos.append({
                 "tipo": tipo,
-                # Inclui o ISIN no identificador: com o fallback, vários
-                # ativos do mesmo emissor (mesma securitizadora) ficam sem
-                # nome individual — só o ISIN distingue um do outro.
-                "identificador": f"{nome_base} — {isin}" if isin and isin not in str(nome_base) else nome_base,
+                "identificador": (
+                    _buscar_campo(reg, _CANDIDATOS_IDENTIFICADOR)
+                    or _buscar_campo(reg, _CANDIDATOS_EMISSOR)
+                    or isin
+                ),
                 "emissor": _buscar_campo(reg, _CANDIDATOS_EMISSOR) or reg.get("_securitizadora_cnpj"),
                 "isin": isin,
                 "vencimento": vencimento,
@@ -233,14 +214,11 @@ def montar_indicadores(cadastro: dict, negociacao_agregada: dict) -> list[dict]:
                 "taxa": taxa,
                 "taxa_bruta": taxa_bruta,
                 "indexador_estimado": indexador_estimado,
+                "spread_cdi_pp": round(taxa - cdi_atual * 100, 2) if (taxa is not None and cdi_atual) else None,
+                "taxa_suspeita": taxa is not None and taxa > LIMIAR_TAXA_SUSPEITA_PP,
                 "score_liquidez": _score_liquidez(neg.get("n_negocios", 0), neg.get("volume_total", 0.0)),
                 "tem_negociacao_recente": isin in negociacao_agregada,
-                "fonte": reg.get("_origem", "mercados/B3"),
-                # True quando o registro veio do fallback de negociação
-                # balcão (sem cadastro oficial de CRA/CRI — endpoint
-                # securitizadoras() desatualizado). Nesses casos não temos
-                # como saber a data de vencimento real.
-                "sem_cadastro_oficial": "_origem" in reg,
+                "fonte": "mercados/B3",
             })
 
     for reg in cadastro.get("debentures", []):
@@ -264,10 +242,11 @@ def montar_indicadores(cadastro: dict, negociacao_agregada: dict) -> list[dict]:
             "taxa": taxa,
             "taxa_bruta": taxa_bruta,
             "indexador_estimado": indexador_estimado,
+            "spread_cdi_pp": round(taxa - cdi_atual * 100, 2) if (taxa is not None and cdi_atual) else None,
+            "taxa_suspeita": taxa is not None and taxa > LIMIAR_TAXA_SUSPEITA_PP,
             "score_liquidez": _score_liquidez(neg.get("n_negocios", 0), neg.get("volume_total", 0.0)),
             "tem_negociacao_recente": isin in negociacao_agregada,
             "fonte": "mercados/B3",
-            "sem_cadastro_oficial": False,
         })
 
     sem_vencimento = sum(1 for a in ativos if a["prazo_dias"] is None)
