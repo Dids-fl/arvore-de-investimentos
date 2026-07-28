@@ -195,26 +195,25 @@ def recomendar_ativos(
 
     `selic`, `ipca` e `ibov_cagr` aceitos apenas por compatibilidade (ver
     nota em recomendar_por_portfolio).
+
+    Sem mock/fallback: se a fonte falhar, propaga a exceção para o
+    chamador em vez de devolver um item fake "ERRO" na lista.
     """
     classe = _CLASSE.get(rec_key)
     if classe is None:
         return None
-    try:
-        if classe == "acoes":
-            return top_acoes(perfil_risco, n=n)
-        if classe == "etf":
-            return top_etfs(perfil_risco, n=min(n, 5))
-        if classe == "fiis":
-            return top_fiis(perfil_risco, n=n)
-        if classe == "cripto":
-            return top_cripto(perfil_risco, n=min(n, 4))
-        if classe == "rf":
-            return rankear_rf(perfil=perfil_risco, limite=n)
-        if classe == "fundos":
-            return rankear_fundos(perfil=perfil_risco, limite=n)
-        if classe == "estruturados":
-            return rankear_estruturados(perfil=perfil_risco, limite=n)
-    except Exception as e:
-        return [{"ticker": "ERRO", "score": 0, "preco": 0,
-                 "nome": "", "motivos": [f"Falha: {e}"]}]
+    if classe == "acoes":
+        return top_acoes(perfil_risco, n=n)
+    if classe == "etf":
+        return top_etfs(perfil_risco, n=min(n, 5))
+    if classe == "fiis":
+        return top_fiis(perfil_risco, n=n)
+    if classe == "cripto":
+        return top_cripto(perfil_risco, n=min(n, 4))
+    if classe == "rf":
+        return rankear_rf(perfil=perfil_risco, limite=n)
+    if classe == "fundos":
+        return rankear_fundos(perfil=perfil_risco, limite=n)
+    if classe == "estruturados":
+        return rankear_estruturados(perfil=perfil_risco, limite=n)
     return None

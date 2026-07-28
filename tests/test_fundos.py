@@ -69,45 +69,61 @@ def sample_df_cadastro():
 
 @pytest.fixture
 def mock_coletor():
-    """Mock dos coletores para testar o ranker."""
-    with patch("fundos.ranker.listar_fundos_ativos") as mock_listar:
-        with patch("fundos.ranker.listar_historicos") as mock_historico:
-            # Cria dados mock diretamente
-            df_cad = pd.DataFrame({
-                "CNPJ_Classe": ["00.000.000/0001-00", "00.000.000/0001-01"],
-                "Denominacao_Social": ["Fundo A", "Fundo B"],
-                "Situacao": ["EM FUNCIONAMENTO NORMAL"] * 2,
-                "Classificacao_Anbima": ["Renda Fixa", "Ações"],
-                "Patrimonio_Liquido": [500000000, 200000000],
-            })
-            mock_listar.return_value = df_cad
+    """
+    Mock do pipeline real do ranker (fundos/ranker_fundos.py):
+      1. carregar_interseccao_dataframe() -> fundos com cadastro + informe
+      2. listar_metricas_agregadas(cnpjs) -> métricas agregadas (pré-filtro)
+      3. filtrar_para_ranking(...)        -> aplica o FiltroFundos por perfil
+      4. listar_historicos(cnpjs)         -> histórico diário de cotas
 
-            # Cria dados de cotas mock
-            np.random.seed(42)
-            datas = pd.date_range("2024-01-01", periods=252, freq="B")
-            cotas1 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
-            cotas2 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
-            df1 = pd.DataFrame({
-                "CNPJ_Classe": ["00.000.000/0001-00"] * 252,
-                "Data_Competencia": datas,
-                "Valor_Cota": cotas1,
-                "Patrimonio_Liquido": cotas1 * 1000000,
-                "Captacao_Dia": 0,
-                "Resgate_Dia": 0,
-                "Numero_Cotistas": 500,
-            })
-            df2 = pd.DataFrame({
-                "CNPJ_Classe": ["00.000.000/0001-01"] * 252,
-                "Data_Competencia": datas,
-                "Valor_Cota": cotas2,
-                "Patrimonio_Liquido": cotas2 * 1000000,
-                "Captacao_Dia": 0,
-                "Resgate_Dia": 0,
-                "Numero_Cotistas": 300,
-            })
-            df_hist = pd.concat([df1, df2], ignore_index=True)
-            mock_historico.return_value = df_hist
-            yield
+    (Corrigido: a versão anterior desta fixture fazia patch de
+    "fundos.ranker.listar_fundos_ativos", um módulo/função que não existe
+    mais no projeto — sobra de uma refatoração anterior, o mesmo problema
+    documentado no topo de recomendador_ativos.py.)
+    """
+    df_cad = pd.DataFrame({
+        "CNPJ_Classe": ["00.000.000/0001-00", "00.000.000/0001-01"],
+        "Denominacao_Social": ["Fundo A", "Fundo B"],
+        "Situacao": ["EM FUNCIONAMENTO NORMAL"] * 2,
+        "Classificacao_Anbima": ["Renda Fixa", "Ações"],
+        "Patrimonio_Liquido": [500000000, 200000000],
+    })
+
+    # Dados de cotas mock
+    np.random.seed(42)
+    datas = pd.date_range("2024-01-01", periods=252, freq="B")
+    cotas1 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
+    cotas2 = 100 * (1 + np.random.normal(0.0005, 0.01, 252)).cumprod()
+    df1 = pd.DataFrame({
+        "CNPJ_Classe": ["00.000.000/0001-00"] * 252,
+        "Data_Competencia": datas,
+        "Valor_Cota": cotas1,
+        "Patrimonio_Liquido": cotas1 * 1000000,
+        "Captacao_Dia": 0,
+        "Resgate_Dia": 0,
+        "Numero_Cotistas": 500,
+    })
+    df2 = pd.DataFrame({
+        "CNPJ_Classe": ["00.000.000/0001-01"] * 252,
+        "Data_Competencia": datas,
+        "Valor_Cota": cotas2,
+        "Patrimonio_Liquido": cotas2 * 1000000,
+        "Captacao_Dia": 0,
+        "Resgate_Dia": 0,
+        "Numero_Cotistas": 300,
+    })
+    df_hist = pd.concat([df1, df2], ignore_index=True)
+
+    # df_metricas só precisa existir (não-vazio) — o pré-filtro real
+    # (filtrar_para_ranking) também é mockado abaixo para não depender
+    # das colunas exatas que o SQL de produção geraria.
+    df_metricas = pd.DataFrame({"CNPJ_Classe": df_cad["CNPJ_Classe"]})
+
+    with patch("fundos.ranker_fundos.carregar_interseccao_dataframe", return_value=df_cad), \
+         patch("fundos.ranker_fundos.listar_metricas_agregadas", return_value=df_metricas), \
+         patch("fundos.ranker_fundos.filtrar_para_ranking", return_value=df_cad), \
+         patch("fundos.ranker_fundos.listar_historicos", return_value=df_hist):
+        yield
 
 
 # ---------------------------------------------------------------------
@@ -142,8 +158,9 @@ class TestUtils:
     def test_retorno_periodo(self):
         from fundos.utils import retorno_periodo
         cotas = pd.Series([100, 101, 102, 103, 104, 105])
-        # Últimos 2 dias: 105 / 104 - 1 = 0.0096153846
-        assert retorno_periodo(cotas, 2) == pytest.approx(105/104 - 1, rel=1e-6)
+        # Retorno dos últimos 2 dias: compara o preço atual (105) com o
+        # preço de 2 dias atrás (103) -> 105 / 103 - 1 = 0.019417...
+        assert retorno_periodo(cotas, 2) == pytest.approx(105/103 - 1, rel=1e-6)
 
     def test_cagr(self, sample_cotas):
         from fundos.utils import cagr

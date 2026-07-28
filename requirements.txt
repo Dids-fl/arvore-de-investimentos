@@ -1,15 +1,22 @@
-requests>=2.28.0
-urllib3>=1.26.0
-yfinance>=0.2.0
-python-dotenv>=1.0.0
-pytest>=7.0.0
-beautifulsoup4>=4.12.0
-streamlit>=1.28.0
-pandas>=2.0.0
-plotly>=5.17.0
-lxml>=4.9.0
-pytest>=7.0.0
-python-bcb
-mercados>=0.1.0
+# ── Core ──────────────────────────────────────────────────────────────
+requests>=2.28.0       # Requisições HTTP (API BCB, BRAPI, Tesouro, etc.)
+yfinance>=0.2.0        # Cotações de ETFs e ações (Yahoo Finance)
+python-bcb             # Taxa CDI/Selic via BCB (SGS)
+mercados>=0.1.0        # Produtos estruturados (CRI, CRA, Debêntures) via B3
+
+# ── Dados e Análise ────────────────────────────────────────────────────
+pandas>=2.0.0          # Manipulação de dados (DataFrames)
+plotly>=5.17.0         # Gráficos interativos no Streamlit
+python-dotenv>=1.0.0   # Variáveis de ambiente (.env)
+
+# ── Scraping (se necessário) ───────────────────────────────────────────
+beautifulsoup4>=4.12.0 # Parsing de HTML (fallback para scraping manual)
+lxml>=4.9.0            # Parser HTML (usado com BeautifulSoup)
+
+# ── Interface Web ──────────────────────────────────────────────────────
+streamlit>=1.28.0      # Dashboard e interface interativa
+
+# ── Testes ─────────────────────────────────────────────────────────────
+pytest>=7.0.0          # Framework de testes (com marcador @pytest.mark.slow)
 
 # pip install -r requirements.txt
