@@ -32,6 +32,7 @@ from renda_fixa.ranker import rankear_rf
 from fundos.ranker_fundos import rankear_fundos
 from produtos_estruturados.ranker import rankear_estruturados
 from utils.logging_config import get_logger
+from utils.exceptions import DadosIndisponiveisError
 
 logger = get_logger(__name__)
 
@@ -123,7 +124,26 @@ def recomendar_por_portfolio(
     if not classes:
         return {}
 
+    resultado, indisponiveis = _buscar_classes(classes, perfil_risco, n)
+    resultado["_indisponiveis"] = indisponiveis
+    return resultado
+
+
+def _buscar_classes(
+    classes: set[str], perfil_risco: int, n: int
+) -> tuple[dict[str, list], dict[str, str]]:
+    """
+    Busca cada classe solicitada em sua fonte online real.
+
+    Não há mock nem fallback: se uma fonte falhar (`DadosIndisponiveisError`
+    ou qualquer exceção), a classe correspondente NÃO aparece na lista de
+    ativos (nunca é preenchida com um item fake tipo "ERRO"). Em vez disso,
+    é registrada em `indisponiveis` com o motivo, para que a camada de
+    apresentação (CLI/webapp) mostre um aviso claro e separado dos ativos
+    de verdade.
+    """
     resultado: dict[str, list] = {}
+    indisponiveis: dict[str, str] = {}
 
     for classe in _ORDEM:
         if classe not in classes:
@@ -150,17 +170,14 @@ def recomendar_por_portfolio(
             elif classe == "estruturados":
                 resultado["estruturados"] = rankear_estruturados(perfil=perfil_risco, limite=n)
 
+        except DadosIndisponiveisError as e:
+            logger.warning(f"Classe {classe} indisponível: {e}")
+            indisponiveis[classe] = str(e)
         except Exception as e:
             logger.error(f"Erro ao buscar classe {classe}: {e}")
-            resultado[classe] = [{
-                "ticker": "ERRO",
-                "score": 0,
-                "preco": 0,
-                "nome": "",
-                "motivos": [f"Falha ao buscar dados: {e}"],
-            }]
+            indisponiveis[classe] = f"Falha inesperada ao buscar dados: {e}"
 
-    return resultado
+    return resultado, indisponiveis
 
 
 # ── Versão legada (compatibilidade) ──────────────────────────────────────────

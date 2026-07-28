@@ -11,12 +11,11 @@ IR_PGBL  = 0.10
 IR_LCI   = 0.00
 IR_FII   = 0.10
 
-# ── Taxas de fallback (usadas quando as APIs estão indisponíveis) ─────────────
-FB_SELIC = 0.1075
-FB_IPCA  = 0.0450
-FB_IBOV  = 0.09
-
 # ── Configurações de timeout e retry ────────────────────────────────────────────
+# NOTA: este projeto não usa taxas fixas de fallback (SELIC/IPCA/IBOV).
+# Se as fontes online (BCB/SGS, Focus, Yahoo Finance) estiverem indisponíveis,
+# `mercado.load_market_data()` levanta `DadosIndisponiveisError` em vez de
+# substituir por um número hardcoded — ver utils/exceptions.py.
 REQUEST_TIMEOUT = (5.0, 10.0)   # connect, read
 MAX_RETRIES = 3
 RETRY_BACKOFF = 0.5

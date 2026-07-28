@@ -9,8 +9,9 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from config import FB_SELIC, FB_IPCA, FB_IBOV, REQUEST_TIMEOUT, MAX_RETRIES, RETRY_BACKOFF
+from config import REQUEST_TIMEOUT, MAX_RETRIES, RETRY_BACKOFF
 from utils.logging_config import get_logger
+from utils.exceptions import DadosIndisponiveisError
 
 logger = get_logger(__name__)
 
@@ -30,7 +31,7 @@ try:
     _YFINANCE = True
 except ImportError:
     _YFINANCE = False
-    logger.warning("yfinance não instalado. Ibovespa CAGR usará fallback.")
+    logger.warning("yfinance não instalado. Não será possível obter o CAGR do Ibovespa.")
 
 # ── Cache em disco ────────────────────────────────────────────────────────────
 CACHE_FILE = Path.home() / ".cache" / "recomendador_investimentos_market.json"
@@ -141,13 +142,34 @@ def load_market_data() -> dict:
     focus_val = results.get("focus_selic")
     ibov_raw  = results.get("ibov_cagr")
 
-    selic_val, data_ref = selic_raw if selic_raw is not None else (FB_SELIC, datetime.date.today().strftime("%d/%m/%Y"))
-    ipca_val,  _        = ipca_raw  if ipca_raw  is not None else (FB_IPCA,  data_ref)
-    ibov_val            = ibov_raw  if ibov_raw  is not None else FB_IBOV
+    # SELIC e IPCA são obrigatórios para qualquer cálculo de projeção.
+    # Sem fallback fixo: se a fonte online (BCB/SGS) falhar, o sistema
+    # deve parar e avisar claramente, nunca inventar um número.
+    if selic_raw is None:
+        raise DadosIndisponiveisError(
+            "SELIC (BCB/SGS série 432)",
+            "API indisponível ou sem valor válido nas últimas consultas.",
+        )
+    if ipca_raw is None:
+        raise DadosIndisponiveisError(
+            "IPCA 12m (BCB/SGS série 13522)",
+            "API indisponível ou sem valor válido nas últimas consultas.",
+        )
+    # Ibovespa CAGR 10a é obrigatório para taxas de perfil médio/alto risco.
+    if ibov_raw is None:
+        raise DadosIndisponiveisError(
+            "Ibovespa CAGR 10a (Yahoo Finance/yfinance)",
+            "yfinance não instalado, sem dados suficientes, ou fonte indisponível.",
+        )
+
+    selic_val, data_ref = selic_raw
+    ipca_val,  _         = ipca_raw
+    ibov_val             = ibov_raw
 
     fontes = [
         f"SELIC {selic_val*100:.2f}% a.a. — BCB/SGS série 432 (ref. {data_ref})",
         f"IPCA 12m {ipca_val*100:.2f}% a.a. — BCB/SGS série 13522",
+        f"Ibovespa CAGR 10a {ibov_val*100:.1f}% a.a. — Yahoo Finance/yfinance",
     ]
     avisos = []
 
@@ -155,11 +177,6 @@ def load_market_data() -> dict:
         fontes.append(f"Previsão SELIC Focus {focus_val*100:.2f}% a.a. — BCB/Olinda")
     else:
         avisos.append("⚠️  Focus indisponível; usando SELIC atual sem média de expectativa.")
-
-    if ibov_raw is not None:
-        fontes.append(f"Ibovespa CAGR 10a {ibov_val*100:.1f}% a.a. — Yahoo Finance/yfinance")
-    else:
-        avisos.append(f"⚠️  Ibovespa CAGR: fallback histórico {FB_IBOV*100:.1f}% a.a.")
 
     payload = {
         "selic":       selic_val,

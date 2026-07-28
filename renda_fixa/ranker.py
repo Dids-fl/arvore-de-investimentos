@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime
 from .coletor import coletar_indicadores, coletar_tesouro
+from utils.exceptions import DadosIndisponiveisError
 
 logger = logging.getLogger(__name__)
 
@@ -85,24 +86,23 @@ def _processar_tesouro(titulos_brutos):
 def rankear_rf(perfil: int = 2, limite: int = 5):
     """
     Retorna recomendações de Renda Fixa (apenas Tesouro Direto).
-    Se a API falhar, retorna lista vazia.
+
+    Sem fallback fixo: se SELIC/CDI não puderem ser obtidos online,
+    propaga DadosIndisponiveisError (o chamador — recomendador_ativos —
+    decide como comunicar isso ao usuário). Se o Tesouro Direto não
+    retornar títulos, retorna lista vazia (não é uma falha de fonte,
+    apenas ausência de produtos elegíveis no momento).
     """
-    try:
-        selic, cdi = coletar_indicadores()
-        if not cdi or cdi < 0.01:
-            cdi = 0.105
-        titulos = coletar_tesouro()
+    # Não silencia: se a SGS falhar, a exceção sobe naturalmente.
+    selic, cdi = coletar_indicadores()
 
-        if titulos:
-            produtos = _processar_tesouro(titulos)
-            for p in produtos:
-                p["prazo_dias"] = _calcular_prazo_dias(p.get("vencimento"))
-                p["score"] = _calcular_score(p, perfil)
-            return sorted(produtos, key=lambda x: x.get("score", 0), reverse=True)[:limite]
-        else:
-            logger.warning("Nenhum título do Tesouro obtido.")
-            return []
-
-    except Exception as e:
-        logger.error(f"Erro ao obter recomendações de Renda Fixa: {e}")
+    titulos = coletar_tesouro()
+    if not titulos:
+        logger.warning("Nenhum título do Tesouro obtido (fonte online sem dados no momento).")
         return []
+
+    produtos = _processar_tesouro(titulos)
+    for p in produtos:
+        p["prazo_dias"] = _calcular_prazo_dias(p.get("vencimento"))
+        p["score"] = _calcular_score(p, perfil)
+    return sorted(produtos, key=lambda x: x.get("score", 0), reverse=True)[:limite]

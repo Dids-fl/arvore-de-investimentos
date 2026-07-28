@@ -15,6 +15,7 @@ from recomendador import calcular_recomendacao
 from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador_ativos import recomendar_por_portfolio, _LABEL, MIN_PCT
 from utils.logging_config import setup_logging
+from utils.exceptions import DadosIndisponiveisError
 
 # Configuração da página
 st.set_page_config(
@@ -33,7 +34,17 @@ st.markdown("**Análise completa de perfil – versão web**")
 def get_market_data():
     return load_market_data()
 
-market_data = get_market_data()
+try:
+    market_data = get_market_data()
+except DadosIndisponiveisError as e:
+    st.error(
+        "❌ Não foi possível obter dados de mercado em tempo real "
+        f"(SELIC/IPCA/Ibovespa): {e}\n\n"
+        "Este sistema não usa valores fixos como substituto. "
+        "Verifique sua conexão e tente novamente em instantes."
+    )
+    st.stop()
+
 selic = market_data["selic"]
 ipca = market_data["ipca"]
 ibov_cagr = market_data["ibov_cagr"]
@@ -169,11 +180,13 @@ def gerar_recomendacao(respostas):
     }
 
     ativos_sugeridos = {}
+    classes_indisponiveis = {}
     if classes_no_portfolio:
         ativos_sugeridos = recomendar_por_portfolio(
             portfolio, nivel_risco_perfil,
             selic=selic, ipca=ipca, ibov_cagr=ibov_cagr
         )
+        classes_indisponiveis = ativos_sugeridos.pop("_indisponiveis", {})
 
     rlabel = {1: "Conservador", 2: "Moderado", 3: "Agressivo"}
     perfil_risco_label = rlabel[nivel_risco_perfil]
@@ -197,6 +210,7 @@ def gerar_recomendacao(respostas):
         "aporte_mensal": aporte_mensal,
         "ativos": ativos_sugeridos,
         "classes": classes_no_portfolio,
+        "classes_indisponiveis": classes_indisponiveis,
     }
 
 # ── Interface do usuário ─────────────────────────────────────────────────────
@@ -421,7 +435,14 @@ if submitted:
                     st.dataframe(df_ativos[colunas_existentes], hide_index=True, use_container_width=True)
     else:
         st.info("Nenhuma classe de ativo com alocação significativa para sugerir.")
-    
+
+    classes_indisp = resultado.get("classes_indisponiveis", {})
+    if classes_indisp:
+        st.warning("⚠️ Fontes de dados indisponíveis no momento (sem mock/fallback):")
+        for classe, motivo in classes_indisp.items():
+            label = _LABEL.get(classe, classe.upper())
+            st.caption(f"• **{label}**: {motivo}")
+
     st.divider()
     
     # ── Avisos ─────────────────────────────────────────────────────────────────

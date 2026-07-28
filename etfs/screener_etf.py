@@ -11,29 +11,9 @@ import numpy as np
 from typing import List, Dict
 
 from utils.logging_config import get_logger
+from utils.exceptions import DadosIndisponiveisError
 
 logger = get_logger(__name__)
-
-# ── Taxas de administração conhecidas (fallback) ─────────────────────────────
-TAXAS_ADMIN_FALLBACK = {
-    "BOVA11": 0.30,
-    "BOVV11": 0.05,
-    "IVVB11": 0.24,
-    "SMAL11": 0.40,
-    "HASH11": 0.50,
-    "BITH11": 0.50,
-    "USDB11": 0.20,
-    "DIVO11": 0.30,
-    "GOLD11": 0.40,
-    "META11": 0.40,
-    "NASD11": 0.30,
-    "SPXI11": 0.30,
-    "PIBB11": 0.30,
-    "XFIX11": 0.40,
-}
-TAXA_PADRAO = 0.50
-
-_FALLBACK_ETFs = list(TAXAS_ADMIN_FALLBACK.keys())
 
 REF_ETF = {
     "retorno_12m": {"bom": 30.0, "ruim": -10.0},
@@ -108,18 +88,18 @@ def get_all_etf_tickers() -> List[str]:
 
     try:
         etfs = _get_etfs_from_brapi()
-        if etfs:
-            # Opcional: filtrar por liquidez e pré-selecionar
-            _CACHE_ETFS = etfs
-            _CACHE_TIMESTAMP = time.time()
-            return etfs
     except Exception as e:
-        logger.warning(f"Falha ao obter ETFs via BRAPI: {e}")
+        raise DadosIndisponiveisError("Lista de ETFs (BRAPI /api/v2/tickers)", str(e)) from e
 
-    logger.warning("Usando lista fixa de ETFs (fallback).")
-    _CACHE_ETFS = _FALLBACK_ETFs
+    if not etfs:
+        raise DadosIndisponiveisError(
+            "Lista de ETFs (BRAPI /api/v2/tickers)",
+            "API não retornou nenhum ETF no momento.",
+        )
+
+    _CACHE_ETFS = etfs
     _CACHE_TIMESTAMP = time.time()
-    return _FALLBACK_ETFs
+    return etfs
 
 def get_etf_data(ticker: str, period: str = "1y") -> Dict:
     try:
@@ -141,10 +121,11 @@ def get_etf_data(ticker: str, period: str = "1y") -> Dict:
         volume_medio = hist['Volume'].mean() * prices.iloc[-1]
         taxa = info.get("annualReportExpenseRatio")
         if taxa is None:
-            ticker_clean = ticker.replace(".SA", "")
-            taxa = TAXAS_ADMIN_FALLBACK.get(ticker_clean, TAXA_PADRAO)
-        else:
-            taxa = taxa * 100
+            # Sem taxa de administração real vinda da fonte (Yahoo Finance):
+            # não inventamos valor fixo, apenas descartamos este ETF do ranking.
+            logger.debug(f"ETF {ticker}: taxa de administração indisponível na fonte, descartado.")
+            return {}
+        taxa = taxa * 100
         return {
             "retorno_12m": round(retorno_12m, 2),
             "volatilidade": round(vol_anual, 2),

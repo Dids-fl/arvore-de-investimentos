@@ -18,6 +18,7 @@ from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador import calcular_recomendacao
 from recomendador_ativos import recomendar_por_portfolio, _LABEL, MIN_PCT
 from utils.logging_config import setup_logging
+from utils.exceptions import DadosIndisponiveisError
 
 setup_logging(logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,7 +33,18 @@ def salvar_perfil_respostas(respostas: dict, timestamp: str):
         logger.warning(f"Não foi possível salvar respostas: {e}")
 
 def main() -> None:
-    market = load_market_data()
+    try:
+        market = load_market_data()
+    except DadosIndisponiveisError as e:
+        print("\n" + "═" * 58)
+        print("   📊 RECOMENDADOR DE INVESTIMENTOS")
+        print("═" * 58)
+        print(f"\n❌ Não foi possível obter dados de mercado em tempo real:")
+        print(f"   {e}")
+        print("\n   Este sistema não usa valores fixos como substituto.")
+        print("   Verifique sua conexão e tente novamente em instantes.")
+        return
+
     selic       = market["selic"]
     focus_selic = market["focus_selic"]
     ipca        = market["ipca"]
@@ -430,6 +442,8 @@ def main() -> None:
         quer_ativos = False
         ativos_sugeridos = {}
 
+    _indisponiveis: dict = {}
+
     if quer_ativos:
         print("\n   🔍 Buscando e rankeando ativos...")
         ativos_sugeridos = recomendar_por_portfolio(
@@ -437,7 +451,9 @@ def main() -> None:
             selic=selic, ipca=ipca, ibov_cagr=ibov_cagr,
         )
 
-        if not ativos_sugeridos:
+        _indisponiveis = ativos_sugeridos.pop("_indisponiveis", {})
+
+        if not ativos_sugeridos and not _indisponiveis:
             print("\n   ⚠️  Não foi possível buscar ativos no momento.")
             print("   Verifique sua conexão ou tente novamente mais tarde.")
         else:
@@ -447,6 +463,8 @@ def main() -> None:
                 "agressivo"
             )
             for classe, lista in ativos_sugeridos.items():
+                if not lista:
+                    continue
                 label = _LABEL.get(classe, classe.upper())
                 _sep()
                 print(f"\n📊 TOP {len(lista)} {label} PARA SEU PERFIL ({perfil_label}):")
@@ -462,8 +480,13 @@ def main() -> None:
                     for motivo in ativo.get("motivos", []):
                         print(f"      {motivo}")
                     print()
-    else:
-        ativos_sugeridos = {}
+
+            if _indisponiveis:
+                _sep()
+                print("\n⚠️  Fontes de dados indisponíveis no momento (sem mock/fallback):")
+                for classe, motivo in _indisponiveis.items():
+                    label = _LABEL.get(classe, classe.upper())
+                    print(f"   • {label}: {motivo}")
 
     # ── Salva JSON ────────────────────────────────────────────────────────────
     res = {
@@ -485,6 +508,7 @@ def main() -> None:
         "perfil":          _pp,
         "avisos":          avisos,
         "ativos_sugeridos": ativos_sugeridos,
+        "classes_indisponiveis": _indisponiveis,
         "fontes_de_dados": _fontes,
     }
 

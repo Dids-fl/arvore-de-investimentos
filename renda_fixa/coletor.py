@@ -5,6 +5,8 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime
 
+from utils.exceptions import DadosIndisponiveisError
+
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────
@@ -15,30 +17,38 @@ def coletar_indicadores():
     """
     Obtém Selic (Série 432) e calcula CDI (Selic - 0,1%).
     Retorna (selic_decimal, cdi_decimal).
+
+    Sem fallback fixo: se a API do BCB/SGS falhar ou não retornar dado
+    válido, levanta DadosIndisponiveisError.
     """
     try:
         url_selic = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
         resp = requests.get(url_selic, timeout=5)
         resp.raise_for_status()
         data = resp.json()
-        if data:
-            selic_raw = float(data[0]['valor'])
-            # Se vier em percentual (ex: 14.25), converte para decimal
-            if selic_raw > 1:
-                selic = selic_raw / 100
-            else:
-                selic = selic_raw
-            logger.info(f"Selic obtida via SGS: {selic:.2%}")
-            # CDI = Selic - 0,1% (spread típico)
-            cdi = max(selic - 0.001, 0.01)
-            logger.info(f"CDI definido como {cdi:.2%}")
-            return selic, cdi
     except Exception as e:
-        logger.warning(f"Falha na SGS: {e}")
+        raise DadosIndisponiveisError("SELIC (BCB/SGS série 432)", str(e)) from e
 
-    # Fallback fixo (caso a API falhe)
-    logger.warning("Usando valores fixos: Selic 10,5%, CDI 10,5%")
-    return 0.105, 0.105
+    if not data:
+        raise DadosIndisponiveisError(
+            "SELIC (BCB/SGS série 432)", "resposta vazia da API"
+        )
+
+    try:
+        selic_raw = float(data[0]['valor'])
+    except (KeyError, ValueError, TypeError) as e:
+        raise DadosIndisponiveisError(
+            "SELIC (BCB/SGS série 432)", f"valor inválido na resposta: {e}"
+        ) from e
+
+    # Se vier em percentual (ex: 14.25), converte para decimal
+    selic = selic_raw / 100 if selic_raw > 1 else selic_raw
+    logger.info(f"Selic obtida via SGS: {selic:.2%}")
+
+    # CDI = Selic - 0,1% (spread típico)
+    cdi = max(selic - 0.001, 0.01)
+    logger.info(f"CDI definido como {cdi:.2%}")
+    return selic, cdi
 
 
 # ──────────────────────────────────────────────────────────────
