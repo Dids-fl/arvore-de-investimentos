@@ -1,7 +1,13 @@
+"""Interface de linha de comando do recomendador de investimentos."""
+
+from __future__ import annotations
+
+import datetime as dt
 import json
-import datetime
 import logging
-from typing import Optional
+import os
+from pathlib import Path
+from typing import Any, Optional
 
 from config import IR_RF
 from core.categorias import _risco
@@ -16,72 +22,289 @@ from cli import (
 )
 from portfolio import _build_portfolio, _classificar_portfolio_final
 from recomendador import calcular_recomendacao
-from recomendador_ativos import recomendar_por_portfolio, _LABEL, MIN_PCT
-from utils.logging_config import setup_logging
+from recomendador_ativos import (
+    MIN_PCT,
+    _CLASSE as MAPA_CLASSE,
+    _LABEL,
+    recomendar_por_portfolio,
+)
 from utils.exceptions import DadosIndisponiveisError
+from utils.logging_config import get_logger, setup_logging
 
 setup_logging(logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-def salvar_perfil_respostas(respostas: dict, timestamp: str):
+OUTPUT_DIR = Path(os.getenv("INVEST_OUTPUT_DIR", ".")).expanduser()
+ANOS_PROJECAO = (1, 2, 5, 10, 20, 30)
+
+
+def _salvar_json(nome: str, payload: dict) -> Optional[Path]:
+    """Salva JSON no diretório configurado e devolve o caminho criado."""
     try:
-        fname = f"perfil_respostas_{timestamp}.json"
-        with open(fname, "w", encoding="utf-8") as f:
-            json.dump(respostas, f, ensure_ascii=False, indent=2)
-        logger.info(f"Respostas salvas em {fname}")
-    except Exception as e:
-        logger.warning(f"Não foi possível salvar respostas: {e}")
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        path = OUTPUT_DIR / nome
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2, default=str)
+        logger.info("Arquivo JSON salvo em %s", path)
+        return path
+    except (OSError, TypeError, ValueError) as exc:
+        logger.warning("Não foi possível salvar %s: %s", nome, exc)
+        return None
+
+
+def salvar_perfil_respostas(
+    respostas: dict,
+    timestamp: str,
+) -> Optional[Path]:
+    return _salvar_json(f"perfil_respostas_{timestamp}.json", respostas)
+
+
+def _normalizar_experiencia(experiencia: list[str]) -> list[str]:
+    """
+    Impede a combinação contraditória de "nenhum" com produtos concretos.
+
+    Se o usuário marcou produtos e também "nenhum", as escolhas concretas
+    prevalecem. Uma lista vazia é interpretada como ausência de experiência.
+    """
+    itens = list(dict.fromkeys(experiencia or []))
+    if len(itens) > 1 and "nenhum" in itens:
+        itens.remove("nenhum")
+        logger.warning(
+            "A opção 'nenhum' foi removida porque outros produtos também "
+            "foram informados."
+        )
+    return itens or ["nenhum"]
+
+
+def _taxas_por_risco(
+    selic: float,
+    focus_selic: Optional[float],
+    ibov_cagr: float,
+) -> tuple[dict[int, float], float]:
+    """
+    Constrói as taxas usadas pelo modelo.
+
+    Quando o Focus está disponível, ele realmente participa da taxa-base;
+    antes, a média era apenas exibida e não entrava nas projeções.
+    """
+    taxa_base = (
+        (selic + focus_selic) / 2.0
+        if focus_selic is not None
+        else selic
+    )
+    taxas = {
+        1: taxa_base,
+        2: (taxa_base + ibov_cagr) / 2.0,
+        3: ibov_cagr,
+    }
+    return taxas, taxa_base
+
+
+def _taxa_ponderada(
+    portfolio: dict[str, int],
+    taxas: dict[int, float],
+) -> float:
+    return sum(
+        (pct / 100.0) * taxas[_risco(categoria)]
+        for categoria, pct in portfolio.items()
+        if pct > 0
+    )
+
+
+def _projetar_portfolio(
+    cap_inicial: float,
+    aporte_mensal: float,
+    portfolio: dict[str, int],
+    taxas: dict[int, float],
+    ipca: float,
+    anos: float,
+    *,
+    taxa_unica: Optional[float] = None,
+) -> dict[str, float]:
+    """
+    Projeta cada classe separadamente.
+
+    Isso evita aplicar a alíquota de um único "produto representativo" ao
+    portfólio inteiro. Cada parcela usa a tributação configurada para sua
+    própria categoria.
+    """
+    bruto = 0.0
+    liquido = 0.0
+
+    for categoria, pct in portfolio.items():
+        if pct <= 0:
+            continue
+
+        peso = pct / 100.0
+        taxa = (
+            taxa_unica
+            if taxa_unica is not None
+            else taxas[_risco(categoria)]
+        )
+        aliquota, pgbl = _aliq(categoria)
+        cap_classe = cap_inicial * peso
+        aporte_classe = aporte_mensal * peso
+
+        bruto += _vf_bruto(cap_classe, aporte_classe, taxa, anos)
+        liquido += _vf_liquido(
+            cap_classe,
+            aporte_classe,
+            taxa,
+            anos,
+            aliquota,
+            pgbl,
+        )
+
+    return {
+        "bruto": bruto,
+        "liquido": liquido,
+        "real": _vf_real(liquido, ipca, anos),
+    }
+
+
+def _aporte_necessario_para_meta(
+    meta_valor: float,
+    meta_prazo: float,
+    cap_inicial: float,
+    portfolio: dict[str, int],
+    taxas: dict[int, float],
+    ipca: float,
+) -> Optional[float]:
+    """
+    Resolve por busca binária o aporte mensal necessário para a meta líquida.
+
+    Retorna None se nem um aporte mensal extremamente alto alcançar a meta,
+    protegendo o programa contra laços sem limite.
+    """
+    sem_aporte = _projetar_portfolio(
+        cap_inicial,
+        0.0,
+        portfolio,
+        taxas,
+        ipca,
+        meta_prazo,
+    )["liquido"]
+    if sem_aporte >= meta_valor:
+        return 0.0
+
+    inferior = 0.0
+    superior = max(100.0, meta_valor / max(1.0, meta_prazo * 12.0))
+
+    for _ in range(30):
+        valor = _projetar_portfolio(
+            cap_inicial,
+            superior,
+            portfolio,
+            taxas,
+            ipca,
+            meta_prazo,
+        )["liquido"]
+        if valor >= meta_valor:
+            break
+        superior *= 2.0
+    else:
+        return None
+
+    for _ in range(60):
+        meio = (inferior + superior) / 2.0
+        valor = _projetar_portfolio(
+            cap_inicial,
+            meio,
+            portfolio,
+            taxas,
+            ipca,
+            meta_prazo,
+        )["liquido"]
+        if valor >= meta_valor:
+            superior = meio
+        else:
+            inferior = meio
+
+    return superior
+
+
+def _bloquear_divida_cara(taxas: dict[int, float]) -> None:
+    _sep()
+    print("\n🚨 ATENÇÃO — DÍVIDAS DE JUROS ALTOS DETECTADAS")
+    _sep()
+    print("\n   Cartão de crédito e cheque especial normalmente custam")
+    print("   muito mais do que o retorno esperado dos investimentos.")
+    print(f"\n   Maior retorno usado pelo modelo: ~{max(taxas.values()) * 100:.1f}% a.a.")
+    print("\n   ✅ Recomendação: quite ou renegocie essas dívidas primeiro.")
+    print("   Depois, refaça o questionário.\n")
 
 def main() -> None:
     try:
         market = load_market_data()
-    except DadosIndisponiveisError as e:
+    except DadosIndisponiveisError as exc:
         print("\n" + "═" * 58)
         print("   📊 RECOMENDADOR DE INVESTIMENTOS")
         print("═" * 58)
-        print(f"\n❌ Não foi possível obter dados de mercado em tempo real:")
-        print(f"   {e}")
-        print("\n   Este sistema não usa valores fixos como substituto.")
+        print("\n❌ Não foi possível obter os indicadores obrigatórios:")
+        print(f"   {exc}")
+        print("\n   O sistema não inventa valores fixos como substituto.")
         print("   Verifique sua conexão e tente novamente em instantes.")
         return
 
-    selic       = market["selic"]
-    focus_selic = market["focus_selic"]
-    ipca        = market["ipca"]
-    ibov_cagr   = market["ibov_cagr"]
-    _data_ref   = market["data_ref"]
-    _fontes     = market["fontes"]
-    _avisos_api = market["avisos"]
+    try:
+        selic = float(market["selic"])
+        focus_raw = market.get("focus_selic")
+        focus_selic = (
+            float(focus_raw) if focus_raw is not None else None
+        )
+        ipca = float(market["ipca"])
+        ibov_cagr = float(market["ibov_cagr"])
+        data_ref = str(market["data_ref"])
+        fontes = list(market.get("fontes", []))
+        avisos_api = list(market.get("avisos", []))
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error("Payload de mercado inválido: %s", exc)
+        print("\n❌ Os dados de mercado retornaram em formato inválido.")
+        print("   Apague o cache de mercado e tente novamente.")
+        return
 
-    _taxa_base = (selic + focus_selic) / 2 if focus_selic else selic
-    TAXAS = {1: selic, 2: (selic + ibov_cagr) / 2, 3: ibov_cagr}
+    TAXAS, taxa_base = _taxas_por_risco(
+        selic,
+        focus_selic,
+        ibov_cagr,
+    )
 
     print("\n" + "═" * 58)
     print("   📊 RECOMENDADOR DE INVESTIMENTOS")
     print("   Análise completa de perfil — versão melhorada")
     print("═" * 58)
 
-    if _avisos_api:
-        print("\n   ⚠️  Algumas taxas usam fallback (APIs indisponíveis):")
-        for a in _avisos_api:
-            print(f"      {a}")
+    if avisos_api:
+        print("\n   ⚠️  Avisos sobre os dados de mercado:")
+        for aviso_api in avisos_api:
+            print(f"      {aviso_api}")
     else:
-        print(f"\n   ✅ Taxas em tempo real obtidas com sucesso ({_data_ref})")
+        print(f"\n   ✅ Indicadores carregados com sucesso ({data_ref})")
 
     print("\n   Dados utilizados:")
-    for f in _fontes:
-        print(f"      • {f}")
-    if focus_selic:
-        print(f"\n   Taxa base = média SELIC atual e previsão Focus:")
-        print(f"      ({selic*100:.2f}% + {focus_selic*100:.2f}%) ÷ 2 = {_taxa_base*100:.2f}% a.a.")
+    for fonte in fontes:
+        print(f"      • {fonte}")
+    if focus_selic is not None:
+        print("\n   Taxa-base = média da SELIC atual com o Focus:")
+        print(
+            f"      ({selic * 100:.2f}% + {focus_selic * 100:.2f}%) "
+            f"÷ 2 = {taxa_base * 100:.2f}% a.a."
+        )
 
-    print("\n   Taxas por perfil de risco (aproximação conservadora — IR sobre taxa bruta):")
+    print("\n   Taxas por perfil de risco usadas pelo modelo:")
     for nivel, label in [(1, "Baixo"), (2, "Médio"), (3, "Alto")]:
-        t    = TAXAS[nivel]
-        liq  = t * (1 - IR_RF)
+        t = TAXAS[nivel]
+        liq = t * (1 - IR_RF)
         real = (1 + liq) / (1 + ipca) - 1
-        print(f"      {label:<6}: {t*100:.2f}% bruto | {liq*100:.2f}% líq. aprox. | {real*100:.2f}% real")
-    print(f"      IPCA projetado: {ipca*100:.2f}% a.a.  |  Projeção detalhada usa IR no resgate.")
+        print(
+            f"      {label:<6}: {t * 100:.2f}% bruto | "
+            f"{liq * 100:.2f}% líq. aprox. | "
+            f"{real * 100:.2f}% real"
+        )
+    print(
+        f"      IPCA de referência: {ipca * 100:.2f}% a.a. | "
+        "A projeção detalhada trata cada classe separadamente."
+    )
     print("\nResponda as perguntas para receber sua recomendação.")
 
     _sep()
@@ -92,14 +315,15 @@ def main() -> None:
         "   (curto = até 2 anos | médio = 2 a 5 anos | longo = acima de 5 anos)",
         _PD,
     )
-    MODO_DEMO = primeira == "__DEMO__"
+    modo_demo = primeira == "__DEMO__"
 
-    meta_valor:    Optional[float] = None
-    meta_prazo:    Optional[float] = None
-    cap_inicial:   float           = 0.0
+    modo_meta: int = 3
+    meta_valor: Optional[float] = None
+    meta_prazo: Optional[float] = None
+    cap_inicial: float = 0.0
     aporte_mensal: float           = 0.0
 
-    if MODO_DEMO:
+    if modo_demo:
         d              = DEMO_PADRAO
         prazo          = d["prazo"]
         risco          = d["risco"]
@@ -124,6 +348,9 @@ def main() -> None:
         carteira_atual = d["carteira_atual"]
         cap_inicial    = d["cap_inicial"]
         aporte_mensal  = d["aporte_mensal"]
+        modo_meta      = int(d.get("modo_meta", 2))
+        meta_valor     = d.get("meta_valor")
+        meta_prazo     = d.get("meta_prazo")
     else:
         prazo = primeira
         risco = _p(
@@ -258,7 +485,9 @@ def main() -> None:
                 ap_raw        = _n("    Aporte mensal? (R$, ex: 300 — ou 0 se não houver)", mn=0)
                 aporte_mensal = ap_raw if ap_raw is not None else 0.0
 
-    # Salva respostas
+    experiencia = _normalizar_experiencia(experiencia)
+
+    # Salva as respostas antes do processamento para permitir auditoria.
     respostas_usuario = {
         "prazo": prazo, "risco": risco, "objetivo": objetivo, "fluxo": fluxo,
         "controle": controle, "liquidez": liquidez, "liquidez_pct": liquidez_pct,
@@ -267,10 +496,18 @@ def main() -> None:
         "dividas": dividas, "conhecimento": conhecimento, "experiencia": experiencia,
         "dependentes": dependentes, "aporte": aporte, "emocional": emocional,
         "ir_tipo": ir_tipo, "carteira_atual": carteira_atual,
+        "modo_meta": modo_meta, "meta_valor": meta_valor,
+        "meta_prazo": meta_prazo,
         "cap_inicial": cap_inicial, "aporte_mensal": aporte_mensal,
     }
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     salvar_perfil_respostas(respostas_usuario, timestamp)
+
+    # Evita que sys.exit() dentro da implementação legada do recomendador
+    # encerre o processo inteiro.
+    if dividas == 1:
+        _bloquear_divida_cara(TAXAS)
+        return
 
     # ── Motor de recomendação ─────────────────────────────────────────────────
     rec_key, nivel_risco_perfil, meses_res, avisos, conhecimento = calcular_recomendacao(
@@ -304,21 +541,39 @@ def main() -> None:
         liquidez_pct, despesas, idade, avisos,
     )
 
-    perfil_exibido, risco_recomendado = _classificar_portfolio_final(portfolio)
-    info       = _get_prod(perfil_exibido)
-    taxa_perfil = sum((pct / 100) * TAXAS[_risco(k)] for k, pct in portfolio.items())
-    taxa_pess  = max(ipca + 0.02, taxa_perfil * 0.6)
-    aliq, pgbl = _aliq(perfil_exibido)
+    categoria_carteira, risco_recomendado = (
+        _classificar_portfolio_final(portfolio)
+    )
+
+    # A recomendação específica produzida por recomendador.py não deve ser
+    # descartada pela classificação genérica da carteira.
+    recomendacao_principal = rec_key
+    info = _get_prod(recomendacao_principal)
+    taxa_perfil = _taxa_ponderada(portfolio, TAXAS)
+
+    # Um cenário chamado de pessimista nunca pode render mais que o cenário
+    # central, mesmo quando IPCA + 2 p.p. superar a taxa da carteira.
+    taxa_pess = min(
+        taxa_perfil,
+        max(ipca + 0.02, taxa_perfil * 0.60),
+    )
 
     # ── Resultado ─────────────────────────────────────────────────────────────
     print("\n" + "═" * 58)
-    print("   ✅ ONDE INVESTIR:")
-    print(f"   {_disp(perfil_exibido)}")
-    _rlabel = {1: "Conservador", 2: "Moderado", 3: "Agressivo"}
-    print(f"   Perfil de risco: {_rlabel[nivel_risco_perfil]}")
+    print("   ✅ RECOMENDAÇÃO PRINCIPAL:")
+    print(f"   {_disp(recomendacao_principal)}")
+    rlabel = {1: "Conservador", 2: "Moderado", 3: "Agressivo"}
+    print(f"   Perfil de risco: {rlabel[nivel_risco_perfil]}")
+    if categoria_carteira != recomendacao_principal:
+        print(
+            "   Categoria representativa da carteira: "
+            f"{_disp(categoria_carteira)}"
+        )
     if risco_recomendado != nivel_risco_perfil:
-        print(f"   \u2139\ufe0f  Alocacao ajustada para {_rlabel[risco_recomendado]} "
-              f"com base nas suas respostas (sem renda, iniciante, sem reserva etc.)")
+        print(
+            f"   ℹ️  Alocação final classificada como "
+            f"{rlabel[risco_recomendado]} após os ajustes de segurança."
+        )
     print("═" * 58)
 
     print("\n📋 O que comprar dentro desta categoria:")
@@ -337,17 +592,39 @@ def main() -> None:
     print("   TOTAL                                          100%  (✓)")
 
     print("\n💹 Taxas utilizadas nas projeções:")
-    print(f"   • SELIC {selic*100:.2f}% a.a. — BCB/SGS série 432 (ref. {_data_ref})")
-    print(f"   • IPCA 12m {ipca*100:.2f}% a.a. — BCB/SGS série 13522")
-    print(f"   • Ibovespa CAGR 10a {ibov_cagr*100:.1f}% a.a. — Yahoo Finance/yfinance")
+    print(
+        f"   • SELIC {selic * 100:.2f}% a.a. — "
+        f"BCB/SGS série 432 (ref. {data_ref})"
+    )
+    if focus_selic is not None:
+        print(
+            f"   • Focus SELIC {focus_selic * 100:.2f}% a.a. — BCB/Olinda"
+        )
+    print(
+        f"   • IPCA 12m {ipca * 100:.2f}% a.a. — BCB/SGS série 13522"
+    )
+    print(
+        f"   • Ibovespa CAGR 10a {ibov_cagr * 100:.2f}% a.a. — "
+        "Yahoo Finance/yfinance"
+    )
 
-    print(f"\n   Taxa da carteira final (bruto): ~{taxa_perfil*100:.2f}% a.a. bruto")
-    print(f"   Alíquota IR:                   {aliq*100:.0f}% sobre GANHOS")
-    print(f"   Juro real bruto s/ inflação:   ~{((1 + taxa_perfil) / (1 + ipca) - 1) * 100:.2f}% a.a.")
-    print(f"   IPCA projetado:                {ipca*100:.2f}% a.a.")
+    print(
+        f"\n   Taxa ponderada da carteira: ~"
+        f"{taxa_perfil * 100:.2f}% a.a. bruto"
+    )
+    print("   Tributação: calculada separadamente para cada classe.")
+    print(
+        f"   Juro real bruto s/ inflação: ~"
+        f"{((1 + taxa_perfil) / (1 + ipca) - 1) * 100:.2f}% a.a."
+    )
+    print(f"   IPCA de referência:          {ipca * 100:.2f}% a.a.")
 
-    print(f"\n📅 Projeção de crescimento (~{taxa_perfil*100:.2f}% a.a. bruto):")
+    print(
+        f"\n📅 Projeção de crescimento "
+        f"(~{taxa_perfil * 100:.2f}% a.a. bruto):"
+    )
     print(f"   Capital inicial: R$ {cap_inicial:,.2f}")
+    print(f"   Aporte mensal:   R$ {aporte_mensal:,.2f}")
 
     _pp = {
         "Prazo":              {1: "Curto (até 2a)", 2: "Médio (2-5a)", 3: "Longo (5a+)"}[prazo],
@@ -376,27 +653,113 @@ def main() -> None:
             1: "Sem carteira", 2: "Conservadora", 3: "Moderada", 4: "Arrojada"
         }[carteira_atual],
     }
+    if meta_valor is not None and meta_prazo is not None:
+        _pp["Meta financeira"] = (
+            f"R$ {meta_valor:,.2f} em {meta_prazo:g} ano(s)"
+        )
 
     print()
-    print("   Prazo    VF Bruto   VF Real atual   VF Poder de Compra   Pessimista Líq.")
+    print(
+        "   Prazo      VF Bruto     VF Líquido   "
+        "Poder de compra   Pessimista líq."
+    )
     print("   ────────────────────────────────────────────────────────────────────────")
 
-    for anos in [1, 2, 5, 10, 20, 30]:
-        vf_b = _vf_bruto(cap_inicial, aporte_mensal, taxa_perfil, anos)
-        vf_l = _vf_liquido(cap_inicial, aporte_mensal, taxa_perfil, anos, aliq, pgbl)
-        vf_r = _vf_real(vf_l, ipca, anos)
-        vf_p = _vf_liquido(cap_inicial, aporte_mensal, taxa_pess,  anos, aliq, pgbl)
+    projecoes: list[dict[str, float]] = []
+    for anos in ANOS_PROJECAO:
+        central = _projetar_portfolio(
+            cap_inicial,
+            aporte_mensal,
+            portfolio,
+            TAXAS,
+            ipca,
+            anos,
+        )
+        pessimista = _projetar_portfolio(
+            cap_inicial,
+            aporte_mensal,
+            portfolio,
+            TAXAS,
+            ipca,
+            anos,
+            taxa_unica=taxa_pess,
+        )
+        projecoes.append(
+            {
+                "anos": anos,
+                "vf_bruto": central["bruto"],
+                "vf_liquido": central["liquido"],
+                "vf_real": central["real"],
+                "vf_pessimista_liquido": pessimista["liquido"],
+            }
+        )
         print(
             f"   {anos:<2} ano(s) "
-            f"R$ {vf_b:>11,.0f} "
-            f"R$ {vf_l:>11,.0f} "
-            f"R$ {vf_r:>11,.0f} "
-            f"R$ {vf_p:>12,.0f}"
+            f"R$ {central['bruto']:>11,.0f} "
+            f"R$ {central['liquido']:>11,.0f} "
+            f"R$ {central['real']:>13,.0f} "
+            f"R$ {pessimista['liquido']:>13,.0f}"
         )
 
     print("   ────────────────────────────────────────────────────────────────────────")
-    print(f"   Pessimista = {taxa_pess*100:.1f}% a.a.")
-    print(f"   VF Real = poder de compra em preços de hoje (IPCA {ipca*100:.1f}% a.a.)")
+    print(f"   Pessimista = {taxa_pess * 100:.2f}% a.a.")
+    print(
+        f"   Poder de compra = valor líquido descontado por "
+        f"IPCA de {ipca * 100:.2f}% a.a."
+    )
+
+    resultado_meta: Optional[dict[str, Any]] = None
+    if meta_valor is not None and meta_prazo is not None:
+        projecao_meta = _projetar_portfolio(
+            cap_inicial,
+            aporte_mensal,
+            portfolio,
+            TAXAS,
+            ipca,
+            meta_prazo,
+        )
+        valor_meta_projetado = projecao_meta["liquido"]
+        diferenca_meta = valor_meta_projetado - meta_valor
+        atingida = diferenca_meta >= 0
+        aporte_necessario = _aporte_necessario_para_meta(
+            meta_valor,
+            meta_prazo,
+            cap_inicial,
+            portfolio,
+            TAXAS,
+            ipca,
+        )
+
+        print("\n🎯 Análise da meta financeira:")
+        print(
+            f"   Meta:              R$ {meta_valor:,.2f} "
+            f"em {meta_prazo:g} ano(s)"
+        )
+        print(f"   Valor projetado:   R$ {valor_meta_projetado:,.2f} líquido")
+        if atingida:
+            print(f"   ✅ Meta atingível, com margem de R$ {diferenca_meta:,.2f}.")
+        else:
+            print(f"   ⚠️  Déficit projetado: R$ {abs(diferenca_meta):,.2f}.")
+            if aporte_necessario is not None:
+                print(
+                    f"   Aporte mensal estimado para atingir a meta: "
+                    f"R$ {aporte_necessario:,.2f}"
+                )
+            else:
+                print(
+                    "   Não foi possível estimar um aporte mensal dentro "
+                    "dos limites do cálculo."
+                )
+
+        resultado_meta = {
+            "valor_alvo": meta_valor,
+            "prazo_anos": meta_prazo,
+            "valor_liquido_projetado": valor_meta_projetado,
+            "atingida": atingida,
+            "diferenca": diferenca_meta,
+            "aporte_mensal_informado": aporte_mensal,
+            "aporte_mensal_estimado": aporte_necessario,
+        }
 
     if avisos:
         print("\n⚠️  Observações e ajustes aplicados:")
@@ -404,11 +767,22 @@ def main() -> None:
             print(f"   {av}")
 
     # ── Ativos específicos ────────────────────────────────────────────────────
-    from recomendador_ativos import _CLASSE as _MAPA_CLASSE
+    ativos_sugeridos: dict[str, list] = {}
+    indisponiveis: dict[str, str] = {}
+
+    # A recomendação principal também participa da busca, ainda que a
+    # classificação genérica do portfólio não tenha preservado sua chave.
+    portfolio_busca = dict(portfolio)
+    if (
+        recomendacao_principal in MAPA_CLASSE
+        and recomendacao_principal not in portfolio_busca
+    ):
+        portfolio_busca[recomendacao_principal] = MIN_PCT
+
     classes_no_portfolio = {
-        _MAPA_CLASSE[rk]
-        for rk, pct in portfolio.items()
-        if pct >= MIN_PCT and rk in _MAPA_CLASSE
+        MAPA_CLASSE[rk]
+        for rk, pct in portfolio_busca.items()
+        if pct >= MIN_PCT and rk in MAPA_CLASSE
     }
 
     if classes_no_portfolio:
@@ -421,39 +795,43 @@ def main() -> None:
             "fundos": "fundos",
         }
         _tempo = {
-            "acoes":  "~20s — busca e rankeia dados em tempo real da bolsa",
-            "fiis":   "~20s — busca e rankeia dados em tempo real da bolsa",
-            "cripto": "~20s — busca e rankeia dados em tempo real",
-            "rf":     "~1s  — calcula retorno real a partir de SELIC/IPCA/CDI atuais",
-            "fundos": "~1s  — estima retorno líquido real por cenário de juros",
+            "acoes":   "~20s — busca e rankeia dados em tempo real da bolsa",
+            "fiis":    "~20s — busca e rankeia dados em tempo real da bolsa",
+            "cripto":  "~20s — busca e rankeia dados em tempo real",
+            "rf":      "~1s  — calcula retorno real a partir de SELIC/IPCA/CDI atuais",
+            "fundos":  "~5-10s — processa histórico de cotas da CVM em lote e rankeia",
+            "etf":     "~5s  — busca cotações de ETFs via Yahoo Finance",
+            "etfs":    "~5s  — busca cotações de ETFs via Yahoo Finance",
+            "estruturados": "~15s — baixa cadastro B3 e negociações balcão (cached 7 dias)",
         }
-        classes_sorted  = sorted(classes_no_portfolio)
-        classes_str     = " e ".join(_nomes.get(c, c) for c in classes_sorted)
-        tempos_unicos   = sorted(set(_tempo[c] for c in classes_sorted))
+        classes_sorted = sorted(classes_no_portfolio)
+        classes_str = " e ".join(
+            _nomes.get(classe, classe)
+            for classe in classes_sorted
+        )
 
         print(f"\n📈 Seu portfólio inclui {classes_str}.")
         print("   Posso recomendar ativos específicos e rankeados para cada grupo:")
-        for c in classes_sorted:
-            print(f"     • {_nomes.get(c, c).capitalize():<12} — {_tempo[c]}")
+        for classe in classes_sorted:
+            nome_classe = _nomes.get(classe, classe).capitalize()
+            tempo = _tempo.get(classe, "tempo variável — consulta online")
+            print(f"     • {nome_classe:<12} — {tempo}")
         print()
         print("   Quer ver as recomendações? (sim | não)")
         quer_ativos = input("   → ").strip().lower() in ("sim", "s", "yes", "y")
     else:
         quer_ativos = False
-        ativos_sugeridos = {}
-
-    _indisponiveis: dict = {}
 
     if quer_ativos:
         print("\n   🔍 Buscando e rankeando ativos...")
         ativos_sugeridos = recomendar_por_portfolio(
-            portfolio, nivel_risco_perfil,
+            portfolio_busca, nivel_risco_perfil,
             selic=selic, ipca=ipca, ibov_cagr=ibov_cagr,
         )
 
-        _indisponiveis = ativos_sugeridos.pop("_indisponiveis", {})
+        indisponiveis = ativos_sugeridos.pop("_indisponiveis", {})
 
-        if not ativos_sugeridos and not _indisponiveis:
+        if not ativos_sugeridos and not indisponiveis:
             print("\n   ⚠️  Não foi possível buscar ativos no momento.")
             print("   Verifique sua conexão ou tente novamente mais tarde.")
         else:
@@ -474,56 +852,82 @@ def main() -> None:
                     nome   = ativo.get("nome", "")
                     preco  = ativo.get("preco", 0)
                     score  = ativo.get("score", 0)
-                    print(f"   {i}. {ticker:<8} {'— ' + nome[:35] if nome else ''}")
-                    print(f"      Score: {score:.0f}/100"
+                    print(f"   {i}. {ticker:<8} {'— ' + nome if nome else ''}")
+                    print(f"      Score: {score:.0f}/10"
                           + (f"   Preço: R${preco:,.2f}" if preco else ""))
                     for motivo in ativo.get("motivos", []):
                         print(f"      {motivo}")
                     print()
 
-            if _indisponiveis:
+            if indisponiveis:
                 _sep()
                 print("\n⚠️  Fontes de dados indisponíveis no momento (sem mock/fallback):")
-                for classe, motivo in _indisponiveis.items():
+                for classe, motivo in indisponiveis.items():
                     label = _LABEL.get(classe, classe.upper())
                     print(f"   • {label}: {motivo}")
 
     # ── Salva JSON ────────────────────────────────────────────────────────────
     res = {
-        "recomendacao":       perfil_exibido,
-        "portfolio":          portfolio,
-        "portfolio_display":  {_disp(k): v for k, v in portfolio.items() if v > 0},
+        "recomendacao": recomendacao_principal,
+        "recomendacao_display": _disp(recomendacao_principal),
+        "categoria_representativa_carteira": categoria_carteira,
+        "portfolio": portfolio,
+        "portfolio_display": {
+            _disp(k): v for k, v in portfolio.items() if v > 0
+        },
         "nivel_risco_perfil": nivel_risco_perfil,
         "risco_recomendacao": risco_recomendado,
         "taxas_utilizadas": {
-            "selic_atual":                  round(selic * 100, 2),
-            "focus_selic":                  round(focus_selic * 100, 2) if focus_selic else None,
-            "ipca_12m":                     round(ipca * 100, 2),
-            "ibov_cagr_10a":                round(ibov_cagr * 100, 2),
-            "taxa_perfil_bruto_pct":        round(TAXAS[nivel_risco_perfil] * 100, 2),
-            "taxa_recomendacao_bruto_pct":  round(TAXAS[risco_recomendado] * 100, 2),
-            "aliquota_ir_pct":              round(aliq * 100, 0),
-            "pgbl":                         pgbl,
+            "selic_atual_pct": round(selic * 100, 2),
+            "focus_selic_pct": (
+                round(focus_selic * 100, 2)
+                if focus_selic is not None
+                else None
+            ),
+            "taxa_base_pct": round(taxa_base * 100, 2),
+            "ipca_12m_pct": round(ipca * 100, 2),
+            "ibov_cagr_10a_pct": round(ibov_cagr * 100, 2),
+            "taxa_carteira_ponderada_bruto_pct": round(
+                taxa_perfil * 100,
+                2,
+            ),
+            "taxa_pessimista_bruto_pct": round(taxa_pess * 100, 2),
+            "tributacao_por_classe": {
+                _disp(categoria): {
+                    "aliquota_pct": round(_aliq(categoria)[0] * 100, 2),
+                    "incide_sobre_total_pgbl": _aliq(categoria)[1],
+                }
+                for categoria, pct in portfolio.items()
+                if pct > 0
+            },
         },
-        "perfil":          _pp,
-        "avisos":          avisos,
+        "perfil": _pp,
+        "meta": resultado_meta,
+        "projecoes": projecoes,
+        "avisos": avisos,
         "ativos_sugeridos": ativos_sugeridos,
-        "classes_indisponiveis": _indisponiveis,
-        "fontes_de_dados": _fontes,
+        "classes_indisponiveis": indisponiveis,
+        "fontes_de_dados": fontes,
+        "dados_mercado": {
+            "data_ref": data_ref,
+            "fetched_at": market.get("fetched_at"),
+            "cache_status": market.get("cache_status"),
+        },
     }
 
-    _ts    = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    _fname = f"perfil_investimento_{_ts}.json"
-
-    try:
-        with open(_fname, "w", encoding="utf-8") as f:
-            json.dump(res, f, ensure_ascii=False, indent=2)
-        print(f"\n\n💾 Resultado salvo em: {_fname}")
-    except Exception as e:
-        print(f"\n\n⚠️  Não foi possível salvar o arquivo: {e}")
+    ts_resultado = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_resultado = f"perfil_investimento_{ts_resultado}.json"
+    caminho_resultado = _salvar_json(nome_resultado, res)
+    if caminho_resultado is not None:
+        print(f"\n\n💾 Resultado salvo em: {caminho_resultado}")
+    else:
+        print("\n\n⚠️  Não foi possível salvar o resultado.")
 
     _sep()
     print()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        print("\n\nOperação cancelada pelo usuário.")
