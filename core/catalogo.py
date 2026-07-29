@@ -1,8 +1,9 @@
-"""Catálogo de produtos, tributação simulada e nomes de exibição."""
+"""Catálogo de produtos, nomes de exibição e enquadramento tributário."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from config import (
@@ -16,6 +17,7 @@ from config import (
     IR_VGBL,
 )
 from core.categorias import RK, _RK_DISPLAY
+from tributacao import PrecisaoTributaria
 
 
 TaxRule = Callable[[float], float]
@@ -142,6 +144,213 @@ def _aliq(
     if anos is None:
         return aliquota, pgbl
     return aliquota.para_prazo(anos), pgbl
+
+
+@dataclass(frozen=True)
+class TratamentoTributarioCategoria:
+    """
+    Enquadramento que liga uma categoria ampla ao motor tributário.
+
+    ``precisao_maxima`` limita a precisão declarada pelo cálculo. Por exemplo,
+    uma regra de CDB pode ser exata para as premissas, mas uma categoria que
+    mistura CDB, LCI e LCA só pode produzir uma estimativa enquanto o ativo
+    concreto não for informado.
+    """
+
+    tipo_produto: str
+    precisao_maxima: PrecisaoTributaria
+    premissas: tuple[str, ...] = ()
+
+    def como_dict(self) -> dict[str, Any]:
+        return {
+            "tipo_produto": self.tipo_produto,
+            "precisao_maxima": self.precisao_maxima.value,
+            "premissas": list(self.premissas),
+        }
+
+
+def _tratamento(
+    tipo_produto: str,
+    precisao: PrecisaoTributaria,
+    *premissas: str,
+) -> TratamentoTributarioCategoria:
+    return TratamentoTributarioCategoria(
+        tipo_produto=tipo_produto,
+        precisao_maxima=precisao,
+        premissas=tuple(premissas),
+    )
+
+
+_TRIBUTACAO_CATEGORIA: dict[str, TratamentoTributarioCategoria] = {
+    RK.RF: _tratamento(
+        "cdb",
+        PrecisaoTributaria.ESTIMADA,
+        (
+            "Categoria ampla de renda fixa tratada como CDB tributável; "
+            "LCI/LCA e outros títulos isentos precisam ser identificados "
+            "individualmente."
+        ),
+    ),
+    RK.RF_LIQUIDEZ: _tratamento(
+        "cdb",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "Tesouro Selic e CDB foram enquadrados na tabela regressiva de renda fixa.",
+    ),
+    RK.RF_RESERVA: _tratamento(
+        "cdb",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "Reserva tratada como Tesouro Selic/CDB tributável.",
+    ),
+    RK.RF_IPCA: _tratamento(
+        "tesouro",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "Classe tratada como Tesouro IPCA+/CDB tributável.",
+    ),
+    RK.RF_SELIC_CDB: _tratamento(
+        "cdb",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "Classe tratada como Tesouro Selic/CDB tributável.",
+    ),
+    RK.RF_REAVALIE: _tratamento(
+        "tesouro",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "Alocação temporária tratada como Tesouro Selic.",
+    ),
+    RK.RF_EQUILIBRIO: _tratamento(
+        "cdb",
+        PrecisaoTributaria.ESTIMADA,
+        "Classe mista tratada conservadoramente como renda fixa tributável.",
+    ),
+    RK.FUNDOS_RF: _tratamento(
+        "fundo_longo_prazo",
+        PrecisaoTributaria.ESTIMADA,
+        "Fundo de renda fixa tratado como fundo de longo prazo.",
+    ),
+    RK.FUNDOS_RF_LIQ: _tratamento(
+        "fundo_longo_prazo",
+        PrecisaoTributaria.ESTIMADA,
+        "Fundo DI/renda fixa tratado como fundo de longo prazo.",
+    ),
+    RK.FUNDOS: _tratamento(
+        "fundo_longo_prazo",
+        PrecisaoTributaria.ESTIMADA,
+        "Fundo sem subtipo tratado como fundo de longo prazo.",
+    ),
+    RK.FUNDOS_DIVERSIF: _tratamento(
+        "fundo_longo_prazo",
+        PrecisaoTributaria.ESTIMADA,
+        "Fundo diversificado tratado como fundo de longo prazo.",
+    ),
+    RK.FUNDOS_MULTI: _tratamento(
+        "fundo_longo_prazo",
+        PrecisaoTributaria.ESTIMADA,
+        "Multimercado tratado como fundo de longo prazo.",
+    ),
+    RK.FUNDOS_ACOES: _tratamento(
+        "fundo_acoes",
+        PrecisaoTributaria.ESTIMADA,
+        "Veículo tratado como fundo de ações.",
+    ),
+    RK.FUNDOS_ACOES_ETF: _tratamento(
+        "fundo_etf_acoes",
+        PrecisaoTributaria.ESTIMADA,
+        "Classe tratada como fundo/ETF de ações sem isenção mensal.",
+    ),
+    RK.FUNDOS_ACOES_DCA: _tratamento(
+        "fundo_acoes",
+        PrecisaoTributaria.ESTIMADA,
+        "Aportes periódicos tratados como cotas de fundo de ações.",
+    ),
+    RK.FUNDOS_CRIPTO: _tratamento(
+        "fundo_etf_acoes",
+        PrecisaoTributaria.ESTIMADA,
+        (
+            "Exposição a cripto tratada como fundo/ETF regulado; compra "
+            "direta de cripto exige outro enquadramento."
+        ),
+    ),
+    RK.FIIS: _tratamento(
+        "fii",
+        PrecisaoTributaria.ESTIMADA,
+        "Projeção considera ganho na alienação das cotas.",
+    ),
+    RK.FIIS_DEL: _tratamento(
+        "fii",
+        PrecisaoTributaria.ESTIMADA,
+        "Projeção considera ganho na alienação das cotas.",
+    ),
+    RK.RV: _tratamento(
+        "acao",
+        PrecisaoTributaria.ESTIMADA,
+        "Renda variável ampla tratada como operação comum com ações.",
+    ),
+    RK.RV_DCA: _tratamento(
+        "acao",
+        PrecisaoTributaria.ESTIMADA,
+        "Aportes em renda variável tratados como operações comuns com ações.",
+    ),
+    RK.RV_CRIPTO: _tratamento(
+        "cripto",
+        PrecisaoTributaria.ESTIMADA,
+        "Classe tratada como compra direta de criptoativos.",
+    ),
+    RK.RV_COMPL: _tratamento(
+        "acao",
+        PrecisaoTributaria.ESTIMADA,
+        "Complemento de renda variável tratado como ações.",
+    ),
+    RK.PREV_PGBL: _tratamento(
+        "pgbl",
+        PrecisaoTributaria.ESTIMADA,
+        "O regime regressivo ou progressivo deve ser informado.",
+    ),
+    RK.PREV_PGBL_RF: _tratamento(
+        "pgbl",
+        PrecisaoTributaria.ESTIMADA,
+        "A classe combinada foi tratada integralmente como PGBL.",
+    ),
+    RK.PREV_VGBL: _tratamento(
+        "vgbl",
+        PrecisaoTributaria.ESTIMADA,
+        "O regime regressivo ou progressivo deve ser informado.",
+    ),
+    RK.PREV_VGBL_RF: _tratamento(
+        "vgbl",
+        PrecisaoTributaria.ESTIMADA,
+        "A classe combinada foi tratada integralmente como VGBL.",
+    ),
+    RK.COE: _tratamento(
+        "coe",
+        PrecisaoTributaria.EXATA_PARA_PREMISSAS,
+        "COE enquadrado na tabela regressiva de renda fixa.",
+    ),
+    RK.ESTRUTURADOS: _tratamento(
+        "estruturado",
+        PrecisaoTributaria.INDETERMINADA,
+        "Informe COE, CRI, CRA ou o tipo de debênture para calcular.",
+    ),
+    RK.CAMBIO: _tratamento(
+        "etf",
+        PrecisaoTributaria.ESTIMADA,
+        "Exposição cambial tratada como ETF sem isenção mensal.",
+    ),
+    RK.OFERTAS: _tratamento(
+        "oferta_publica",
+        PrecisaoTributaria.INDETERMINADA,
+        "A tributação depende do ativo distribuído na oferta.",
+    ),
+}
+
+_TRIBUTACAO_DESCONHECIDA = _tratamento(
+    "produto_nao_mapeado",
+    PrecisaoTributaria.INDETERMINADA,
+    "Categoria sem enquadramento tributário explícito.",
+)
+
+
+def _tipo_tributario(rk: str) -> TratamentoTributarioCategoria:
+    """Retorna o enquadramento explícito, sem alíquota genérica de fallback."""
+    return _TRIBUTACAO_CATEGORIA.get(rk, _TRIBUTACAO_DESCONHECIDA)
 
 
 def _prod(
@@ -375,9 +584,11 @@ _DEFAULT_PROD = _prod(
 def _get_prod(rk: str) -> dict[str, Any]:
     """Devolve uma cópia para impedir mutação acidental do catálogo global."""
     produto = _CATALOGO.get(rk, _DEFAULT_PROD)
+    tributacao = _tipo_tributario(rk)
     return {
         "o_que_comprar": list(produto["o_que_comprar"]),
         "garantia": produto["garantia"],
         "imposto": produto["imposto"],
         "onde": produto["onde"],
+        "tributacao": tributacao.como_dict(),
     }

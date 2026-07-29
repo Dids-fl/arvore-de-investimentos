@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov ruff
+
+      - name: Validate syntax
+        run: |
+          python -m compileall -q backtest tributacao tests
+
+      - name: Check critical lint errors
+        run: |
+          ruff check backtest tributacao tests/unit tests/integration \
+            tests/conftest.py --select E9,F63,F7,F82
+
+      - name: Run deterministic tests
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          pytest -q tests/unit tests/integration -m "not slow" \
+            --cov=backtest \
+            --cov=tributacao \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=65

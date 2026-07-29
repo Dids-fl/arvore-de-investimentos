@@ -20,6 +20,7 @@ import math
 import os
 import tempfile
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -42,20 +43,16 @@ CACHE_FILE = (
 CACHE_TTL_SECONDS = 6 * 60 * 60
 STALE_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
-# A versão 2 invalida caches criados pela implementação antiga, que percorria
-# os pontos do SGS do mais antigo para o mais recente.
-CACHE_SCHEMA_VERSION = 2
+# A versão 4 inclui a curva anual do Focus e invalida caches que guardavam
+# apenas uma expectativa isolada para a SELIC.
+CACHE_SCHEMA_VERSION = 4
 
 SGS_SELIC = 432
 SGS_IPCA_12M = 13522
 
 _SGS_URL = (
     "https://api.bcb.gov.br/dados/serie/"
-    "bcdata.sgs.{serie}/dados/ultimos/5"
-)
-_FOCUS_URL = (
-    "https://olinda.bcb.gov.br/olinda/servico/"
-    "Expectativas/versao/v1/odata/ExpectativaMercadoAnuais"
+    "bcdata.sgs.{serie}/dados"
 )
 
 
@@ -102,6 +99,15 @@ except ImportError:
     logger.warning(
         "yfinance não está instalado. O CAGR do Ibovespa não poderá ser "
         "atualizado; instale as dependências do projeto."
+    )
+
+try:
+    from bcb import Expectativas
+except ImportError:
+    Expectativas = None
+    logger.warning(
+        "python-bcb não está instalado. A curva Focus da SELIC não poderá "
+        "ser atualizada; instale as dependências do projeto."
     )
 
 
@@ -166,6 +172,7 @@ def _validar_payload_cache(data: Any) -> bool:
     required = {
         "selic",
         "focus_selic",
+        "focus_selic_por_ano",
         "ipca",
         "ibov_cagr",
         "data_ref",
@@ -194,6 +201,19 @@ def _validar_payload_cache(data: Any) -> bool:
             _validar_taxa(
                 data["focus_selic"],
                 "Focus SELIC em cache",
+                minimo=0.0,
+                maximo=1.0,
+            )
+        focus_por_ano = data["focus_selic_por_ano"]
+        if not isinstance(focus_por_ano, dict):
+            return False
+        for ano, taxa in focus_por_ano.items():
+            ano_inteiro = int(ano)
+            if ano_inteiro < 1900 or ano_inteiro > 9999:
+                return False
+            _validar_taxa(
+                taxa,
+                f"Focus SELIC {ano_inteiro} em cache",
                 minimo=0.0,
                 maximo=1.0,
             )
@@ -305,16 +325,21 @@ def _cache_antigo_com_aviso(
 # ── Coletores ─────────────────────────────────────────────────────────────────
 
 def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
+    hoje = dt.date.today()
+    data_inicial = hoje - dt.timedelta(days=90)
     data = _json_get(
         _SGS_URL.format(serie=serie),
-        params={"formato": "json"},
+        params={
+            "formato": "json",
+            "dataInicial": data_inicial.strftime("%d/%m/%Y"),
+            "dataFinal": hoje.strftime("%d/%m/%Y"),
+        },
     )
     if not isinstance(data, list) or not data:
         raise RuntimeError(f"SGS série {serie}: resposta vazia ou inesperada.")
 
-    # O SGS devolve os registros em ordem cronológica. Percorrer ao contrário
-    # garante que seja escolhido o ponto válido mais recente.
-    for item in reversed(data):
+    candidatos: list[tuple[dt.date, float, str]] = []
+    for item in data:
         if not isinstance(item, dict):
             continue
 
@@ -325,65 +350,92 @@ def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
 
         try:
             value = float(raw.replace(",", ".")) / 100.0
+            data_item = dt.datetime.strptime(data_ref, "%d/%m/%Y").date()
         except (TypeError, ValueError):
             continue
 
-        if math.isfinite(value):
-            return value, data_ref
+        if data_item > hoje or not math.isfinite(value):
+            continue
+        candidatos.append((data_item, value, data_ref))
 
-    raise RuntimeError(f"SGS série {serie}: nenhum valor válido.")
+    if not candidatos:
+        raise RuntimeError(f"SGS série {serie}: nenhum valor válido.")
+
+    _, value, data_ref = max(candidatos, key=lambda item: item[0])
+    return value, data_ref
 
 
 def _fetch_focus_selic() -> Optional[float]:
-    ano_atual = dt.date.today().year
+    """Compatibilidade: devolve a primeira expectativa anual disponível."""
+    focus_por_ano = _fetch_focus_selic_por_ano()
+    return next(iter(focus_por_ano.values()), None)
 
-    # Se o ano corrente não estiver disponível, a expectativa do próximo ano
-    # ainda é mais útil que um valor referente a um ano já encerrado.
-    for ano_referencia in (ano_atual, ano_atual + 1):
+
+def _fetch_focus_selic_por_ano(
+    quantidade_anos: int = 4,
+) -> dict[int, float]:
+    """Obtém as medianas Focus para o ano atual e os anos seguintes."""
+    if Expectativas is None:
+        return {}
+    if quantidade_anos <= 0:
+        raise ValueError("quantidade_anos deve ser maior que zero.")
+
+    hoje = dt.date.today()
+    data_inicial = hoje - dt.timedelta(days=120)
+    resultado: dict[int, float] = {}
+
+    try:
+        expectativas = Expectativas()
+        endpoint = expectativas.get_endpoint("ExpectativasMercadoAnuais")
+    except Exception as exc:
+        logger.warning(f"Erro ao inicializar o serviço Focus: {exc}")
+        return {}
+
+    for ano_referencia in range(
+        hoje.year,
+        hoje.year + quantidade_anos,
+    ):
         try:
-            data = _json_get(
-                _FOCUS_URL,
-                params={
-                    "$filter": (
-                        "Indicador eq 'Selic' and "
-                        f"DataReferencia eq '{ano_referencia}'"
-                    ),
-                    "$orderby": "Data desc",
-                    "$top": 1,
-                    "$format": "json",
-                    "$select": "Mediana",
-                },
+            tabela = (
+                endpoint.query()
+                .filter(
+                    endpoint.Indicador == "Selic",
+                    endpoint.DataReferencia == ano_referencia,
+                    endpoint.Data >= data_inicial,
+                    endpoint.baseCalculo == 0,
+                )
+                .select(
+                    endpoint.Data,
+                    endpoint.DataReferencia,
+                    endpoint.Mediana,
+                )
+                .orderby(endpoint.Data.desc())
+                .limit(1)
+                .collect()
             )
-            values = data.get("value", []) if isinstance(data, dict) else []
-            if not values:
+            if tabela.empty:
                 continue
 
             mediana = _validar_taxa(
-                float(values[0]["Mediana"]) / 100.0,
+                float(tabela.iloc[0]["Mediana"]) / 100.0,
                 f"Focus SELIC {ano_referencia}",
                 minimo=0.0,
                 maximo=1.0,
             )
-            return mediana
-        except (
-            KeyError,
-            TypeError,
-            ValueError,
-            requests.exceptions.RequestException,
-        ) as exc:
+            resultado[ano_referencia] = mediana
+            logger.info(
+                "Focus SELIC carregado: %.2f%% para %d.",
+                mediana * 100,
+                ano_referencia,
+            )
+        except Exception as exc:
             logger.warning(
                 "Erro ao buscar Focus SELIC para %s: %s",
                 ano_referencia,
                 exc,
             )
-        except Exception as exc:
-            logger.warning(
-                "Resposta inesperada do Focus SELIC para %s: %s",
-                ano_referencia,
-                exc,
-            )
 
-    return None
+    return resultado
 
 
 def _fetch_ibov_cagr_10a() -> Optional[float]:
@@ -473,7 +525,7 @@ def load_market_data(
     fetchers = {
         "selic": lambda: _fetch_sgs_value(SGS_SELIC),
         "ipca": lambda: _fetch_sgs_value(SGS_IPCA_12M),
-        "focus_selic": _fetch_focus_selic,
+        "focus_selic_por_ano": _fetch_focus_selic_por_ano,
         "ibov_cagr": _fetch_ibov_cagr_10a,
     }
 
@@ -490,17 +542,17 @@ def load_market_data(
             try:
                 value = future.result()
                 results[key] = value
-                if value is None and key != "focus_selic":
+                if value is None and key != "focus_selic_por_ano":
                     failures[key] = "fonte sem valor válido"
             except Exception as exc:
                 logger.warning(f"Falha ao obter {key}: {exc}")
                 results[key] = None
-                if key != "focus_selic":
+                if key != "focus_selic_por_ano":
                     failures[key] = str(exc)
 
     selic_raw = results.get("selic")
     ipca_raw = results.get("ipca")
-    focus_value = results.get("focus_selic")
+    focus_raw = results.get("focus_selic_por_ano")
     ibov_raw = results.get("ibov_cagr")
 
     selic_value: Optional[float] = None
@@ -553,17 +605,27 @@ def load_market_data(
     except (TypeError, ValueError) as exc:
         failures["ibov_cagr"] = str(exc)
 
-    if focus_value is not None:
-        try:
-            focus_value = _validar_taxa(
-                focus_value,
-                "Focus SELIC",
-                minimo=0.0,
-                maximo=1.0,
-            )
-        except (TypeError, ValueError) as exc:
-            logger.warning(f"Focus SELIC inválido: {exc}")
-            focus_value = None
+    focus_por_ano: dict[int, float] = {}
+    if isinstance(focus_raw, Mapping):
+        for ano_bruto, taxa_bruta in focus_raw.items():
+            try:
+                ano = int(ano_bruto)
+                focus_por_ano[ano] = _validar_taxa(
+                    taxa_bruta,
+                    f"Focus SELIC {ano}",
+                    minimo=0.0,
+                    maximo=1.0,
+                )
+            except (TypeError, ValueError) as exc:
+                logger.warning(f"Ponto da curva Focus ignorado: {exc}")
+    elif focus_raw is not None:
+        logger.warning(
+            "Curva Focus retornou formato inválido: %r",
+            type(focus_raw).__name__,
+        )
+
+    focus_por_ano = dict(sorted(focus_por_ano.items()))
+    focus_value = next(iter(focus_por_ano.values()), None)
 
     if failures:
         cache_stale_aceitavel = (
@@ -613,11 +675,12 @@ def load_market_data(
     ]
     avisos: list[str] = []
 
-    if focus_value is not None:
-        fontes.append(
-            f"Previsão SELIC Focus {focus_value * 100:.2f}% a.a. — "
-            "BCB/Olinda"
-        )
+    if focus_por_ano:
+        for ano, taxa in focus_por_ano.items():
+            fontes.append(
+                f"Previsão SELIC Focus {ano}: {taxa * 100:.2f}% a.a. — "
+                "BCB/Olinda"
+            )
     else:
         avisos.append(
             "⚠️  Focus SELIC indisponível; esse dado opcional não foi usado."
@@ -627,6 +690,7 @@ def load_market_data(
         "_schema_version": CACHE_SCHEMA_VERSION,
         "selic": selic_value,
         "focus_selic": focus_value,
+        "focus_selic_por_ano": focus_por_ano,
         "ipca": ipca_value,
         "ibov_cagr": ibov_value,
         # Mantido por compatibilidade: representa a referência da SELIC.
@@ -641,4 +705,8 @@ def load_market_data(
     return payload
 
 
-__all__ = ["load_market_data"]
+__all__ = [
+    "SGS_IPCA_12M",
+    "SGS_SELIC",
+    "load_market_data",
+]
