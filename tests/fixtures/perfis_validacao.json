@@ -24,7 +24,7 @@
   {
     "nome": "sem_reserva_prioriza_protecao",
     "respostas": {
-      "reserva_emerg": "nÃ£o tenho",
+      "reserva_emerg": "não tenho",
       "idade": "adulto",
       "despesas": "altas",
       "dependentes": "dois ou mais",
@@ -41,7 +41,7 @@
   {
     "nome": "aporte_unico_descarta_valor_mensal",
     "respostas": {
-      "aporte": "Ãºnico",
+      "aporte": "único",
       "aporte_mensal": 5000,
       "modo_meta": "rendendo"
     },
@@ -53,7 +53,7 @@
   {
     "nome": "liquidez_desativada_descarta_percentual",
     "respostas": {
-      "liquidez": "nÃ£o",
+      "liquidez": "não",
       "liquidez_pct": 90,
       "modo_meta": "rendendo"
     },

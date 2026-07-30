@@ -135,5 +135,5 @@ def simular_pesos_constantes(
 ) -> pd.DataFrame:
     """Ativa uma carteira antes da primeira observação de retorno."""
     primeira_data = pd.Timestamp(retornos.index.min())
-    sinal = primeira_data - pd.Timedelta(nanoseconds=1)
+    sinal = primeira_data - pd.Timedelta(1, unit="ns")
     return simular_carteira(retornos, {sinal: pesos}, **kwargs)

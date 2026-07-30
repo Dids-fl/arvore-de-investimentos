@@ -1,11 +1,16 @@
-name: Tests
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -30,25 +35,44 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov ruff
+          python -m pip install -r requirements.txt
 
       - name: Validate syntax
         run: |
-          python -m compileall -q backtest tributacao tests
+          python -m compileall -q \
+            backtest core macroeconomia tributacao tests \
+            app.py calculos.py config.py engine.py main.py mercado.py \
+            portfolio.py recomendador.py recomendador_ativos.py
 
       - name: Check critical lint errors
         run: |
-          ruff check backtest tributacao tests/unit tests/integration \
-            tests/conftest.py --select E9,F63,F7,F82
+          python -m ruff check . \
+            --select E9,F63,F7,F82 \
+            --exclude .venv
 
       - name: Run deterministic tests
         env:
           PYTHONHASHSEED: "0"
         run: |
-          pytest -q tests/unit tests/integration -m "not slow" \
+          python -m pytest -q \
+            tests/unit \
+            tests/integration \
+            tests/test_coingecko.py::test_score_cripto \
+            -m "not slow" \
             --cov=backtest \
             --cov=tributacao \
             --cov-report=term-missing \
             --cov-report=xml \
+            --cov-report=html \
             --cov-fail-under=65
+
+      - name: Upload coverage report
+        if: ${{ matrix.python-version == '3.12' && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-3.12
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: warn
+          retention-days: 14
