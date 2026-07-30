@@ -1,167 +1,271 @@
-# tests/test_renda_fixa.py
-"""
-Testes para o módulo de Renda Fixa (apenas Tesouro Direto).
-"""
+"""Testes determinísticos do coletor e ranker de renda fixa."""
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from __future__ import annotations
+
+import datetime as dt
 
 import pytest
-from renda_fixa import rankear_rf
-from renda_fixa.coletor import coletar_indicadores, coletar_tesouro
-from renda_fixa.ranker import _calcular_prazo_dias, _calcular_score
+import requests
+
+from renda_fixa import coletor, ranker
+from utils.exceptions import DadosIndisponiveisError
 
 
-# ──────────────────────────────────────────────────────────────
-# 1. Testes do coletor
-# ──────────────────────────────────────────────────────────────
+class RespostaFalsa:
+    """Resposta HTTP mínima usada pelos testes do coletor."""
 
-def test_coletar_indicadores():
-    selic, cdi = coletar_indicadores()
-    if selic is not None and cdi is not None:
-        assert isinstance(selic, float)
-        assert isinstance(cdi, float)
-        if cdi >= 0.01 and selic >= 0.01:
-            assert 0.01 <= selic <= 0.20
-            assert 0.01 <= cdi <= 0.20
-            assert cdi <= selic * 1.01
+    def __init__(
+        self,
+        *,
+        json_data=None,
+        text: str = "",
+        erro: Exception | None = None,
+    ) -> None:
+        self._json_data = json_data
+        self.text = text
+        self._erro = erro
 
+    def raise_for_status(self) -> None:
+        if self._erro is not None:
+            raise self._erro
 
-def test_coletar_tesouro():
-    titulos = coletar_tesouro()
-    # Pode ser None se a API falhar, mas se retornar, deve ser lista com estrutura correta
-    if titulos is not None:
-        assert isinstance(titulos, list)
-        if len(titulos) > 0:
-            primeiro = titulos[0]
-            assert "nome" in primeiro
-            assert "taxa" in primeiro
-            assert "vencimento" in primeiro
-            assert isinstance(primeiro["taxa"], (int, float))
+    def json(self):
+        return self._json_data
 
 
-# ──────────────────────────────────────────────────────────────
-# 2. Testes do ranker
-# ──────────────────────────────────────────────────────────────
-
-def test_rankear_rf_estrutura():
-    recomendacoes = rankear_rf(perfil=2, limite=3)
-    assert isinstance(recomendacoes, list)
-    if len(recomendacoes) > 0:
-        p = recomendacoes[0]
-        campos_esperados = ["ticker", "nome", "emissor", "tipo", "taxa_bruta",
-                            "vencimento", "garantia", "liquidez", "ir",
-                            "isento_ir", "prazo_dias", "fonte", "score"]
-        for campo in campos_esperados:
-            assert campo in p, f"Campo '{campo}' ausente"
-        assert p["emissor"] == "Tesouro Nacional"
-        assert isinstance(p["score"], float)
-        assert 0 <= p["score"] <= 10
-
-
-def test_rankear_rf_limite():
-    rec = rankear_rf(perfil=2, limite=10)
-    assert isinstance(rec, list)
-    if len(rec) > 0:
-        assert len(rec) <= 10
+@pytest.fixture
+def titulos_tesouro() -> list[dict]:
+    hoje = dt.datetime.now(dt.UTC).date()
+    return [
+        {
+            "nome": "Tesouro Selic 2029",
+            "taxa": 0.0015,
+            "vencimento": (hoje + dt.timedelta(days=700)).isoformat(),
+            "tipo": "SELIC",
+            "data_base": hoje.isoformat(),
+        },
+        {
+            "nome": "Tesouro IPCA+ 2035",
+            "taxa": 0.065,
+            "vencimento": (hoje + dt.timedelta(days=3000)).isoformat(),
+            "tipo": "IPCA",
+            "data_base": hoje.isoformat(),
+        },
+    ]
 
 
-def test_rankear_rf_perfis():
-    # Verifica se diferentes perfis retornam listas (pode ser vazia)
-    rec_cons = rankear_rf(perfil=1, limite=2)
-    rec_mod = rankear_rf(perfil=2, limite=2)
-    rec_agr = rankear_rf(perfil=3, limite=2)
-    assert isinstance(rec_cons, list)
-    assert isinstance(rec_mod, list)
-    assert isinstance(rec_agr, list)
+@pytest.fixture
+def fontes_ranker_mockadas(
+    monkeypatch,
+    titulos_tesouro,
+) -> None:
+    monkeypatch.setattr(
+        ranker,
+        "coletar_indicadores",
+        lambda: (0.1425, 0.1415),
+    )
+    monkeypatch.setattr(
+        ranker,
+        "coletar_tesouro",
+        lambda: titulos_tesouro,
+    )
 
 
-# ──────────────────────────────────────────────────────────────
-# 3. Testes de funções auxiliares
-# ──────────────────────────────────────────────────────────────
+def test_coletar_indicadores_converte_percentual(monkeypatch) -> None:
+    resposta = RespostaFalsa(json_data=[{"valor": "14.25"}])
+    monkeypatch.setattr(coletor.requests, "get", lambda *a, **k: resposta)
 
-def test_calcular_prazo_dias():
-    from datetime import datetime, timedelta
-    agora = datetime.now()
-    futuro = agora + timedelta(days=100)
-    venc_str = futuro.strftime("%d/%m/%Y")
-    dias = _calcular_prazo_dias(venc_str)
-    assert 99 <= dias <= 101
+    selic, cdi = coletor.coletar_indicadores()
 
-    # Formato YYYY-MM-DD
-    venc_str2 = futuro.strftime("%Y-%m-%d")
-    dias2 = _calcular_prazo_dias(venc_str2)
-    assert 99 <= dias2 <= 101
+    assert selic == pytest.approx(0.1425)
+    assert cdi == pytest.approx(0.1415)
 
 
-def test_calcular_score():
-    # Teste para perfil conservador
+@pytest.mark.parametrize(
+    "resposta",
+    [
+        RespostaFalsa(json_data=[]),
+        RespostaFalsa(json_data=[{"valor": "inválido"}]),
+        RespostaFalsa(
+            erro=requests.RequestException("fonte indisponível")
+        ),
+    ],
+)
+def test_coletar_indicadores_rejeita_fonte_invalida(
+    monkeypatch,
+    resposta,
+) -> None:
+    monkeypatch.setattr(
+        coletor.requests,
+        "get",
+        lambda *args, **kwargs: resposta,
+    )
+
+    with pytest.raises(DadosIndisponiveisError):
+        coletor.coletar_indicadores()
+
+
+def test_coletar_tesouro_interpreta_package_show(monkeypatch) -> None:
+    metadados = RespostaFalsa(
+        json_data={
+            "success": True,
+            "result": {
+                "resources": [
+                    {
+                        "format": "CSV",
+                        "url": (
+                            "https://exemplo.test/"
+                            "PrecoTaxaTesouroDireto.csv"
+                        ),
+                    }
+                ]
+            },
+        }
+    )
+    csv = RespostaFalsa(
+        text=(
+            "Data Base;Tipo Titulo;Taxa Compra Manha;"
+            "Data Vencimento\n"
+            "30/07/2026;Tesouro Selic 2029;0,15;"
+            "01/03/2029\n"
+            "29/07/2026;Tesouro Selic 2029;0,14;"
+            "01/03/2029\n"
+        )
+    )
+    respostas = iter([metadados, csv])
+    monkeypatch.setattr(
+        coletor.requests,
+        "get",
+        lambda *args, **kwargs: next(respostas),
+    )
+
+    titulos = coletor.coletar_tesouro()
+
+    assert len(titulos) == 1
+    assert titulos[0]["nome"] == "Tesouro Selic 2029"
+    assert titulos[0]["taxa"] == pytest.approx(0.0015)
+    assert titulos[0]["vencimento"] == "01/03/2029"
+    assert titulos[0]["tipo"] == "SELIC"
+    assert titulos[0]["data_base"] == "2026-07-30"
+
+
+@pytest.mark.parametrize(
+    "metadados",
+    [
+        {"success": False},
+        {"success": True, "result": {"resources": []}},
+    ],
+)
+def test_coletar_tesouro_sem_recurso_retorna_none(
+    monkeypatch,
+    metadados,
+) -> None:
+    resposta = RespostaFalsa(json_data=metadados)
+    monkeypatch.setattr(
+        coletor.requests,
+        "get",
+        lambda *args, **kwargs: resposta,
+    )
+    assert coletor.coletar_tesouro() is None
+
+
+def test_coletar_tesouro_em_erro_http_retorna_none(
+    monkeypatch,
+) -> None:
+    resposta = RespostaFalsa(
+        erro=requests.RequestException("fora do ar")
+    )
+    monkeypatch.setattr(
+        coletor.requests,
+        "get",
+        lambda *args, **kwargs: resposta,
+    )
+    assert coletor.coletar_tesouro() is None
+
+
+def test_rankear_rf_retorna_contrato_ordenado(
+    fontes_ranker_mockadas,
+) -> None:
+    recomendacoes = ranker.rankear_rf(perfil=2, limite=2)
+
+    assert len(recomendacoes) == 2
+    assert recomendacoes[0]["score"] >= recomendacoes[1]["score"]
+    assert {
+        "ticker",
+        "nome",
+        "emissor",
+        "tipo",
+        "taxa_bruta",
+        "vencimento",
+        "garantia",
+        "liquidez",
+        "ir",
+        "isento_ir",
+        "prazo_dias",
+        "fonte",
+        "score",
+    }.issubset(recomendacoes[0])
+    assert recomendacoes[0]["emissor"] == "Tesouro Nacional"
+    assert 0 <= recomendacoes[0]["score"] <= 10
+
+
+def test_rankear_rf_respeita_limite_e_perfis(
+    fontes_ranker_mockadas,
+) -> None:
+    for perfil in (1, 2, 3):
+        resultado = ranker.rankear_rf(perfil=perfil, limite=1)
+        assert len(resultado) == 1
+        assert 0 <= resultado[0]["score"] <= 10
+
+
+def test_rankear_rf_sem_titulos_retorna_lista_vazia(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        ranker,
+        "coletar_indicadores",
+        lambda: (0.1425, 0.1415),
+    )
+    monkeypatch.setattr(ranker, "coletar_tesouro", list)
+    assert ranker.rankear_rf() == []
+
+
+def test_rankear_rf_propaga_indisponibilidade_da_selic(
+    monkeypatch,
+) -> None:
+    def falhar():
+        raise DadosIndisponiveisError("SELIC", "teste")
+
+    monkeypatch.setattr(ranker, "coletar_indicadores", falhar)
+    with pytest.raises(DadosIndisponiveisError):
+        ranker.rankear_rf()
+
+
+def test_calcular_prazo_dias_aceita_formatos_e_fallback() -> None:
+    futuro = dt.datetime.now(dt.UTC).date() + dt.timedelta(days=100)
+
+    assert 99 <= ranker._calcular_prazo_dias(
+        futuro.strftime("%d/%m/%Y")
+    ) <= 101
+    assert 99 <= ranker._calcular_prazo_dias(
+        futuro.strftime("%Y-%m-%d")
+    ) <= 101
+    assert ranker._calcular_prazo_dias("formato inválido") == 9999
+    assert ranker._calcular_prazo_dias(None) == 9999
+
+
+def test_calcular_score_varia_com_perfil() -> None:
     produto = {
         "taxa_bruta": 0.12,
         "garantia": "Governo Federal",
         "liquidez": "D+1",
-        "prazo_dias": 365,
-        "tipo": "Tesouro Prefixado"
-    }
-    score = _calcular_score(produto, perfil=2)  # moderado
-    assert 0 <= score <= 10
-
-    # Perfil conservador deve penalizar prazo longo
-    produto_longo = {
-        "taxa_bruta": 0.12,
-        "garantia": "Governo Federal",
-        "liquidez": "D+1",
         "prazo_dias": 1096,
-        "tipo": "Tesouro Prefixado"
+        "tipo": "Tesouro Prefixado",
     }
-    score_cons = _calcular_score(produto_longo, perfil=1)
-    score_agr = _calcular_score(produto_longo, perfil=3)
-    assert score_cons <= score_agr, "Conservador deve penalizar prazo longo mais que agressivo"
 
+    score_conservador = ranker._calcular_score(produto, perfil=1)
+    score_moderado = ranker._calcular_score(produto, perfil=2)
+    score_agressivo = ranker._calcular_score(produto, perfil=3)
 
-# ──────────────────────────────────────────────────────────────
-# 4. Teste visual (impressão das recomendações)
-# ──────────────────────────────────────────────────────────────
-
-def test_mostrar_recomendacoes():
-    print("\n" + "="*80)
-    print("RECOMENDAÇÕES DE RENDA FIXA (APENAS TESOURO DIRETO)")
-    print("="*80)
-
-    selic, cdi = coletar_indicadores()
-    print(f"\n📊 Selic: {selic:.2%} | CDI: {cdi:.2%}\n")
-
-    for perfil_nome, perfil_id in [("Conservador", 1), ("Moderado", 2), ("Agressivo", 3)]:
-        print(f"\n--- Perfil: {perfil_nome} ---")
-        recomendacoes = rankear_rf(perfil=perfil_id, limite=3)
-        if not recomendacoes:
-            print("   Nenhuma recomendação disponível (API pode estar offline).")
-            continue
-
-        for i, item in enumerate(recomendacoes, 1):
-            print(f"\n{i}️⃣ {item.get('nome', 'N/A')}")
-            print(f"   Emissor   : {item.get('emissor', 'N/A')}")
-            print(f"   Tipo      : {item.get('tipo', 'N/A')}")
-            print(f"   Taxa bruta: {item.get('taxa_bruta', 0):.2%}")
-            print(f"   Vencimento: {item.get('vencimento', 'N/A')}")
-            print(f"   Prazo     : {item.get('prazo_dias', 0)} dias")
-            print(f"   Garantia  : {item.get('garantia', 'N/A')}")
-            print(f"   Liquidez  : {item.get('liquidez', 'N/A')}")
-            print(f"   IR        : {item.get('ir', 'N/A')}")
-            print(f"   Isento IR : {'Sim' if item.get('isento_ir', False) else 'Não'}")
-            print(f"   Fonte     : {item.get('fonte', 'N/A')}")
-            print(f"   ⭐ Score   : {item.get('score', 0):.2f} / 10")
-            print("   " + "-"*40)
-
-    print("\n" + "="*80)
-    print("FIM DAS RECOMENDAÇÕES")
-    print("="*80 + "\n")
-
-
-# ──────────────────────────────────────────────────────────────
-# Execução direta (para ver os prints)
-# ──────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s", "--tb=short"])
+    assert 0 <= score_conservador <= 10
+    assert score_conservador <= score_moderado <= score_agressivo

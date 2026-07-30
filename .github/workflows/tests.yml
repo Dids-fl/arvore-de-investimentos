@@ -54,11 +54,7 @@ jobs:
         env:
           PYTHONHASHSEED: "0"
         run: |
-          python -m pytest -q \
-            tests/unit \
-            tests/integration \
-            tests/test_coingecko.py::test_score_cripto \
-            -m "not slow" \
+          python -m pytest -q tests -m "not slow" \
             --cov=backtest \
             --cov=tributacao \
             --cov-report=term-missing \
