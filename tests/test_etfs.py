@@ -115,7 +115,7 @@ def test_get_all_etf_tickers_rejeita_lista_vazia(monkeypatch):
     monkeypatch.setattr(
         screener,
         "_get_etfs_from_brapi",
-        lambda: [],
+        list,
     )
 
     with pytest.raises(Exception) as erro:

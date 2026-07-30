@@ -14,7 +14,7 @@ mercado = pytest.importorskip("mercado")
 def test_sgs_escolhe_valor_valido_mais_recente(
     monkeypatch,
 ) -> None:
-    hoje = dt.date.today()
+    hoje = dt.datetime.now(dt.UTC).date()
     ontem = hoje - dt.timedelta(days=1)
     futuro = hoje + dt.timedelta(days=1)
 
@@ -199,7 +199,7 @@ def test_focus_indisponivel_nao_impede_carregamento(
     monkeypatch.setattr(
         mercado,
         "_fetch_focus_selic_por_ano",
-        lambda: {},
+        dict,
     )
 
     monkeypatch.setattr(

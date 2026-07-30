@@ -15,7 +15,6 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-from typing import Dict, List
 
 import numpy as np
 import requests
@@ -59,11 +58,11 @@ PESOS_ETF = {
     },
 }
 
-_CACHE_ETFS: List[str] | None = None
+_CACHE_ETFS: list[str] | None = None
 _CACHE_TIMESTAMP = 0.0
 _CACHE_TTL = 3600
 
-_CACHE_DADOS_ETF: Dict[tuple[str, str], tuple[float, Dict]] = {}
+_CACHE_DADOS_ETF: dict[tuple[str, str], tuple[float, dict]] = {}
 _CACHE_DADOS_ETF_TTL = 3600
 _CACHE_DADOS_LOCK = Lock()
 
@@ -77,7 +76,7 @@ def norm(valor: float, bom: float, ruim: float) -> float:
     return max(0.0, min(1.0, (valor - ruim) / (bom - ruim)))
 
 
-def _get_etfs_from_brapi() -> List[str]:
+def _get_etfs_from_brapi() -> list[str]:
     """
     Obtém a lista de ETFs da BRAPI.
 
@@ -85,7 +84,7 @@ def _get_etfs_from_brapi() -> List[str]:
     identificados pela API como ETF.
     """
     base_url = "https://brapi.dev/api/v2/tickers"
-    etfs: List[str] = []
+    etfs: list[str] = []
     page = 1
     limit = 200
     total_pages = None
@@ -100,7 +99,7 @@ def _get_etfs_from_brapi() -> List[str]:
             )
             response.raise_for_status()
             data = response.json()
-        except Exception as exc:
+        except (requests.RequestException, TypeError, ValueError) as exc:
             logger.warning(
                 "BRAPI /api/v2/tickers falhou na página %s: %s",
                 page,
@@ -137,7 +136,7 @@ def _get_etfs_from_brapi() -> List[str]:
     return etfs_unicos
 
 
-def get_all_etf_tickers() -> List[str]:
+def get_all_etf_tickers() -> list[str]:
     """Retorna os tickers de ETF, usando cache por uma hora."""
     global _CACHE_ETFS, _CACHE_TIMESTAMP
 
@@ -166,7 +165,7 @@ def get_all_etf_tickers() -> List[str]:
     return list(etfs)
 
 
-def _ler_cache_dados(ticker: str, period: str) -> Dict | None:
+def _ler_cache_dados(ticker: str, period: str) -> dict | None:
     chave = (ticker, period)
 
     with _CACHE_DADOS_LOCK:
@@ -186,14 +185,14 @@ def _ler_cache_dados(ticker: str, period: str) -> Dict | None:
 def _salvar_cache_dados(
     ticker: str,
     period: str,
-    dados: Dict,
+    dados: dict,
 ) -> None:
     chave = (ticker, period)
     with _CACHE_DADOS_LOCK:
         _CACHE_DADOS_ETF[chave] = (time.time(), dict(dados))
 
 
-def _taxa_percentual(info: Dict) -> float | None:
+def _taxa_percentual(info: dict) -> float | None:
     """
     Converte a taxa informada pelo Yahoo para percentual.
 
@@ -218,7 +217,7 @@ def _taxa_percentual(info: Dict) -> float | None:
     return taxa
 
 
-def get_etf_data(ticker: str, period: str = "1y") -> Dict:
+def get_etf_data(ticker: str, period: str = "1y") -> dict:
     """
     Carrega e calcula indicadores de um ETF.
 
@@ -294,10 +293,10 @@ def get_etf_data(ticker: str, period: str = "1y") -> Dict:
         volume_medio = float((volumes * prices).mean())
 
         # Metadados são opcionais e não devem invalidar as cotações.
-        info: Dict = {}
+        info: dict = {}
         try:
             info = ticker_obj.get_info() or {}
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug(
                 "ETF %s: metadados indisponíveis: %s",
                 ticker_limpo,
@@ -319,7 +318,7 @@ def get_etf_data(ticker: str, period: str = "1y") -> Dict:
         _salvar_cache_dados(ticker_limpo, period, resultado)
         return dict(resultado)
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(
             "Erro ao carregar ETF %s: %s: %s",
             ticker_limpo,
@@ -330,9 +329,9 @@ def get_etf_data(ticker: str, period: str = "1y") -> Dict:
 
 
 def _score_etf(
-    ind: Dict,
+    ind: dict,
     perfil: int,
-) -> tuple[float, List[str]]:
+) -> tuple[float, list[str]]:
     """
     Calcula o score usando somente métricas disponíveis.
 
@@ -372,7 +371,7 @@ def _score_etf(
         else 0.0
     )
 
-    motivos: List[str] = []
+    motivos: list[str] = []
     retorno = ind.get("retorno_12m")
     volatilidade = ind.get("volatilidade")
     sharpe = ind.get("sharpe")
@@ -409,7 +408,7 @@ def _score_etf(
     return round(score * 100, 1), motivos[:5]
 
 
-def top_etfs(perfil: int, n: int = 5) -> List[Dict]:
+def top_etfs(perfil: int, n: int = 5) -> list[dict]:
     """Calcula e retorna os ETFs com maior score para o perfil."""
     if n <= 0:
         return []
@@ -418,7 +417,7 @@ def top_etfs(perfil: int, n: int = 5) -> List[Dict]:
     if not tickers:
         return []
 
-    dados_por_ticker: Dict[str, Dict] = {}
+    dados_por_ticker: dict[str, dict] = {}
     max_workers = min(MAX_WORKERS_ETF, len(tickers))
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -431,7 +430,7 @@ def top_etfs(perfil: int, n: int = 5) -> List[Dict]:
             ticker = futures[future]
             try:
                 dados = future.result()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Falha inesperada ao analisar ETF %s: %s",
                     ticker,
@@ -442,7 +441,7 @@ def top_etfs(perfil: int, n: int = 5) -> List[Dict]:
             if dados:
                 dados_por_ticker[ticker] = dados
 
-    resultados: List[Dict] = []
+    resultados: list[dict] = []
 
     for ticker, dados_originais in dados_por_ticker.items():
         dados = dict(dados_originais)
