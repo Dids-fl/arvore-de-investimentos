@@ -2,9 +2,11 @@
 Filtros para refinar lista de ações por setor, índice de governança, etc.
 """
 
-from typing import List, Dict, Callable
+from typing import Dict, List
+from collections.abc import Callable
 
-def filtrar_por_setor(acoes: List[Dict], setores: List[str]) -> List[Dict]:
+
+def filtrar_por_setor(acoes: list[dict], setores: list[str]) -> list[dict]:
     """
     Filtra ações por setor (ex: ["Financeiro", "Petróleo"]).
     """
@@ -12,7 +14,7 @@ def filtrar_por_setor(acoes: List[Dict], setores: List[str]) -> List[Dict]:
         return acoes
     return [a for a in acoes if a.get('setor', '').lower() in [s.lower() for s in setores]]
 
-def filtrar_por_governanca(acoes: List[Dict], niveis: List[str]) -> List[Dict]:
+def filtrar_por_governanca(acoes: list[dict], niveis: list[str]) -> list[dict]:
     """
     Filtra por nível de governança corporativa (ex: ["NM", "N2", "N1"]).
 
@@ -33,7 +35,7 @@ def filtrar_por_governanca(acoes: List[Dict], niveis: List[str]) -> List[Dict]:
         return acoes
     return [a for a in acoes if a.get("governanca", "") in niveis]
 
-def aplicar_filtros(acoes: List[Dict], filtros: List[Callable]) -> List[Dict]:
+def aplicar_filtros(acoes: list[dict], filtros: list[Callable]) -> list[dict]:
     """
     Aplica uma lista de funções de filtro.
     """

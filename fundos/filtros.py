@@ -10,11 +10,12 @@ NOTA: O mapeamento de classes ANBIMA depende das nomenclaturas atuais.
 """
 
 import logging
-from typing import Optional, Dict, Any, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-import pandas as pd
+from typing import Any, Dict, Optional, Set
+
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -282,8 +283,8 @@ class FiltroFundos:
     @staticmethod
     def _preparar_metricas(
         df_cadastro: pd.DataFrame,
-        df_informe: Optional[pd.DataFrame] = None,
-        df_metricas: Optional[pd.DataFrame] = None,
+        df_informe: pd.DataFrame | None = None,
+        df_metricas: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         """
         Adiciona colunas auxiliares ao cadastro para acelerar filtros.
@@ -473,8 +474,8 @@ class FiltroFundos:
     def aplicar(
         self,
         df_cadastro: pd.DataFrame,
-        df_informe: Optional[pd.DataFrame] = None,
-        df_metricas: Optional[pd.DataFrame] = None,
+        df_informe: pd.DataFrame | None = None,
+        df_metricas: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         """
         Aplica todos os filtros ao cadastro de fundos.
@@ -542,8 +543,8 @@ class FiltroFundos:
 
 def filtrar_para_ranking(
     df_cadastro: pd.DataFrame,
-    df_informe: Optional[pd.DataFrame] = None,
-    df_metricas: Optional[pd.DataFrame] = None,
+    df_informe: pd.DataFrame | None = None,
+    df_metricas: pd.DataFrame | None = None,
     perfil: int = 2,
     **kwargs,
 ) -> pd.DataFrame:

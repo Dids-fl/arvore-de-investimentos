@@ -17,9 +17,9 @@ Pipeline (mesmo espírito de fundos/ranker_fundos.py):
 import logging
 
 from .cadastro_coletor import obter_cadastro
-from .negociacao_coletor import obter_negociacao_agregada
-from .indicadores import montar_indicadores
 from .filtros import filtrar_para_ranking
+from .indicadores import montar_indicadores
+from .negociacao_coletor import obter_negociacao_agregada
 
 logger = logging.getLogger(__name__)
 

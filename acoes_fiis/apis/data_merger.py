@@ -3,10 +3,13 @@ Data Merger – consolida dados do Fundamentus (scraping) + Yahoo Finance (compl
 Remove a dependência da BRAPI para dados complementares.
 """
 
-import yfinance as yf
 from typing import Dict
-from .fundamentus_scraper import get_all_bulk, get_fundamentus_data
+
+import yfinance as yf
+
 from utils.logging_config import get_logger
+
+from .fundamentus_scraper import get_all_bulk, get_fundamentus_data
 
 logger = get_logger(__name__)
 
@@ -32,7 +35,7 @@ def _get_dividend_consistency_yf(ticker: str) -> bool:
         logger.debug(f"Erro ao verificar dividendos de {ticker} via yfinance: {e}")
         return False
 
-def _get_yfinance_complement(ticker: str) -> Dict:
+def _get_yfinance_complement(ticker: str) -> dict:
     """
     Busca dados complementares (preço, market cap, P/L, P/VP) via Yahoo Finance.
     """
@@ -51,7 +54,7 @@ def _get_yfinance_complement(ticker: str) -> Dict:
         logger.debug(f"YFinance falhou para {ticker}: {e}")
         return {}
 
-def merge_ticker_data(ticker: str) -> Dict:
+def merge_ticker_data(ticker: str) -> dict:
     """
     Retorna dados consolidados de um ticker:
       - Fundamentus (primário)

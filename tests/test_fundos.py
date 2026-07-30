@@ -3,16 +3,18 @@
 Testes completos para o módulo de Fundos de Investimento.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
-import pandas as pd
-import numpy as np
-from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
 
 # ---------------------------------------------------------------------
 # Fixtures

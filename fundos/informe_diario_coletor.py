@@ -1,8 +1,8 @@
 # fundos/informe_diario_coletor.py
 
-from pathlib import Path
 import logging
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
 

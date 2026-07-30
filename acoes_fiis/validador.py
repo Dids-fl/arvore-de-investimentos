@@ -13,8 +13,8 @@ Após a validação, cada ativo recebe:
 """
 
 import statistics
-from typing import Optional, Tuple, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional, Tuple
 
 from utils.logging_config import get_logger
 
@@ -38,7 +38,7 @@ BRAPI_CANDIDATES_MAX = 30    # valida no máximo os 30 melhores candidatos
 
 # ── 1. Validação estatística (IQR + limites absolutos) ───────────────────────
 
-def _iqr_fence(valores: List[float]) -> Tuple[Optional[float], Optional[float]]:
+def _iqr_fence(valores: list[float]) -> tuple[float | None, float | None]:
     limpos = [v for v in valores if v is not None and v > 0]
     if len(limpos) < 10:
         return None, None
@@ -50,8 +50,8 @@ def _iqr_fence(valores: List[float]) -> Tuple[Optional[float], Optional[float]]:
     return q1 - LIMITE_IQR * iqr, q3 + LIMITE_IQR * iqr
 
 
-def _validar_ativo(ind: dict, fences: dict) -> Tuple[float, List[str]]:
-    suspeitos: List[str] = []
+def _validar_ativo(ind: dict, fences: dict) -> tuple[float, list[str]]:
+    suspeitos: list[str] = []
     dy  = float(ind.get("dy",  0) or 0)
     pl  = float(ind.get("pl",  0) or 0)
     pvp = float(ind.get("pvp", 0) or 0)
@@ -96,7 +96,7 @@ def _validar_ativo(ind: dict, fences: dict) -> Tuple[float, List[str]]:
     return confianca, suspeitos
 
 
-def validar_universo(universo: List[dict]) -> Tuple[List[dict], List[dict]]:
+def validar_universo(universo: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Camada 1: validação estatística.
     Retorna (validados, descartados).
@@ -139,7 +139,7 @@ def validar_universo(universo: List[dict]) -> Tuple[List[dict], List[dict]]:
 
 # ── 2. Cross-validação com BRAPI (2ª fonte para P/L) ─────────────────────────
 
-def _buscar_pl_brapi(tickers: List[str]) -> dict[str, float]:
+def _buscar_pl_brapi(tickers: list[str]) -> dict[str, float]:
     """
     Busca P/L de uma lista de tickers via BRAPI em chamadas batch.
     BRAPI aceita múltiplos tickers separados por vírgula em uma chamada.
@@ -172,7 +172,7 @@ def _buscar_pl_brapi(tickers: List[str]) -> dict[str, float]:
         return {}
 
 
-def validar_com_brapi(candidatos: List[dict]) -> List[dict]:
+def validar_com_brapi(candidatos: list[dict]) -> list[dict]:
     """
     Camada 2: cross-validação P/L entre Status Invest e BRAPI.
     Aplicada somente ao top N candidatos (não ao universo inteiro).
@@ -238,7 +238,7 @@ def validar_com_brapi(candidatos: List[dict]) -> List[dict]:
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
 
-def resumo_validacao(descartados: List[dict]) -> str:
+def resumo_validacao(descartados: list[dict]) -> str:
     if not descartados:
         return "✅ Todos os ativos passaram na validação de dados."
     linhas = [f"⚠️  {len(descartados)} ativo(s) descartado(s) por dados suspeitos:"]

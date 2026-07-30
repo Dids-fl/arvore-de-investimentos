@@ -37,7 +37,7 @@ _http.mount("https://", HTTPAdapter(max_retries=_retry))
 
 class StatusInvestClient:
 
-    def _get(self, path: str, params: Optional[dict] = None, timeout=(5, 15)) -> dict:
+    def _get(self, path: str, params: dict | None = None, timeout=(5, 15)) -> dict:
         url = f"{BASE_URL}/{path.lstrip('/')}"
         r = _http.get(url, params=params, headers=_HEADERS, timeout=timeout)
         r.raise_for_status()
@@ -81,7 +81,7 @@ class StatusInvestClient:
         except Exception as e:
             raise RuntimeError(f"Erro ao buscar dados do FII '{ticker}': {e}")
 
-    def search_fiis(self, tipo: Optional[str] = None, dy_min: float = 0.0,
+    def search_fiis(self, tipo: str | None = None, dy_min: float = 0.0,
                     p_vp_max: float = 9.99, limit: int = 100) -> list[dict]:
         """
         Busca FIIs com filtros básicos.

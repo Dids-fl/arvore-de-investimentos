@@ -15,7 +15,6 @@ from tributacao import (
     calcular_tributacao,
 )
 
-
 TaxRule = Callable[[float], float]
 
 
@@ -456,10 +455,10 @@ def _vf_liquido_tributado(
     )
     if data_resgate.year > data_base.year:
         premissas.append(
-            (
+            
                 "A legislação vigente na data de referência foi mantida "
                 "constante até o resgate projetado."
-            )
+            
         )
         if precisao == PrecisaoTributaria.EXATA_PARA_PREMISSAS:
             precisao = PrecisaoTributaria.ESTIMADA

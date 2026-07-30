@@ -3,7 +3,7 @@
 # (curto→1, médio→2...) e o perfil de demonstração (d na primeira pergunta).
 
 import unicodedata
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 # ── Normalização de texto ─────────────────────────────────────────────────────
 
@@ -38,8 +38,8 @@ def _p_primeira(q: str, ops: dict):
         print("   ❌ Opção inválida. Tente novamente.")
 
 
-def _n(q: str, mn: float = 0, mx: Optional[float] = None,
-       opt: bool = False) -> Optional[float]:
+def _n(q: str, mn: float = 0, mx: float | None = None,
+       opt: bool = False) -> float | None:
     while True:
         print("\n" + q)
         if opt:
@@ -60,7 +60,7 @@ def _n(q: str, mn: float = 0, mx: Optional[float] = None,
             print("   ❌ Número inválido.")
 
 
-_EXP_CANON: Dict[str, str] = {
+_EXP_CANON: dict[str, str] = {
     "poupanca": "poupança", "poupança": "poupança",
     "tesouro":  "tesouro",
     "acoes":    "ações",    "ações":    "ações",
@@ -70,7 +70,7 @@ _EXP_CANON: Dict[str, str] = {
 }
 
 
-def _m(q: str) -> List[str]:
+def _m(q: str) -> list[str]:
     while True:
         print("\n" + q)
         e = input("   → ").strip()

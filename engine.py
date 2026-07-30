@@ -27,9 +27,9 @@ from recomendador import (
     calcular_recomendacao,
 )
 from recomendador_ativos import (
-    MIN_PCT,
     _CLASSE,
     _LABEL,
+    MIN_PCT,
     recomendar_por_portfolio,
 )
 from tributacao import PrecisaoTributaria
@@ -584,9 +584,9 @@ def _validar_respostas(respostas: object) -> dict:
 
 def _resolver_meta(
     respostas: Mapping[str, Any],
-    meta_valor: Optional[float],
-    meta_prazo: Optional[float],
-) -> tuple[Optional[float], Optional[float]]:
+    meta_valor: float | None,
+    meta_prazo: float | None,
+) -> tuple[float | None, float | None]:
     """Interpreta o modo de meta sem delegar essa regra às interfaces."""
     recebeu_argumento = meta_valor is not None or meta_prazo is not None
     if recebeu_argumento:
@@ -759,7 +759,7 @@ def projetar_portfolio(
     ipca: float,
     anos: float,
     *,
-    taxa_unica: Optional[float] = None,
+    taxa_unica: float | None = None,
     data_referencia: date | str | None = None,
     contexto_fiscal: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -912,7 +912,7 @@ def aporte_necessario_para_meta(
     *,
     data_referencia: date | str | None = None,
     contexto_fiscal: Mapping[str, Any] | None = None,
-) -> Optional[float]:
+) -> float | None:
     """Resolve por busca binária o aporte para atingir uma meta líquida."""
     meta = _numero_finito("meta_valor", meta_valor, minimo=0.01)
     prazo = _numero_finito("meta_prazo", meta_prazo, minimo=1, maximo=100)
@@ -977,7 +977,7 @@ def aporte_necessario_para_meta(
 def _perfil_resumo(
     respostas: Mapping[str, Any],
     resultado: Mapping[str, Any],
-    meta: Optional[Mapping[str, Any]],
+    meta: Mapping[str, Any] | None,
 ) -> dict[str, str]:
     resumo = {
         "Prazo": {
@@ -1475,8 +1475,8 @@ def analisar_meta(
 def criar_analise(
     respostas: dict,
     market: dict,
-    meta_valor: Optional[float] = None,
-    meta_prazo: Optional[float] = None,
+    meta_valor: float | None = None,
+    meta_prazo: float | None = None,
     *,
     data_referencia: date | str | None = None,
     anos_projecao: Sequence[float] = ANOS_PROJECAO_PADRAO,

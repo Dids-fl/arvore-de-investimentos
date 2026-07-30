@@ -32,7 +32,6 @@ from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
 
-
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
 

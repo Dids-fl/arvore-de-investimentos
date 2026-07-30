@@ -1,9 +1,17 @@
 # tests/test_estruturados.py
 from datetime import date, timedelta
 
-from produtos_estruturados.indicadores import montar_indicadores, _isento_ir, _prazo_dias
 from produtos_estruturados.filtros import elegivel, filtrar_para_ranking
-from produtos_estruturados.ranker import _calcular_score, PERFIL_CONSERVADOR, PERFIL_AGRESSIVO
+from produtos_estruturados.indicadores import (
+    _isento_ir,
+    _prazo_dias,
+    montar_indicadores,
+)
+from produtos_estruturados.ranker import (
+    PERFIL_AGRESSIVO,
+    PERFIL_CONSERVADOR,
+    _calcular_score,
+)
 
 
 def _ativo_exemplo(**overrides):

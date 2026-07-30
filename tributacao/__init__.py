@@ -16,7 +16,6 @@ from tributacao.regras import FONTE_RECEITA_RENDIMENTOS_CAPITAL, VIGENCIA_BASE
 from tributacao.renda_fixa import calcular_renda_fixa
 from tributacao.renda_variavel import calcular_renda_variavel
 
-
 RENDA_FIXA = {
     "tesouro",
     "cdb",

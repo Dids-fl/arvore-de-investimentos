@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from .intersecao import carregar_interseccao_dataframe
 from .informe_diario_coletor import DB_PATH
+from .intersecao import carregar_interseccao_dataframe
 
 logger = logging.getLogger(__name__)
 

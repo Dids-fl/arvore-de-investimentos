@@ -7,6 +7,7 @@ Cobre: market cap, volume, retorno histórico, preço atual.
 """
 
 from typing import Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -22,7 +23,7 @@ _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
 class CoinGeckoClient:
 
-    def _get(self, endpoint: str, params: Optional[dict] = None, timeout=(4, 12)) -> dict | list:
+    def _get(self, endpoint: str, params: dict | None = None, timeout=(4, 12)) -> dict | list:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         r = _http.get(url, params=params, headers=_HEADERS, timeout=timeout)
         r.raise_for_status()

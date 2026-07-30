@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Final
 
-
 _LIMITE_TAXA_ANUAL: Final = 2.0
 
 

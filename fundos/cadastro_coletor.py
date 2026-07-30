@@ -1,9 +1,9 @@
 # fundos/cadastro_coletor.py
 
-from pathlib import Path
 import logging
 import sqlite3
 import threading
+from pathlib import Path
 
 import pandas as pd
 

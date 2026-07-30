@@ -3,6 +3,7 @@
 
 from typing import Dict
 
+
 class RK:
     RF              = "rf"
     RF_LIQUIDEZ     = "rf_liq"
@@ -36,7 +37,7 @@ class RK:
     OFERTAS         = "ofertas"
 
 
-RISK_LEVEL: Dict[str, int] = {
+RISK_LEVEL: dict[str, int] = {
     RK.RF:              1,
     RK.RF_LIQUIDEZ:     1,
     RK.RF_RESERVA:      1,
@@ -77,7 +78,7 @@ def _risco(rk: str) -> int:
 
 _ARRISCADAS: set = {rk for rk, nivel in RISK_LEVEL.items() if nivel >= 3}
 
-_RK_DISPLAY: Dict[str, str] = {
+_RK_DISPLAY: dict[str, str] = {
     RK.RF:              "Renda Fixa",
     RK.RF_LIQUIDEZ:     "Renda Fixa (com liquidez)",
     RK.RF_RESERVA:      "Renda Fixa (Tesouro Selic) — construa sua reserva primeiro",

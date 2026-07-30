@@ -16,9 +16,8 @@ from config import (
     IR_RF_REGRESSIVO,
     IR_VGBL,
 )
-from core.categorias import RK, _RK_DISPLAY
+from core.categorias import _RK_DISPLAY, RK
 from tributacao import PrecisaoTributaria
-
 
 TaxRule = Callable[[float], float]
 
@@ -35,7 +34,7 @@ class AliquotaIR(float):
         cls,
         valor_longo_prazo: float,
         regra: TaxRule | None = None,
-    ) -> "AliquotaIR":
+    ) -> AliquotaIR:
         objeto = super().__new__(cls, valor_longo_prazo)
         objeto._regra = regra
         return objeto

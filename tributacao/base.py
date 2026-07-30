@@ -40,10 +40,10 @@ class ContextoTributario:
     data_aplicacao: date
     data_resgate: date
     tipo_produto: str
-    regime: Optional[str] = None
-    renda_tributavel: Optional[float] = None
-    valor_vendas_mes: Optional[float] = None
-    valor_aportes_ano: Optional[float] = None
+    regime: str | None = None
+    renda_tributavel: float | None = None
+    valor_vendas_mes: float | None = None
+    valor_aportes_ano: float | None = None
     day_trade: bool = False
     pessoa_fisica: bool = True
     metadados: Mapping[str, Any] = field(default_factory=dict)
@@ -98,9 +98,9 @@ class ContextoTributario:
 
 @dataclass(frozen=True)
 class ResultadoTributario:
-    imposto_estimado: Optional[float]
-    valor_liquido: Optional[float]
-    aliquota_efetiva: Optional[float]
+    imposto_estimado: float | None
+    valor_liquido: float | None
+    aliquota_efetiva: float | None
     precisao: PrecisaoTributaria
     premissas: tuple[str, ...]
     fonte: str

@@ -9,24 +9,34 @@ import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .apis.fundamentus_scraper import get_all_bulk, get_fiis_bulk
-from .apis.status_invest import StatusInvestClient
-from .apis.data_merger import merge_ticker_data
-from .filtros import aplicar_filtros, filtrar_por_setor, filtrar_por_governanca
-from .validador import validar_universo, resumo_validacao
-from .ativos import (
-    MIN_LIQUIDEZ_ACOES, MIN_LIQUIDEZ_FIIS,
-    UNIVERSO_ACOES_N, UNIVERSO_FIIS_N,
-    PESOS_ACOES, PESOS_FIIS,
-    REF_ACOES, REF_ACOES_AGRESSIVO, REF_FIIS,
-    LIMIARES_DY_ACOES, LIMIARES_ROE_ACOES, LIMIARES_PL_ACOES,
-    PESO_TAMANHO_ACOES, MKTCAP_REF_MAX_B, MKTCAP_REF_MIN_B, LIQ_REF_MAX_M,
-)
-
 from utils.logging_config import get_logger
 
+from .apis.data_merger import merge_ticker_data
+from .apis.fundamentus_scraper import get_all_bulk, get_fiis_bulk
+from .apis.status_invest import StatusInvestClient
+from .ativos import (
+    LIMIARES_DY_ACOES,
+    LIMIARES_PL_ACOES,
+    LIMIARES_ROE_ACOES,
+    LIQ_REF_MAX_M,
+    MIN_LIQUIDEZ_ACOES,
+    MIN_LIQUIDEZ_FIIS,
+    MKTCAP_REF_MAX_B,
+    MKTCAP_REF_MIN_B,
+    PESO_TAMANHO_ACOES,
+    PESOS_ACOES,
+    PESOS_FIIS,
+    REF_ACOES,
+    REF_ACOES_AGRESSIVO,
+    REF_FIIS,
+    UNIVERSO_ACOES_N,
+    UNIVERSO_FIIS_N,
+)
+from .filtros import aplicar_filtros, filtrar_por_governanca, filtrar_por_setor
+from .validador import resumo_validacao, validar_universo
+
 try:
-    from config import USE_FUNDAMENTUS, FILTRO_SETORES, FILTRO_GOVERNANCA, LIMITE_MKTCAP
+    from config import FILTRO_GOVERNANCA, FILTRO_SETORES, LIMITE_MKTCAP, USE_FUNDAMENTUS
 except ImportError:
     USE_FUNDAMENTUS = True
     FILTRO_SETORES = []
