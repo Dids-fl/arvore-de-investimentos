@@ -4,11 +4,12 @@ Módulo para criar e gerenciar um arquivo temporário com os dados cadastrais
 apenas dos fundos que possuem histórico no Informe Diário (interseção).
 """
 
-import pandas as pd
-from pathlib import Path
-import tempfile
 import atexit
 import os
+import tempfile
+from pathlib import Path
+
+import pandas as pd
 
 from .cadastro_coletor import listar_fundos_ativos
 from .informe_diario_coletor import listar_cnpjs_distintos

@@ -11,8 +11,9 @@ Referência: https://dadosabertos.bcb.gov.br/dataset/sistema-gerenciador-de-seri
 """
 
 import logging
-import pandas as pd
 from datetime import datetime, timedelta
+
+import pandas as pd
 from bcb import sgs
 
 logger = logging.getLogger(__name__)

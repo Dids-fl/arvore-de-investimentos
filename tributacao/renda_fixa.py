@@ -15,7 +15,6 @@ from tributacao.regras import (
     aliquota_rf,
 )
 
-
 ISENTOS_PF = {
     "lci",
     "lca",

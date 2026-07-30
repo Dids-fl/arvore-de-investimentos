@@ -1,9 +1,10 @@
 # renda_fixa/coletor.py
 import logging
-import requests
-import pandas as pd
-from io import StringIO
 from datetime import datetime
+from io import StringIO
+
+import pandas as pd
+import requests
 
 from utils.exceptions import DadosIndisponiveisError
 

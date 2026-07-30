@@ -6,9 +6,8 @@ import math
 import unicodedata
 from collections.abc import Iterable, Mapping
 
-from core.categorias import RK, _ARRISCADAS, _risco
+from core.categorias import _ARRISCADAS, RK, _risco
 from utils.logging_config import get_logger
-
 
 logger = get_logger(__name__)
 

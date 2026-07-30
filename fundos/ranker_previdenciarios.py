@@ -18,25 +18,26 @@ dos candidatos no Estágio 1, que usa a interseção previdenciária
 """
 
 import logging
+
 import pandas as pd
 
-from .intersecao_previdenciaria import carregar_interseccao_previdenciaria_dataframe
-from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
 from .filtros import (
-    filtrar_para_ranking,
-    PL_MINIMO_POR_CATEGORIA_PREVIDENCIA,
-    DIAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA,
     COTISTAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA,
+    DIAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA,
+    PL_MINIMO_POR_CATEGORIA_PREVIDENCIA,
+    filtrar_para_ranking,
 )
 from .indicadores import calcular_indicadores_df
-from .sharpe_sortino import calcular_indicadores_risco
+from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
+from .intersecao_previdenciaria import carregar_interseccao_previdenciaria_dataframe
 from .ranker_fundos import (
+    DIAS_ANO,
+    PERFIL_AGRESSIVO,
     PERFIL_CONSERVADOR,
     PERFIL_MODERADO,
-    PERFIL_AGRESSIVO,
-    DIAS_ANO,
     calcular_score,
 )
+from .sharpe_sortino import calcular_indicadores_risco
 
 logger = logging.getLogger(__name__)
 

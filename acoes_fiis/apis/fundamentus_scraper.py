@@ -3,11 +3,12 @@ Módulo para extrair dados fundamentalistas do Fundamentus.com.br
 e lista de tickers da B3, sem salvar arquivos intermediários.
 """
 
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
 from io import StringIO
 from typing import Dict, List
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 # Cabeçalho para evitar bloqueio
 HEADERS = {
@@ -45,7 +46,7 @@ def get_raw_data(url: str) -> bytes:
 
 # ── 1. Bulk: todas as ações em UMA requisição ──────────────────────────────
 
-def get_all_bulk() -> Dict[str, Dict]:
+def get_all_bulk() -> dict[str, dict]:
     """
     Scraping de resultado.php — retorna TODAS as ações em UMA requisição.
     NÃO imprime nada. Retorna {} se falhar.
@@ -109,7 +110,7 @@ def get_all_bulk() -> Dict[str, Dict]:
 
 # ── 2. Detalhe: dados específicos de um ticker ─────────────────────────────
 
-def get_fundamentus_data(ticker: str) -> Dict[str, str]:
+def get_fundamentus_data(ticker: str) -> dict[str, str]:
     """
     Extrai dados fundamentalistas detalhados de um ticker específico.
     Retorna {} se falhar.
@@ -140,15 +141,15 @@ def get_fundamentus_data(ticker: str) -> Dict[str, str]:
 
 # ── 3. Lista de tickers ─────────────────────────────────────────────────────
 
-def get_all_tickers() -> List[Dict[str, str]]:
+def get_all_tickers() -> list[dict[str, str]]:
     bulk = get_all_bulk()
     return [{'codigo': t, 'nome': '', 'razao_social': ''} for t in bulk.keys()]
 
-def get_ticker_list() -> List[str]:
+def get_ticker_list() -> list[str]:
     return list(get_all_bulk().keys())
 
 # ── 4. FIIs (filtro por ticker terminando em 11) ──────────────────────────
 
-def get_fiis_bulk() -> Dict[str, Dict]:
+def get_fiis_bulk() -> dict[str, dict]:
     todos = get_all_bulk()
     return {t: info for t, info in todos.items() if t.endswith('11')}

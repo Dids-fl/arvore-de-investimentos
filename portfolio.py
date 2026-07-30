@@ -6,8 +6,7 @@ import math
 from collections.abc import MutableMapping
 from typing import Optional
 
-from core.categorias import RK, _risco, _RK_DISPLAY
-
+from core.categorias import _RK_DISPLAY, RK, _risco
 
 Portfolio = dict[str, int | float]
 
@@ -51,7 +50,7 @@ _LIQUID_KEYS = {
 }
 
 
-def _aviso(avisos: Optional[list[str]], mensagem: str) -> None:
+def _aviso(avisos: list[str] | None, mensagem: str) -> None:
     if avisos is not None and mensagem not in avisos:
         avisos.append(mensagem)
 
@@ -147,7 +146,7 @@ def _retirar_proporcional(
 def mover_rv_para_rf(
     p: Portfolio,
     delta: int | float,
-    avisos: Optional[list[str]] = None,
+    avisos: list[str] | None = None,
 ) -> bool:
     """Move até ``delta`` pontos percentuais de renda variável para RF."""
     delta = _valor_valido("delta", delta)
@@ -232,7 +231,7 @@ def _portfolio_aposentadoria(
 def _aplicar_renda_periodica(
     p: Portfolio,
     nivel_risco: int,
-    avisos: Optional[list[str]],
+    avisos: list[str] | None,
 ) -> None:
     if nivel_risco == 1:
         deslocado = min(10.0, float(p.get(RK.RF, 0)))
@@ -268,7 +267,7 @@ def _aplicar_aportes_mensais(p: Portfolio, aporte: int) -> None:
 def _garantir_liquidez(
     p: Portfolio,
     alvo_percentual: float,
-    avisos: Optional[list[str]],
+    avisos: list[str] | None,
 ) -> None:
     # O portfólio final usa percentuais inteiros; arredondar para cima evita
     # entregar menos liquidez do que o usuário declarou precisar.

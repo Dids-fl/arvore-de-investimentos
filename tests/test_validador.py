@@ -1,5 +1,6 @@
 """Testes do validador de dados."""
-from acoes_fiis.validador import validar_universo, resumo_validacao
+from acoes_fiis.validador import resumo_validacao, validar_universo
+
 
 def test_outlier_detectado():
     universo = [{"ticker": f"NORM{i}3", "dy": 8.0, "pl": 10.0, "pvp": 1.2, "roe": 20.0} for i in range(20)]

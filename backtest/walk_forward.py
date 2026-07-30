@@ -12,7 +12,6 @@ from backtest.data_loader import calcular_retornos, validar_precos
 from backtest.metrics import comparar_series, resumo_metricas
 from backtest.portfolio_simulator import simular_carteira
 
-
 Ranker = Callable[[pd.DataFrame, pd.Timestamp], Mapping[str, float] | Sequence[str]]
 
 

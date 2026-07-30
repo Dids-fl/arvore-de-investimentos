@@ -16,7 +16,7 @@ Sem token: 15 req/min. Com token gratuito: limite maior.
 
 import os
 from datetime import date, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -30,10 +30,10 @@ _http.mount("https://", HTTPAdapter(max_retries=_retry))
 
 
 class BrapiClient:
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str | None = None):
         self.token = token or os.getenv("BRAPI_TOKEN", "")
 
-    def _params(self, extra: Optional[dict] = None) -> dict:
+    def _params(self, extra: dict | None = None) -> dict:
         p = {}
         if self.token:
             p["token"] = self.token
@@ -41,7 +41,7 @@ class BrapiClient:
             p.update(extra)
         return p
 
-    def _get(self, endpoint: str, params: Optional[dict] = None, timeout=(4, 12)) -> dict:
+    def _get(self, endpoint: str, params: dict | None = None, timeout=(4, 12)) -> dict:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
         r = _http.get(url, params=self._params(params),
                       headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout)
@@ -172,7 +172,7 @@ class BrapiClient:
             "consistente": consistente,
         }
 
-    def get_debt_equity(self, ticker: str) -> Optional[float]:
+    def get_debt_equity(self, ticker: str) -> float | None:
         """
         Dívida Líquida / Patrimônio Líquido do balanço mais recente.
         Calculado com: (dívida CP + dívida LP - caixa) / PL
@@ -209,7 +209,7 @@ class BrapiClient:
             return []
         return results[0].get("historicalDataPrice", [])
 
-    def get_ibovespa_cagr(self, years: int = 10) -> Optional[float]:
+    def get_ibovespa_cagr(self, years: int = 10) -> float | None:
         """CAGR do Ibovespa nos últimos N anos. Substitui o yfinance."""
         try:
             hist = self.get_historical("^BVSP", range_=f"{years}y", interval="1mo")
@@ -236,7 +236,7 @@ class BrapiClient:
 
     # ── NOVOS MÉTODOS: ENRIQUECIMENTO EM LOTE ────────────────────────────────
 
-    def get_complete_data(self, ticker: str) -> Dict[str, Any]:
+    def get_complete_data(self, ticker: str) -> dict[str, Any]:
         """
         Retorna um dicionário consolidado com dados da BRAPI para um ticker:
           - market_cap (int)
@@ -270,7 +270,7 @@ class BrapiClient:
                 "historical_prices": [],
             }
 
-    def get_complete_data_batch(self, tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+    def get_complete_data_batch(self, tickers: list[str]) -> dict[str, dict[str, Any]]:
         """
         Retorna um dicionário {ticker: dados_completos} para uma lista de tickers.
         Utiliza ThreadPoolExecutor para paralelizar as requisições.

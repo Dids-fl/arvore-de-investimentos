@@ -18,12 +18,13 @@ Pipeline em 3 estágios, do mais barato para o mais caro:
 """
 
 import logging
+
 import pandas as pd
 
-from .intersecao import carregar_interseccao_dataframe
-from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
 from .filtros import filtrar_para_ranking
 from .indicadores import calcular_indicadores_df
+from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
+from .intersecao import carregar_interseccao_dataframe
 from .sharpe_sortino import calcular_indicadores_risco
 
 logger = logging.getLogger(__name__)

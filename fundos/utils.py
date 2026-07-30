@@ -4,8 +4,9 @@ Funções utilitárias compartilhadas entre os módulos de fundos.
 """
 
 import math
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 DIAS_ANO = 252
 

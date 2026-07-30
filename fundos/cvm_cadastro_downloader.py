@@ -1,14 +1,15 @@
 # fundos/cvm_cadastro_downloader.py
 
-from pathlib import Path
+import atexit
+import logging
+import shutil
+import zipfile
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from tempfile import NamedTemporaryFile
-import logging
+
 import requests
-import zipfile
-import shutil
-import atexit
 
 logger = logging.getLogger(__name__)
 

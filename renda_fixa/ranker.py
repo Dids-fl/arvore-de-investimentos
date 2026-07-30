@@ -1,8 +1,10 @@
 # renda_fixa/ranker.py
 import logging
 from datetime import datetime
-from .coletor import coletar_indicadores, coletar_tesouro
+
 from utils.exceptions import DadosIndisponiveisError
+
+from .coletor import coletar_indicadores, coletar_tesouro
 
 logger = logging.getLogger(__name__)
 

@@ -4,11 +4,12 @@ Mostra: dados brutos do Fundamentus, complementos da BRAPI e a fusão final.
 """
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-from acoes_fiis.apis.fundamentus_scraper import get_all_bulk, get_fundamentus_data
 from acoes_fiis.apis.brapi import BrapiClient
 from acoes_fiis.apis.data_merger import merge_ticker_data
+from acoes_fiis.apis.fundamentus_scraper import get_all_bulk, get_fundamentus_data
 
 
 def testar_fundamentus(ticker: str):

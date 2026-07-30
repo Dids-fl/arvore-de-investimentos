@@ -10,8 +10,8 @@ médio, volume acumulado e nº de negócios (proxy de liquidez).
 """
 
 import logging
-from datetime import date, timedelta
 from collections import defaultdict
+from datetime import date, timedelta
 
 from mercados.b3 import B3
 

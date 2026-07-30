@@ -6,7 +6,6 @@ import logging
 import sys
 from typing import Final
 
-
 LOG_FORMAT: Final = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DATE_FORMAT: Final = "%Y-%m-%d %H:%M:%S"
 

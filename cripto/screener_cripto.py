@@ -4,9 +4,11 @@ Usa CoinGecko para obter dados de market cap, volume e retorno.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .apis.coingecko import CoinGeckoClient
-from acoes_fiis.ativos import PESOS_CRIPTO, REF_CRIPTO, CRIPTO_TOP_N
+
+from acoes_fiis.ativos import CRIPTO_TOP_N, PESOS_CRIPTO, REF_CRIPTO
 from utils.logging_config import get_logger
+
+from .apis.coingecko import CoinGeckoClient
 
 logger = get_logger(__name__)
 

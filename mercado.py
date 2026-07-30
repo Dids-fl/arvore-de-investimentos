@@ -120,7 +120,7 @@ def _utc_now_iso() -> str:
 def _json_get(
     url: str,
     *,
-    params: Optional[dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
     timeout=REQUEST_TIMEOUT,
 ) -> Any:
     response = _HTTP.get(url, params=params, timeout=timeout)
@@ -229,7 +229,7 @@ def _validar_payload_cache(data: Any) -> bool:
     )
 
 
-def _read_market_cache() -> tuple[Optional[dict], Optional[float]]:
+def _read_market_cache() -> tuple[dict | None, float | None]:
     """Lê um cache válido e devolve também sua idade em segundos."""
     try:
         if not CACHE_FILE.is_file():
@@ -254,7 +254,7 @@ def _read_market_cache() -> tuple[Optional[dict], Optional[float]]:
 
 def _load_market_cache(
     max_age_seconds: float = CACHE_TTL_SECONDS,
-) -> Optional[dict]:
+) -> dict | None:
     """Mantém compatibilidade com chamadas e testes da versão anterior."""
     data, age_seconds = _read_market_cache()
     if data is None or age_seconds is None or age_seconds > max_age_seconds:
@@ -274,7 +274,7 @@ def _save_market_cache(payload: dict) -> None:
     O arquivo temporário é criado no mesmo diretório para que os.replace()
     não atravesse sistemas de arquivos diferentes.
     """
-    temp_path: Optional[Path] = None
+    temp_path: Path | None = None
     try:
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -324,7 +324,7 @@ def _cache_antigo_com_aviso(
 
 # ── Coletores ─────────────────────────────────────────────────────────────────
 
-def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
+def _fetch_sgs_value(serie: int) -> tuple[float, str]:
     hoje = dt.date.today()
     data_inicial = hoje - dt.timedelta(days=90)
     data = _json_get(
@@ -365,7 +365,7 @@ def _fetch_sgs_value(serie: int) -> Tuple[float, str]:
     return value, data_ref
 
 
-def _fetch_focus_selic() -> Optional[float]:
+def _fetch_focus_selic() -> float | None:
     """Compatibilidade: devolve a primeira expectativa anual disponível."""
     focus_por_ano = _fetch_focus_selic_por_ano()
     return next(iter(focus_por_ano.values()), None)
@@ -438,7 +438,7 @@ def _fetch_focus_selic_por_ano(
     return resultado
 
 
-def _fetch_ibov_cagr_10a() -> Optional[float]:
+def _fetch_ibov_cagr_10a() -> float | None:
     if yf is None:
         return None
 
@@ -555,9 +555,9 @@ def load_market_data(
     focus_raw = results.get("focus_selic_por_ano")
     ibov_raw = results.get("ibov_cagr")
 
-    selic_value: Optional[float] = None
-    ipca_value: Optional[float] = None
-    ibov_value: Optional[float] = None
+    selic_value: float | None = None
+    ipca_value: float | None = None
+    ibov_value: float | None = None
     selic_ref = ""
     ipca_ref = ""
 

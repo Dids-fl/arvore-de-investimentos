@@ -1,14 +1,16 @@
 # fundos/indicadores.py
 import logging
+
 import pandas as pd
+
 from .cadastro_coletor import buscar_por_cnpj
 from .informe_diario_coletor import buscar_historico
 from .utils import (
-    retorno_periodo,
-    retorno,
     cagr,
-    volatilidade,
     drawdown,
+    retorno,
+    retorno_periodo,
+    volatilidade,
 )
 
 logger = logging.getLogger(__name__)

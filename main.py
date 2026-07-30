@@ -11,13 +11,11 @@ from pathlib import Path
 from typing import Optional
 
 from cli import (
-    DEMO_PADRAO,
     _APD,
     _CAD,
     _CD,
     _DD,
     _DPD,
-    _DVd,
     _EMD,
     _FD,
     _ID,
@@ -32,6 +30,8 @@ from cli import (
     _RND,
     _RSD,
     _VD,
+    DEMO_PADRAO,
+    _DVd,
     _m,
     _n,
     _p,
@@ -51,14 +51,13 @@ from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
 
-
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
 
 OUTPUT_DIR = Path(os.getenv("INVEST_OUTPUT_DIR", ".")).expanduser()
 
 
-def _salvar_json(nome: str, payload: dict) -> Optional[Path]:
+def _salvar_json(nome: str, payload: dict) -> Path | None:
     """Salva JSON no diretório configurado e devolve o caminho criado."""
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -81,7 +80,7 @@ def _salvar_json(nome: str, payload: dict) -> Optional[Path]:
 def salvar_perfil_respostas(
     respostas: dict,
     timestamp: str,
-) -> Optional[Path]:
+) -> Path | None:
     return _salvar_json(f"perfil_respostas_{timestamp}.json", respostas)
 
 

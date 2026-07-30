@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-
 FONTE_RECEITA_RENDIMENTOS_CAPITAL = (
     "https://www.gov.br/receitafederal/pt-br/assuntos/"
     "meu-imposto-de-renda/tabelas/2026"
@@ -49,7 +48,7 @@ class RegraTributaria:
     vigencia_inicio: date
     fonte: str
     descricao: str
-    vigencia_fim: Optional[date] = None
+    vigencia_fim: date | None = None
 
     def vigente_em(self, data_referencia: date) -> bool:
         return (

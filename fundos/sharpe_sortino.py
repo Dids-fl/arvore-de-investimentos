@@ -3,8 +3,10 @@
 Cálculo de Sharpe e Sortino usando a taxa CDI do período.
 """
 import pandas as pd
+
 from macroeconomia.cdi import obter_cdi_periodo
-from .utils import cagr, volatilidade, downside_volatilidade
+
+from .utils import cagr, downside_volatilidade, volatilidade
 
 
 def _obter_cdi_para_periodo(datas):
