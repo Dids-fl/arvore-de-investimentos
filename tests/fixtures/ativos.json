@@ -1,0 +1,42 @@
+{
+  "rf": [
+    {
+      "ticker": "TESOURO-SELIC",
+      "nome": "Tesouro Selic",
+      "score": 8.5,
+      "preco": 15000.0,
+      "motivos": [
+        "Liquidez e baixo risco de crÃ©dito soberano"
+      ]
+    },
+    {
+      "ticker": "CDB-TESTE",
+      "nome": "CDB de teste",
+      "score": 7.5,
+      "preco": 1000.0,
+      "motivos": [
+        "Fixture sem vÃ­nculo com oferta real"
+      ]
+    }
+  ],
+  "acoes": [
+    {
+      "ticker": "ACAO3",
+      "nome": "AÃ§Ã£o fictÃ­cia",
+      "score": 8.0,
+      "preco": 25.0,
+      "motivos": [
+        "Dados exclusivamente para teste"
+      ]
+    },
+    {
+      "ticker": "EMPRESA4",
+      "nome": "Empresa fictÃ­cia",
+      "score": 7.0,
+      "preco": 18.0,
+      "motivos": [
+        "NÃ£o constitui recomendaÃ§Ã£o"
+      ]
+    }
+  ]
+}

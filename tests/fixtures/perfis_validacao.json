@@ -1,0 +1,82 @@
+[
+  {
+    "nome": "divida_de_juros_altos",
+    "respostas": {
+      "dividas": "juros altos"
+    },
+    "restricoes": {
+      "bloqueia": true
+    }
+  },
+  {
+    "nome": "prazo_curto_limita_risco",
+    "respostas": {
+      "prazo": "curto",
+      "risco": "alto",
+      "emocional": "compraria mais",
+      "modo_meta": "rendendo"
+    },
+    "restricoes": {
+      "nivel_risco_maximo": 1,
+      "portfolio_soma_cem": true
+    }
+  },
+  {
+    "nome": "sem_reserva_prioriza_protecao",
+    "respostas": {
+      "reserva_emerg": "nÃ£o tenho",
+      "idade": "adulto",
+      "despesas": "altas",
+      "dependentes": "dois ou mais",
+      "modo_meta": "rendendo"
+    },
+    "restricoes": {
+      "risco_recomendacao_maximo": 1,
+      "categorias_proibidas": [
+        "rv_cripto"
+      ],
+      "portfolio_soma_cem": true
+    }
+  },
+  {
+    "nome": "aporte_unico_descarta_valor_mensal",
+    "respostas": {
+      "aporte": "Ãºnico",
+      "aporte_mensal": 5000,
+      "modo_meta": "rendendo"
+    },
+    "restricoes": {
+      "aporte_mensal_esperado": 0,
+      "portfolio_soma_cem": true
+    }
+  },
+  {
+    "nome": "liquidez_desativada_descarta_percentual",
+    "respostas": {
+      "liquidez": "nÃ£o",
+      "liquidez_pct": 90,
+      "modo_meta": "rendendo"
+    },
+    "restricoes": {
+      "liquidez_pct_esperada": 0,
+      "portfolio_soma_cem": true
+    }
+  },
+  {
+    "nome": "iniciante_nao_recebe_cripto_direta",
+    "respostas": {
+      "risco": "alto",
+      "conhecimento": "iniciante",
+      "experiencia": [
+        "nenhum"
+      ],
+      "modo_meta": "rendendo"
+    },
+    "restricoes": {
+      "categorias_proibidas": [
+        "rv_cripto"
+      ],
+      "portfolio_soma_cem": true
+    }
+  }
+]

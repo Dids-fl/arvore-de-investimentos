@@ -1,0 +1,20 @@
+{
+  "_schema_version": 4,
+  "selic": 0.10,
+  "focus_selic": 0.12,
+  "focus_selic_por_ano": {
+    "2026": 0.12,
+    "2027": 0.11,
+    "2028": 0.10,
+    "2029": 0.095
+  },
+  "ipca": 0.045,
+  "ibov_cagr": 0.15,
+  "data_ref": "28/07/2026",
+  "fontes": [
+    "Fixture local: nÃ£o representa uma cotaÃ§Ã£o atual."
+  ],
+  "avisos": [],
+  "fetched_at": "2026-07-28T12:00:00+00:00",
+  "cache_status": "fresh"
+}
