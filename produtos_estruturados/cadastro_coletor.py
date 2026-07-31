@@ -46,7 +46,7 @@ def _coletar_securitizadoras(b3: B3):
     """
     try:
         return list(b3.securitizadoras())
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Falha ao coletar securitizadoras (endpoint pode estar desatualizado): {e}")
         return []
 
@@ -62,15 +62,23 @@ def _coletar_cras_cris(b3: B3, securitizadoras):
                 cra["_securitizadora_cnpj"] = cnpj
                 cra["_tipo"] = "CRA"
                 cras.append(cra)
-        except Exception as e:
-            logger.warning(f"Falha ao coletar CRAs da securitizadora {cnpj}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Falha ao coletar CRAs da securitizadora %s: %s",
+                cnpj,
+                e,
+            )
         try:
             for cri in b3.cris(cnpj):
                 cri["_securitizadora_cnpj"] = cnpj
                 cri["_tipo"] = "CRI"
                 cris.append(cri)
-        except Exception as e:
-            logger.warning(f"Falha ao coletar CRIs da securitizadora {cnpj}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Falha ao coletar CRIs da securitizadora %s: %s",
+                cnpj,
+                e,
+            )
     return cras, cris
 
 
@@ -80,8 +88,8 @@ def _coletar_debentures(b3: B3):
         for d in debentures:
             d["_tipo"] = "DEBENTURE"
         return debentures
-    except Exception as e:
-        logger.error(f"Falha ao coletar debêntures: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.error("Falha ao coletar debêntures: %s", e)
         return []
 
 

@@ -61,11 +61,6 @@ def fontes_ranker_mockadas(
 ) -> None:
     monkeypatch.setattr(
         ranker,
-        "coletar_indicadores",
-        lambda: (0.1425, 0.1415),
-    )
-    monkeypatch.setattr(
-        ranker,
         "coletar_tesouro",
         lambda: titulos_tesouro,
     )
@@ -221,25 +216,30 @@ def test_rankear_rf_respeita_limite_e_perfis(
 def test_rankear_rf_sem_titulos_retorna_lista_vazia(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        ranker,
-        "coletar_indicadores",
-        lambda: (0.1425, 0.1415),
-    )
     monkeypatch.setattr(ranker, "coletar_tesouro", list)
+
     assert ranker.rankear_rf() == []
 
 
-def test_rankear_rf_propaga_indisponibilidade_da_selic(
+def test_rankear_rf_nao_depende_da_selic(
     monkeypatch,
+    titulos_tesouro,
 ) -> None:
     def falhar():
-        raise DadosIndisponiveisError("SELIC", "teste")
+        raise AssertionError(
+            "O ranker não deveria consultar SELIC/CDI."
+        )
 
-    monkeypatch.setattr(ranker, "coletar_indicadores", falhar)
-    with pytest.raises(DadosIndisponiveisError):
-        ranker.rankear_rf()
+    monkeypatch.setattr(coletor, "coletar_indicadores", falhar)
+    monkeypatch.setattr(
+        ranker,
+        "coletar_tesouro",
+        lambda: titulos_tesouro,
+    )
 
+    resultado = ranker.rankear_rf()
+
+    assert resultado
 
 def test_calcular_prazo_dias_aceita_formatos_e_fallback() -> None:
     futuro = dt.datetime.now(dt.UTC).date() + dt.timedelta(days=100)

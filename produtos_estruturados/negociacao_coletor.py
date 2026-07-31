@@ -54,8 +54,12 @@ def coletar_negociacao_balcao(dias: int = 20,referencia: date | None = None,):
                 instrumento = (neg.instrumento or "").strip().upper()
                 if instrumento in INSTRUMENTOS_ALVO:
                     negociacoes.append(neg)
-        except Exception as e:
-            logger.warning(f"Falha ao coletar negociação balcão de {dia}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Falha ao coletar negociação balcão de %s: %s",
+                dia,
+                e,
+            )
             continue
 
     logger.info(

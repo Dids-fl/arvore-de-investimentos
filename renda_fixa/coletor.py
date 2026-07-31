@@ -132,8 +132,14 @@ def coletar_tesouro_via_package_show():
         logger.info(f"Tesouro via package_show: {len(titulos)} títulos obtidos (base {data_mais_recente.date()})")
         return titulos
 
-    except Exception as e:
-        logger.error(f"Falha ao obter Tesouro via package_show: {e}")
+    except (
+        requests.RequestException,
+        pd.errors.ParserError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as e:
+        logger.error("Falha ao obter Tesouro via package_show: %s", e)
         return None
 
 

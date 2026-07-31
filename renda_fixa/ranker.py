@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 
-from .coletor import coletar_indicadores, coletar_tesouro
+from .coletor import coletar_tesouro
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def _calcular_prazo_dias(vencimento):
 
         hoje = datetime.now(timezone.utc)
         return max((venc - hoje).days, 1)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 9999
 
 
@@ -99,8 +99,6 @@ def rankear_rf(perfil: int = 2, limite: int = 5):
     retornar títulos, retorna lista vazia (não é uma falha de fonte,
     apenas ausência de produtos elegíveis no momento).
     """
-    # Não silencia: se a SGS falhar, a exceção sobe naturalmente.
-    selic, cdi = coletar_indicadores()
 
     titulos = coletar_tesouro()
     if not titulos:
