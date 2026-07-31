@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Any, Optional
+from typing import Any
 
 
 class PrecisaoTributaria(StrEnum):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 from config import (
     IR_ACOES,
@@ -30,11 +30,7 @@ class AliquotaIR(float):
     próprio tempo de permanência.
     """
 
-    def __new__(
-        cls,
-        valor_longo_prazo: float,
-        regra: TaxRule | None = None,
-    ) -> AliquotaIR:
+    def __new__(cls,valor_longo_prazo: float,regra: TaxRule | None = None,) -> Self:
         objeto = super().__new__(cls, valor_longo_prazo)
         objeto._regra = regra
         return objeto
@@ -45,7 +41,7 @@ class AliquotaIR(float):
 
 
 def _aliquota_rf_por_prazo(anos: float) -> float:
-    dias = max(0, int(round(float(anos) * 365.25)))
+    dias = max(0, round(float(anos) * 365.25))
     for limite_dias, aliquota in IR_RF_REGRESSIVO:
         if limite_dias is None or dias <= limite_dias:
             return float(aliquota)

@@ -3,7 +3,8 @@ Data Merger – consolida dados do Fundamentus (scraping) + Yahoo Finance (compl
 Remove a dependência da BRAPI para dados complementares.
 """
 
-from typing import Dict
+from datetime import datetime, timezone
+from typing import dict
 
 import yfinance as yf
 
@@ -25,15 +26,15 @@ def _get_dividend_consistency_yf(ticker: str) -> bool:
         if divs.empty:
             return False
         # Pega os últimos 5 anos a partir de hoje
-        from datetime import datetime
-        ano_atual = datetime.now().year
+        ano_atual = datetime.now(timezone.utc).astimezone().year
         anos = set(divs.index.year)
         anos_5 = set(range(ano_atual - 5, ano_atual + 1))
         anos_com_div = len(anos.intersection(anos_5))
         return anos_com_div >= 4
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.debug(f"Erro ao verificar dividendos de {ticker} via yfinance: {e}")
         return False
+
 
 def _get_yfinance_complement(ticker: str) -> dict:
     """
@@ -50,7 +51,7 @@ def _get_yfinance_complement(ticker: str) -> dict:
             "pvp": info.get("priceToBook"),
             "dividendos_consistentes": _get_dividend_consistency_yf(ticker),
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.debug(f"YFinance falhou para {ticker}: {e}")
         return {}
 
@@ -91,8 +92,8 @@ def merge_ticker_data(ticker: str) -> dict:
                 resultado['divida_patrimonio'] = float(str(detalhes.get('Dív Líq / Patrim', '0')).replace(',', '.'))
                 resultado['receita_cagr_5a'] = float(str(detalhes.get('Cres. Rec (5a)', '0')).replace('%', '').replace(',', '.'))
                 resultado['patrimonio'] = float(str(detalhes.get('Patrim. Líq', '0')).replace(',', '.'))
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001
+                logger.debug("Não foi possível extrair os campos do Fundamentus.")
 
     # 2. Yahoo Finance – complementos (substitui BRAPI)
     yf_data = _get_yfinance_complement(ticker)

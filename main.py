@@ -8,7 +8,6 @@ import logging
 import math
 import os
 from pathlib import Path
-from typing import Optional
 
 from cli import (
     _APD,
@@ -604,14 +603,14 @@ def main() -> None:
         _PD,
     )
     respostas = _coletar_respostas(primeira)
-    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
     salvar_perfil_respostas(respostas, timestamp)
 
     try:
         analise = criar_analise(
             respostas,
             market,
-            data_referencia=dt.date.today(),
+            data_referencia=dt.datetime.now(dt.timezone.utc).date(),
         )
     except DividaJurosAltosError as exc:
         _sep()
@@ -642,7 +641,7 @@ def main() -> None:
     payload = montar_payload_exportacao(analise)
     nome = (
         "perfil_investimento_"
-        f"{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        f"{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     )
     caminho = _salvar_json(nome, payload)
     if caminho is not None:

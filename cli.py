@@ -3,7 +3,6 @@
 # (curto→1, médio→2...) e o perfil de demonstração (d na primeira pergunta).
 
 import unicodedata
-from typing import Dict, List, Optional
 
 # ── Normalização de texto ─────────────────────────────────────────────────────
 

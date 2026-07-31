@@ -19,7 +19,7 @@ IMPORTANTE (validado em produção, jul/2026):
 
 import logging
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from renda_fixa.coletor import coletar_indicadores
 
@@ -78,7 +78,14 @@ def _obter_cdi_atual() -> float | None:
         _, cdi = coletar_indicadores()
         _CDI_CACHE["cdi"] = cdi
         return cdi
-    except Exception as e:
+    except (
+        RuntimeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        OSError,
+    ) as e:
         logger.warning(f"Não foi possível obter o CDI para normalizar taxas: {e}")
         return None
 
@@ -101,9 +108,11 @@ def _buscar_campo(registro: dict, candidatos: tuple[str, ...]):
     ou None."""
     for chave, valor in registro.items():
         chave_norm = str(chave).lower()
-        if any(termo in chave_norm for termo in candidatos):
-            if valor not in (None, ""):
-                return valor
+        if (
+            any(termo in chave_norm for termo in candidatos)
+            and valor not in (None, "")
+        ):
+            return valor
     return None
 
 
@@ -115,7 +124,7 @@ def _parse_data(valor):
     texto = str(valor).strip()
     for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
         try:
-            return datetime.strptime(texto, fmt).date()
+            return datetime.strptime(texto, fmt).replace(tzinfo=timezone.utc).date()
         except ValueError:
             continue
     # Tenta extrair um padrão dd/mm/aaaa ou aaaa-mm-dd de dentro de um texto maior
@@ -129,7 +138,7 @@ def _prazo_dias(vencimento):
     venc = _parse_data(vencimento)
     if venc is None:
         return None
-    return max((venc - date.today()).days, 0)
+    return max((venc - datetime.now(timezone.utc).date()).days, 0)
 
 
 def _isento_ir(tipo: str, registro: dict) -> bool:

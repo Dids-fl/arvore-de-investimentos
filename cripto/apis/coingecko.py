@@ -6,7 +6,6 @@ Limite: 30 req/min no plano free.
 Cobre: market cap, volume, retorno histórico, preço atual.
 """
 
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -134,5 +133,5 @@ class CoinGeckoClient:
                 "retorno_12m_pct":   round(retorno_12m, 2),
                 "volatilidade_anual": round(vol_a, 2),
             }
-        except Exception:
+        except (requests.exceptions.RequestException, ValueError, TypeError, KeyError, ZeroDivisionError, AttributeError):
             return {"retorno_12m_pct": 0.0, "volatilidade_anual": 0.0}

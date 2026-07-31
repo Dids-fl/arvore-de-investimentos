@@ -1,8 +1,6 @@
 # renda_fixa/ranker.py
 import logging
-from datetime import datetime
-
-from utils.exceptions import DadosIndisponiveisError
+from datetime import datetime, timezone
 
 from .coletor import coletar_indicadores, coletar_tesouro
 
@@ -16,7 +14,9 @@ def _calcular_prazo_dias(vencimento):
         if isinstance(vencimento, str):
             for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
                 try:
-                    venc = datetime.strptime(vencimento, fmt)
+                    venc = datetime.strptime(
+                        vencimento, fmt
+                    ).replace(tzinfo=timezone.utc)
                     break
                 except ValueError:
                     continue
@@ -24,7 +24,11 @@ def _calcular_prazo_dias(vencimento):
                 return 9999
         else:
             venc = vencimento
-        hoje = datetime.now()
+
+        if isinstance(venc, datetime) and venc.tzinfo is None:
+            venc = venc.replace(tzinfo=timezone.utc)
+
+        hoje = datetime.now(timezone.utc)
         return max((venc - hoje).days, 1)
     except Exception:
         return 9999

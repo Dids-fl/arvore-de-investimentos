@@ -8,8 +8,6 @@ API não oficial. Excelente para FIIs e ações brasileiras.
 Não requer token/cadastro.
 """
 
-import time
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -78,7 +76,7 @@ class StatusInvestClient:
                 "liquidez":   data.get("liquidityAvg", 0),
                 "patrimonio": data.get("patrimonioLiquido", 0),
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError, TypeError, KeyError) as e:
             raise RuntimeError(f"Erro ao buscar dados do FII '{ticker}': {e}")
 
     def search_fiis(self, tipo: str | None = None, dy_min: float = 0.0,
@@ -136,7 +134,7 @@ class StatusInvestClient:
                     })
             return result[:limit]
             return result[:limit]
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError, TypeError, KeyError) as e:
             raise RuntimeError(f"Erro ao buscar FIIs: {e}")
 
     def get_top_fiis(self, n: int = 10) -> list[dict]:
@@ -181,7 +179,7 @@ class StatusInvestClient:
                 "divida_patrimonio":       data.get("liquidezCorrente", 0),
                 "crescimento_receita_5a":  data.get("cagr5AnosReceita", 0),
             }
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError, TypeError, KeyError) as e:
             raise RuntimeError(f"Erro ao buscar dados da ação '{ticker}': {e}")
 
     def search_stocks(self, dy_min: float = 0.0, p_l_max: float = 999.0,
@@ -256,5 +254,10 @@ class StatusInvestClient:
                         "mktcap_proxy": mktcap_proxy,
                     })
             return result
-        except Exception as e:
+        except (
+            requests.exceptions.RequestException,
+            ValueError,
+            TypeError,
+            KeyError,
+        ) as e:
             raise RuntimeError(f"Erro ao buscar ações: {e}")

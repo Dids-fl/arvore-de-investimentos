@@ -10,7 +10,7 @@ fundos/cvm_cadastro_downloader.py.
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from mercados.b3 import B3

@@ -4,7 +4,7 @@ e lista de tickers da B3, sem salvar arquivos intermediários.
 """
 
 from io import StringIO
-from typing import Dict, List
+from typing import dict, list
 
 import pandas as pd
 import requests
@@ -41,7 +41,7 @@ def get_raw_data(url: str) -> bytes:
     r = requests.get(url, headers=HEADERS)
     r.encoding = 'utf-8'
     if r.status_code != 200:
-        raise Exception(f"Falha ao acessar {url}, status: {r.status_code}")
+        raise RuntimeError(f"Falha ao acessar {url}, status: {r.status_code}")
     return r.content
 
 # ── 1. Bulk: todas as ações em UMA requisição ──────────────────────────────
@@ -105,7 +105,7 @@ def get_all_bulk() -> dict[str, dict]:
 
         return resultado
 
-    except Exception:
+    except (requests.exceptions.RequestException, TypeError, ValueError, AttributeError, OSError):
         return {}
 
 # ── 2. Detalhe: dados específicos de um ticker ─────────────────────────────
@@ -136,14 +136,14 @@ def get_fundamentus_data(ticker: str) -> dict[str, str]:
 
         return json_data
 
-    except Exception:
+    except (requests.exceptions.RequestException, TypeError, ValueError, AttributeError, OSError):
         return {}
 
 # ── 3. Lista de tickers ─────────────────────────────────────────────────────
 
 def get_all_tickers() -> list[dict[str, str]]:
     bulk = get_all_bulk()
-    return [{'codigo': t, 'nome': '', 'razao_social': ''} for t in bulk.keys()]
+    return [{'codigo': t, 'nome': '', 'razao_social': ''} for t in bulk]
 
 def get_ticker_list() -> list[str]:
     return list(get_all_bulk().keys())

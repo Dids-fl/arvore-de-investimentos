@@ -7,7 +7,8 @@ Complementos: Yahoo Finance (via data_merger) para market cap, P/L, P/VP, divide
 
 import math
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
 
 from utils.logging_config import get_logger
 
@@ -32,7 +33,7 @@ from .ativos import (
     UNIVERSO_ACOES_N,
     UNIVERSO_FIIS_N,
 )
-from .filtros import aplicar_filtros, filtrar_por_governanca, filtrar_por_setor
+from .filtros import filtrar_por_governanca, filtrar_por_setor
 from .validador import resumo_validacao, validar_universo
 
 try:
@@ -270,7 +271,7 @@ def _buscar_acoes_status_invest() -> list[dict]:
     try:
         si = StatusInvestClient()
         return si.search_stocks(limit=UNIVERSO_ACOES_N)
-    except Exception as e:
+    except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError) as e:
         logger.warning(f"Status Invest falhou: {e}")
         return []
 
@@ -305,7 +306,7 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
             if bulk_data:
                 universo = list(bulk_data.values())
                 logger.info(f"Fundamentus: {len(universo)} ações carregadas")
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError, TypeError, KeyError, AttributeError) as e:
             logger.warning(f"Fundamentus bulk falhou: {e}")
 
     if not universo:
@@ -337,7 +338,7 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
                     ind['divida_patrimonio'] = dados_yf.get('divida_patrimonio', 0)
                 if not ind.get('crescimento_receita'):
                     ind['crescimento_receita'] = dados_yf.get('receita_cagr_5a', 0) / 100.0
-            except Exception as e:
+            except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as e:
                 logger.debug(f"Erro ao enriquecer {ticker}: {e}")
         enriquecidos.append(ind)
 
@@ -346,9 +347,7 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
     liquidos_filtrados = []
     for a in enriquecidos:
         mcap = a.get('mktcap_proxy', 0)
-        if mcap == 0:
-            liquidos_filtrados.append(a)
-        elif mcap >= mktcap_min:
+        if mcap == 0 or mcap >= mktcap_min:
             liquidos_filtrados.append(a)
         else:
             logger.debug(f"Excluído {a.get('ticker')} - market cap R${mcap/1e9:.2f}B")
@@ -442,7 +441,7 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
             universo = si.search_fiis(limit=UNIVERSO_FIIS_N)
             if universo:
                 fiis_data = {f['ticker']: f for f in universo}
-        except Exception as e:
+        except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError) as e:
             logger.error(f"Erro ao buscar FIIs do Status Invest: {e}")
             return []
 

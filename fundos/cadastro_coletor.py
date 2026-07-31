@@ -212,7 +212,14 @@ class ColetorFundosCVM:
                         "registro_subclasse.csv não possui as colunas esperadas "
                         "(ID_Registro_Classe, Previdenciario). Ignorando critério de subclasse."
                     )
-            except Exception as e:
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                pd.errors.ParserError,
+            ) as e:
                 logger.warning(
                     f"Erro ao processar registro_subclasse.csv: {e}. "
                     "Ignorando critério de subclasse."
@@ -497,9 +504,8 @@ class ColetorFundosCVM:
         try:
             if getattr(self, "conn", None):
                 self.conn.close()
-        except Exception:
-            pass
-
+        except sqlite3.Error:
+            logger.debug("Erro ao fechar conexão.", exc_info=True)
 
 # ---------------------------------------------------------------------
 # Singleton

@@ -65,10 +65,8 @@ def calcular_renda_variavel(
         aliquota=(imposto / contexto.ganho if contexto.ganho else 0.0),
         precisao=PrecisaoTributaria.ESTIMADA,
         premissas=(
-            "Ganho, prejuízo compensável e IRRF foram fornecidos pelo usuário.",
-            "Emolumentos, notas de corretagem e operações simultâneas não foram "
-            "reconstituídos.",
-        ),
+    "Ganho, prejuízo compensável e IRRF foram fornecidos pelo usuário.",
+    "Emolumentos, notas de corretagem e operações simultâneas não foram reconstituídos.",),
         fonte=FONTE_RECEITA_GANHO_CAPITAL,
         vigencia=VIGENCIA_BASE,
         regra_id=f"{tipo}_{'daytrade' if contexto.day_trade else 'comum'}_2026",

@@ -68,7 +68,7 @@ def _ultima_modificacao_servidor():
 
         return dt.astimezone(timezone.utc)
 
-    except Exception as e:
+    except (requests.exceptions.RequestException, TypeError, ValueError, OSError) as e:
         logger.warning(f"Não foi possível verificar atualização da CVM: {e}")
         return None
 
@@ -156,7 +156,7 @@ def _localizar_csv():
             if "CNPJ_Classe" in header and "Denominacao_Social" in header:
                 return str(csv)
         except Exception:
-            pass
+            logger.debug("Falha ao inspecionar CSV.", exc_info=True)
 
     logger.warning("Não foi possível identificar o CSV principal. Utilizando o primeiro.")
     return str(csvs[0])

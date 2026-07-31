@@ -5,6 +5,8 @@ Mostra: dados brutos do Fundamentus, complementos da BRAPI e a fusão final.
 import sys
 from pathlib import Path
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from acoes_fiis.apis.brapi import BrapiClient
@@ -47,7 +49,7 @@ def testar_brapi(ticker: str):
         # Dividendos
         div_summary = client.get_dividend_summary(ticker)
         print(f"   Dividendos consistentes (5 anos): {div_summary.get('consistente', False)}")
-    except Exception as e:
+    except (ImportError, requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as e:
         print(f"❌ Erro: {e}")
 
 

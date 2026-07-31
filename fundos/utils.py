@@ -36,7 +36,7 @@ def to_float(valor):
         if pd.isna(valor):
             return 0.0
         return float(valor)
-    except Exception:
+    except (TypeError, ValueError):
         return 0.0
 
 

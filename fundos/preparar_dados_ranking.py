@@ -15,7 +15,7 @@ import logging
 import os
 import sqlite3
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -85,7 +85,7 @@ def listar_por_mes(ano, mes, cnpjs):
         prox = f"{ano + 1:04d}-01-01"
     else:
         prox = f"{ano:04d}-{mes + 1:02d}-01"
-    data_fim = (datetime.strptime(prox, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    data_fim = (date.fromisoformat(prox) - timedelta(days=1)).isoformat()
 
     conn = _conectar_leitura()
     try:

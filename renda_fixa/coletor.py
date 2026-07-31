@@ -1,6 +1,5 @@
 # renda_fixa/coletor.py
 import logging
-from datetime import datetime
 from io import StringIO
 
 import pandas as pd

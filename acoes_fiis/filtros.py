@@ -2,7 +2,6 @@
 Filtros para refinar lista de ações por setor, índice de governança, etc.
 """
 
-from typing import Dict, List
 from collections.abc import Callable
 
 

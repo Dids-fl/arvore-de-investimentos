@@ -11,7 +11,7 @@ médio, volume acumulado e nº de negócios (proxy de liquidez).
 
 import logging
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from mercados.b3 import B3
 
@@ -30,16 +30,16 @@ logger = logging.getLogger(__name__)
 INSTRUMENTOS_ALVO = {"CRA", "CRI", "DEB"}
 
 
-def _dias_uteis(dias: int, referencia: date = None):
+def _dias_uteis(dias: int, referencia: date | None = None,):
     """Gera até `dias` datas de calendário anteriores à referência
     (filtragem fina de fim de semana é feita implicitamente: a B3 retorna
     404 para dias sem pregão e o coletor apenas ignora)."""
-    referencia = referencia or date.today()
+    referencia = referencia or datetime.now(timezone.utc).date()
     for i in range(1, dias + 1):
         yield referencia - timedelta(days=i)
 
 
-def coletar_negociacao_balcao(dias: int = 20, referencia: date = None):
+def coletar_negociacao_balcao(dias: int = 20,referencia: date | None = None,):
     """
     Retorna lista de negociações (dataclasses NegociacaoBalcao) dos últimos
     `dias` dias corridos, já filtradas para instrumentos de interesse
@@ -58,9 +58,10 @@ def coletar_negociacao_balcao(dias: int = 20, referencia: date = None):
             logger.warning(f"Falha ao coletar negociação balcão de {dia}: {e}")
             continue
 
-    logger.info(f"Negociação balcão: {len(negociacoes)} negócios coletados em {dias} dias.")
+    logger.info(
+        f"Negociação balcão: {len(negociacoes)} negócios coletados em {dias} dias."
+    )
     return negociacoes
-
 
 def agregar_por_isin(negociacoes):
     """
@@ -95,7 +96,7 @@ def agregar_por_isin(negociacoes):
     return agregado
 
 
-def obter_negociacao_agregada(dias: int = 20, referencia: date = None):
+def obter_negociacao_agregada(dias: int = 20,referencia: date | None = None,):
     """API pública: coleta + agrega em uma chamada só."""
     negociacoes = coletar_negociacao_balcao(dias=dias, referencia=referencia)
     return agregar_por_isin(negociacoes)

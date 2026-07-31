@@ -1,7 +1,7 @@
 # tests/test_estruturados.py
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
-from produtos_estruturados.filtros import elegivel, filtrar_para_ranking
+from produtos_estruturados.filtros import elegivel
 from produtos_estruturados.indicadores import (
     _isento_ir,
     _prazo_dias,
@@ -19,7 +19,7 @@ def _ativo_exemplo(**overrides):
         "tipo": "DEBENTURE",
         "identificador": "Empresa X",
         "isin": "BRDEBEXEMPLO",
-        "vencimento": (date.today() + timedelta(days=900)).isoformat(),
+        "vencimento": (datetime.now(timezone.utc).date() + timedelta(days=900)).isoformat(),
         "prazo_dias": 900,
         "isento_ir": True,
         "taxa": 9.5,
@@ -47,7 +47,7 @@ def test_isento_ir_debenture_schema_real_b3():
 
 
 def test_prazo_dias_calcula_a_partir_da_data():
-    venc = (date.today() + timedelta(days=365)).isoformat()
+    venc = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
     assert 360 <= _prazo_dias(venc) <= 366
 
 

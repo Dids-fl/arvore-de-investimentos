@@ -338,7 +338,7 @@ def _render_questionario(market: dict) -> None:
             analise = criar_analise(
                 respostas,
                 market,
-                data_referencia=dt.date.today(),
+                data_referencia=dt.datetime.now(dt.timezone.utc).date(),
             )
     except DividaJurosAltosError as exc:
         st.error("🚨 Dívidas de juros altos detectadas")
@@ -833,7 +833,7 @@ def _render_avisos_e_perfil(analise: dict) -> None:
 
 def _render_exportacao(analise: dict) -> None:
     payload = montar_payload_exportacao(analise)
-    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
     st.download_button(
         "Baixar análise completa em JSON",
         data=json.dumps(
@@ -903,7 +903,7 @@ def main() -> None:
             _market_signature(analise_anterior.get("market", {}))
             != _market_signature(market)
             or analise_anterior.get("data_referencia")
-            != dt.date.today().isoformat()
+            != dt.datetime.now(dt.timezone.utc).date().isoformat()
         )
     ):
         st.session_state.pop("analise_investimentos", None)

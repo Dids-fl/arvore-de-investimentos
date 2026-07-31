@@ -1,5 +1,5 @@
 """Testes do validador de dados."""
-from acoes_fiis.validador import resumo_validacao, validar_universo
+from acoes_fiis.validador import validar_universo
 
 
 def test_outlier_detectado():

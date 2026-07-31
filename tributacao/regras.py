@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 FONTE_RECEITA_RENDIMENTOS_CAPITAL = (
     "https://www.gov.br/receitafederal/pt-br/assuntos/"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import importlib
 import math
-from collections.abc import Mapping, Set
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -149,7 +150,7 @@ def _executar_classe(
 
 
 def _buscar_classes(
-    classes: Set[str],
+    classes: AbstractSet[str],
     perfil_risco: int,
     n: int,
 ) -> tuple[dict[str, list], dict[str, str]]:

@@ -11,9 +11,8 @@ Referência: https://dadosabertos.bcb.gov.br/dataset/sistema-gerenciador-de-seri
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-import pandas as pd
 from bcb import sgs
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ SERIE_CDI_MENSAL = 4391 # Taxa acumulada no mês
 DIAS_UTEIS_ANO = 252
 
 
-def obter_cdi_diario(data: str = None) -> float:
+def obter_cdi_diario(data: str | None = None) -> float:
     """
     Retorna a taxa CDI diária (percentual ao dia) para uma data específica.
     Se data não for fornecida, retorna o último valor disponível.
@@ -40,24 +39,24 @@ def obter_cdi_diario(data: str = None) -> float:
     """
     try:
         if data is None:
-            data = datetime.now().strftime("%Y-%m-%d")
+            data = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         # Busca apenas o dia específico
         df = sgs.get(
-            {f"cdi_diario": SERIE_CDI_DIARIO},
+            {"cdi_diario": SERIE_CDI_DIARIO},
             start=data,
             end=data,
         )
         if df.empty:
             # Se não houver dado para a data, tenta o último dia útil disponível
-            df = sgs.get({f"cdi_diario": SERIE_CDI_DIARIO}, end=data)
+            df = sgs.get({"cdi_diario": SERIE_CDI_DIARIO}, end=data)
             if df.empty:
                 return None
 
         # A série 12 retorna valores percentuais (ex: 0.05 para 0,05% ao dia)
         valor = df.iloc[-1, 0]
         return valor / 100  # converte para decimal
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Erro ao buscar CDI diário: {e}")
         return None
 
@@ -83,11 +82,11 @@ def obter_cdi_mensal(ano: int, mes: int) -> float:
         else:
             data_fim = f"{ano:04d}-{mes + 1:02d}-01"
         data_fim = (
-            datetime.strptime(data_fim, "%Y-%m-%d") - timedelta(days=1)
-        ).strftime("%Y-%m-%d")
+            date.fromisoformat(data_fim) - timedelta(days=1)
+        ).isoformat()
 
         df = sgs.get(
-            {f"cdi_mensal": SERIE_CDI_MENSAL},
+            {"cdi_mensal": SERIE_CDI_MENSAL},
             start=data_inicio,
             end=data_fim,
         )
@@ -97,7 +96,7 @@ def obter_cdi_mensal(ano: int, mes: int) -> float:
         # A série 4391 já retorna a taxa mensal acumulada em percentual
         valor = df.iloc[-1, 0]
         return valor / 100  # converte para decimal
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Erro ao buscar CDI mensal: {e}")
         return None
 
@@ -116,8 +115,8 @@ def obter_cdi_periodo(data_inicio: str, data_fim: str) -> float:
                ou None se não houver dados suficientes.
     """
     try:
-        inicio = datetime.strptime(data_inicio, "%Y-%m-%d")
-        fim = datetime.strptime(data_fim, "%Y-%m-%d")
+        inicio = date.fromisoformat(data_inicio)
+        fim = date.fromisoformat(data_fim)
 
         if inicio >= fim:
             logger.warning("Data de início deve ser anterior à data de fim.")
@@ -125,7 +124,7 @@ def obter_cdi_periodo(data_inicio: str, data_fim: str) -> float:
 
         # Busca a série diária no período
         df = sgs.get(
-            {f"cdi_diario": SERIE_CDI_DIARIO},
+            {"cdi_diario": SERIE_CDI_DIARIO},
             start=data_inicio,
             end=data_fim,
         )
@@ -145,7 +144,7 @@ def obter_cdi_periodo(data_inicio: str, data_fim: str) -> float:
         cdi_anual = fator_acumulado ** (DIAS_UTEIS_ANO / dias_uteis) - 1
 
         return float(cdi_anual)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Erro ao calcular CDI do período: {e}")
         return None
 
@@ -159,13 +158,13 @@ def obter_cdi_anualizado() -> float:
         float: Taxa CDI anualizada em decimal, ou None se não houver dados.
     """
     try:
-        hoje = datetime.now()
+        hoje = datetime.now(timezone.utc)
         um_ano_atras = hoje - timedelta(days=365)
         return obter_cdi_periodo(
             um_ano_atras.strftime("%Y-%m-%d"),
             hoje.strftime("%Y-%m-%d"),
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Erro ao buscar CDI anualizado: {e}")
         return None
 

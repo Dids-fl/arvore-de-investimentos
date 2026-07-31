@@ -2,8 +2,9 @@
 Motor de score para Criptomoedas.
 Usa CoinGecko para obter dados de market cap, volume e retorno.
 """
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
 
 from acoes_fiis.ativos import CRIPTO_TOP_N, PESOS_CRIPTO, REF_CRIPTO
 from utils.logging_config import get_logger
@@ -65,7 +66,7 @@ def top_cripto(perfil: int, n: int = 4) -> list[dict]:
     try:
         cg = CoinGeckoClient()
         mkt = cg.get_markets_top(top_n=CRIPTO_TOP_N)
-    except Exception as e:
+    except (requests.exceptions.RequestException, ValueError, TypeError, RuntimeError) as e:
         logger.error(f"Erro ao buscar cripto: {e}")
         return []
 
@@ -76,7 +77,8 @@ def top_cripto(perfil: int, n: int = 4) -> list[dict]:
             cid = rv_futures[fut]
             try:
                 rv_map[cid] = fut.result()
-            except Exception:
+            except (requests.exceptions.RequestException, ValueError, TypeError, RuntimeError, AttributeError) as exc:
+                logger.debug("Falha ao buscar retorno/volatilidade para %s: %s", cid, exc)
                 rv_map[cid] = {"retorno_12m_pct": 0.0, "volatilidade_anual": 0.0}
 
     resultados = []

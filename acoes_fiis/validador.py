@@ -13,8 +13,8 @@ Após a validação, cada ativo recebe:
 """
 
 import statistics
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Tuple
+
+import requests
 
 from utils.logging_config import get_logger
 
@@ -159,7 +159,7 @@ def _buscar_pl_brapi(tickers: list[str]) -> dict[str, float]:
                     pl  = float(q.get("priceEarnings", 0) or 0)
                     if sym and pl > 0:
                         pl_map[sym] = pl
-            except Exception as e:
+            except (requests.exceptions.RequestException, ValueError, TypeError, KeyError) as e:
                 logger.debug(f"BRAPI batch {batch}: {e}")
 
         return pl_map
@@ -167,7 +167,7 @@ def _buscar_pl_brapi(tickers: list[str]) -> dict[str, float]:
     except ImportError:
         logger.debug("BrapiClient não disponível para cross-validação")
         return {}
-    except Exception as e:
+    except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError) as e:
         logger.warning(f"Cross-validação BRAPI falhou: {e}")
         return {}
 

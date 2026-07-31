@@ -23,7 +23,7 @@ import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -325,7 +325,7 @@ def _cache_antigo_com_aviso(
 # ── Coletores ─────────────────────────────────────────────────────────────────
 
 def _fetch_sgs_value(serie: int) -> tuple[float, str]:
-    hoje = dt.date.today()
+    hoje = dt.datetime.now(dt.timezone.utc).date()
     data_inicial = hoje - dt.timedelta(days=90)
     data = _json_get(
         _SGS_URL.format(serie=serie),
@@ -350,7 +350,7 @@ def _fetch_sgs_value(serie: int) -> tuple[float, str]:
 
         try:
             value = float(raw.replace(",", ".")) / 100.0
-            data_item = dt.datetime.strptime(data_ref, "%d/%m/%Y").date()
+            data_item = dt.datetime.strptime(data_ref, "%d/%m/%Y").replace(tzinfo=dt.timezone.utc).date()
         except (TypeError, ValueError):
             continue
 
@@ -380,14 +380,14 @@ def _fetch_focus_selic_por_ano(
     if quantidade_anos <= 0:
         raise ValueError("quantidade_anos deve ser maior que zero.")
 
-    hoje = dt.date.today()
+    hoje = dt.datetime.now(dt.timezone.utc).date()
     data_inicial = hoje - dt.timedelta(days=120)
     resultado: dict[int, float] = {}
 
     try:
         expectativas = Expectativas()
         endpoint = expectativas.get_endpoint("ExpectativasMercadoAnuais")
-    except Exception as exc:
+    except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         logger.warning(f"Erro ao inicializar o serviço Focus: {exc}")
         return {}
 
@@ -428,7 +428,14 @@ def _fetch_focus_selic_por_ano(
                 mediana * 100,
                 ano_referencia,
             )
-        except Exception as exc:
+        except (
+            requests.exceptions.RequestException,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            KeyError,
+        ) as exc:
             logger.warning(
                 "Erro ao buscar Focus SELIC para %s: %s",
                 ano_referencia,
@@ -481,7 +488,15 @@ def _fetch_ibov_cagr_10a() -> float | None:
             minimo=-0.90,
             maximo=2.0,
         )
-    except Exception as exc:
+    except (
+        requests.exceptions.RequestException,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        OSError,
+        AttributeError,
+        KeyError,
+    ) as exc:
         logger.warning(f"Erro ao buscar histórico do Ibovespa: {exc}")
         return None
 
@@ -544,7 +559,15 @@ def load_market_data(
                 results[key] = value
                 if value is None and key != "focus_selic_por_ano":
                     failures[key] = "fonte sem valor válido"
-            except Exception as exc:
+            except (
+                requests.exceptions.RequestException,
+                RuntimeError,
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+            ) as exc:
                 logger.warning(f"Falha ao obter {key}: {exc}")
                 results[key] = None
                 if key != "focus_selic_por_ano":

@@ -332,9 +332,9 @@ class InformeDiarioColetorCVM:
 
     def _gerar_lista_meses(self, quantidade):
         """Retorna os últimos 'quantidade' meses (ano, mes), do mais recente ao mais antigo."""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        hoje = datetime.now()
+        hoje = datetime.now(timezone.utc)
         ano, mes = hoje.year, hoje.month
 
         meses = []
@@ -669,7 +669,7 @@ class InformeDiarioColetorCVM:
             if getattr(self, "conn", None):
                 self.conn.close()
         except Exception:
-            pass
+            logger.debug("Erro ao fechar conexão.", exc_info=True)
 
 
 # ---------------------------------------------------------------------
@@ -761,10 +761,10 @@ if __name__ == "__main__":
 
         ultimo = buscar_ultimo_registro(cnpj)
         if ultimo:
-            print(f"\nÚltimo registro:")
+            print("\nÚltimo registro:")
             print(f"  Data: {ultimo['Data_Competencia']}")
             print(f"  Cota: {ultimo['Valor_Cota']}")
             print(f"  Patrimônio: {ultimo['Patrimonio_Liquido']}")
 
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Erro ao executar teste do coletor de informe diário")

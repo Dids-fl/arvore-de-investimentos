@@ -32,8 +32,6 @@ from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
 from .intersecao_previdenciaria import carregar_interseccao_previdenciaria_dataframe
 from .ranker_fundos import (
     DIAS_ANO,
-    PERFIL_AGRESSIVO,
-    PERFIL_CONSERVADOR,
     PERFIL_MODERADO,
     calcular_score,
 )

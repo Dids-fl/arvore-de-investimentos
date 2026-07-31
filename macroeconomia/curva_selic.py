@@ -18,7 +18,7 @@ import calendar
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Final
 
 _LIMITE_TAXA_ANUAL: Final = 2.0
@@ -147,7 +147,7 @@ def construir_curva_selic_mensal(
     Se o Focus não estiver disponível, a SELIC atual é mantida constante,
     também com marcação de extrapolação.
     """
-    base = data_base or date.today()
+    base = data_base or datetime.now(timezone.utc).date()
     if not isinstance(base, date):
         raise TypeError("data_base deve ser datetime.date.")
     if isinstance(prazo_meses, bool) or not isinstance(prazo_meses, int):
@@ -236,7 +236,7 @@ def projetar_selic(
     data_base: date | None = None,
 ) -> ProjecaoSelic:
     """Constrói a curva e calcula o retorno composto do período."""
-    base = data_base or date.today()
+    base = data_base or datetime.now(timezone.utc).date()
     curva = construir_curva_selic_mensal(
         selic_atual=selic_atual,
         focus_por_ano=focus_por_ano,

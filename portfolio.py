@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import MutableMapping
-from typing import Optional
 
 from core.categorias import _RK_DISPLAY, RK, _risco
 
@@ -145,7 +144,7 @@ def _retirar_proporcional(
 
 def mover_rv_para_rf(
     p: Portfolio,
-    delta: int | float,
+    delta: float,
     avisos: list[str] | None = None,
 ) -> bool:
     """Move até ``delta`` pontos percentuais de renda variável para RF."""

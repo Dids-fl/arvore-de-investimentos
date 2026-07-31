@@ -15,8 +15,8 @@ Sem token: 15 req/min. Com token gratuito: limite maior.
 """
 
 import os
-from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, dict, list
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -152,7 +152,7 @@ class BrapiClient:
             print(f"DY 12m: R${s['ultimo_1a']:.2f}  Consistente: {s['consistente']}")
         """
         divs   = self.get_dividends(ticker)
-        hoje   = date.today()
+        hoje   = datetime.now(timezone.utc).astimezone().date()
         d1a    = (hoje - timedelta(days=365)).isoformat()
         d3a    = (hoje - timedelta(days=365 * 3)).isoformat()
         d5a    = (hoje - timedelta(days=365 * 5)).isoformat()
@@ -221,7 +221,7 @@ class BrapiClient:
             if c0 <= 0:
                 return None
             return (c1 / c0) ** (1.0 / anos) - 1
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
 
     # ── FIIs ──────────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ class BrapiClient:
         try:
             data = self._get("quote/list", params={"type": "fund", "sortBy": "name"})
             return data.get("stocks", [])
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     # ── NOVOS MÉTODOS: ENRIQUECIMENTO EM LOTE ────────────────────────────────
@@ -260,7 +260,7 @@ class BrapiClient:
                 "dividend_summary": div_summary,
                 "historical_prices": historical,
             }
-        except Exception as e:
+        except Exception:  # noqa: BLE001
             # Retorna vazio em caso de erro
             return {
                 "market_cap": 0,
@@ -284,6 +284,6 @@ class BrapiClient:
                 ticker = future_to_ticker[future]
                 try:
                     results[ticker] = future.result()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     results[ticker] = {}
         return results

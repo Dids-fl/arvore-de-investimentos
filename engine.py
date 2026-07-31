@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date, datetime
-from typing import Any, Optional
+from datetime import date, datetime, timezone
+from typing import Any
 
 from calculos import (
     _vf_bruto,
@@ -37,11 +37,11 @@ from tributacao import PrecisaoTributaria
 __all__ = [
     "ANOS_GRAFICO_PADRAO",
     "ANOS_PROJECAO_PADRAO",
-    "DividaJurosAltosError",
-    "RecomendacaoBloqueadaError",
     "RESPOSTAS_MAP",
     "RISCO_LABEL",
     "ROTULOS_CLASSES_ATIVOS",
+    "DividaJurosAltosError",
+    "RecomendacaoBloqueadaError",
     "analisar_meta",
     "aporte_necessario_para_meta",
     "buscar_ativos_da_analise",
@@ -290,7 +290,7 @@ def _numero_finito(
 def _data_referencia_valida(valor: object | None) -> date:
     """Normaliza a data que torna projeções e regras reproduzíveis."""
     if valor is None:
-        return date.today()
+        return datetime.now(timezone.utc).date()
     if isinstance(valor, datetime):
         return valor.date()
     if isinstance(valor, date):
@@ -479,7 +479,7 @@ def _focus_por_ano(
             opcional=True,
         )
         if focus_unico is not None:
-            ano = (data_referencia or date.today()).year
+            ano = (data_referencia or datetime.now(timezone.utc).date()).year
             resultado[ano] = float(focus_unico)
 
     return dict(sorted(resultado.items()))

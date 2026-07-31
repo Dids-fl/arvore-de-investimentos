@@ -81,7 +81,7 @@ def _numero(valor):
         if valor is None:
             return 0.0
         return float(valor)
-    except Exception:
+    except (TypeError, ValueError):
         return 0.0
 
 

@@ -10,11 +10,7 @@ NOTA: O mapeamento de classes ANBIMA depende das nomenclaturas atuais.
 """
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Set
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)

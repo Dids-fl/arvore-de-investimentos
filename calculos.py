@@ -57,7 +57,7 @@ def _meses(anos: float) -> int:
     anos = _numero_finito("anos", anos)
     if anos < 0:
         raise ValueError("anos não pode ser negativo.")
-    return int(round(anos * 12.0))
+    return round(anos * 12.0)
 
 
 def _taxa_mensal(taxa_a: float) -> float:

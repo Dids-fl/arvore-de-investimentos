@@ -82,7 +82,7 @@ def _ultima_modificacao_servidor(ano, mes):
 
         return dt.astimezone(timezone.utc)
 
-    except Exception as e:
+    except (requests.exceptions.RequestException, TypeError, ValueError, OSError) as e:
         logger.warning(f"Não foi possível verificar a atualização: {e}")
         return None
 
@@ -173,7 +173,7 @@ def _localizar_csv(ano, mes):
             if "CNPJ_FUNDO" in header and "DT_COMPTC" in header:
                 return str(csv)
         except Exception:
-            pass
+            logger.debug("Falha ao inspecionar CSV.", exc_info=True)
 
     logger.warning("CSV principal não encontrado. Utilizando o primeiro disponível.")
     return str(csvs[0])
@@ -184,7 +184,7 @@ def _localizar_csv(ano, mes):
 # ---------------------------------------------------------------------
 
 def download_informe_diario(ano=None, mes=None, force=False):
-    hoje = datetime.now()
+    hoje = datetime.now(timezone.utc)
 
     if ano is None:
         ano = hoje.year
@@ -209,7 +209,7 @@ def download_informe_diario(ano=None, mes=None, force=False):
 # ---------------------------------------------------------------------
 
 def _meses_historico(quantidade=MESES_HISTORICO):
-    hoje = datetime.now()
+    hoje = datetime.now(timezone.utc)
     ano = hoje.year
     mes = hoje.month
 
@@ -231,10 +231,13 @@ def _remover_antigos(meses_validos):
     validos.update({_nome_zip(a, m) for a, m in meses_validos})
 
     for arquivo in DATA_DIR.iterdir():
-        if arquivo.is_file() and arquivo.name.startswith("inf_diario_fi_"):
-            if arquivo.name not in validos:
-                arquivo.unlink(missing_ok=True)
-                removidos.append(arquivo.name)
+        if (
+            arquivo.is_file()
+            and arquivo.name.startswith("inf_diario_fi_")
+            and arquivo.name not in validos
+        ):
+            arquivo.unlink(missing_ok=True)
+            removidos.append(arquivo.name)
 
     return removidos
 
@@ -246,7 +249,7 @@ def download_historico(anos=3, force=False):
     baixados = []
     mantidos = []
 
-    hoje = datetime.now()
+    hoje = datetime.now(timezone.utc)
 
     for ano, mes in meses:
         try:
@@ -270,7 +273,7 @@ def download_historico(anos=3, force=False):
             else:
                 mantidos.append(str(_csv_path(ano, mes)))
 
-        except Exception as e:
+        except (requests.exceptions.RequestException, RuntimeError, OSError, ValueError, zipfile.BadZipFile) as e:
             logger.warning(f"{ano}-{mes:02d}: {e}")
 
     removidos = _remover_antigos(meses)
