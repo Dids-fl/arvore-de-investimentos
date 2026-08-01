@@ -1,0 +1,108 @@
+{
+  "_schema_version": 1,
+  "escopo": "validacao_independente_cripto_casos_criticos",
+  "independente_do_motor": true,
+  "fontes_oficiais": {
+    "receita_aliquotas_ganho_capital": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/ganhos-de-capital/aliquotas",
+    "lei_13259_2016": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2016/lei/l13259.htm",
+    "lei_14754_2023": "https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14754.htm",
+    "in_rfb_2180_2024": "https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=136603",
+    "manual_mir_eventos_patrimonio": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/preenchimento/manual-mir/patrimonio/eventos-do-patrimonio"
+  },
+  "resumo": {
+    "total": 4,
+    "validado_primeira_camada": 4,
+    "pendente_premissa": 0,
+    "divergente": 0,
+    "confere_aritmetica": 4
+  },
+  "resultados": [
+    {
+      "caso_id": "cripto_exterior_ganho_1000",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "jurisdicao": "exterior",
+      "ganho_atual": 1000.0,
+      "base_acumulada_informada": null,
+      "imposto_independente": 150.0,
+      "valor_liquido_independente": 10850.0,
+      "aliquota_efetiva_independente": 0.15,
+      "imposto_motor": 150.0,
+      "diferenca_imposto": 0.0,
+      "confere_aritmetica": true,
+      "premissas_pendentes": [],
+      "fundamentos": [
+        "Lei 14.754/2023, arts. 2º e 3º",
+        "IN RFB 2.180/2024, arts. 9º e 10",
+        "Manual MIR — Eventos do Patrimônio"
+      ],
+      "observacoes": [
+        "O imposto de 15% é apurado no ajuste anual; o valor líquido aqui é uma projeção econômica, não retenção no resgate.",
+        "A localização no exterior não resolve sozinha o enquadramento material do ativo virtual."
+      ]
+    },
+    {
+      "caso_id": "cripto_ganho_acumulado_cruza_5_milhoes",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "jurisdicao": "brasil",
+      "ganho_atual": 2000000.0,
+      "base_acumulada_informada": 6000000.0,
+      "imposto_independente": 325000.0,
+      "valor_liquido_independente": 11675000.0,
+      "aliquota_efetiva_independente": 0.1625,
+      "imposto_motor": 325000.0,
+      "diferenca_imposto": 0.0,
+      "confere_aritmetica": true,
+      "premissas_pendentes": [],
+      "fundamentos": [
+        "Receita Federal — Alíquotas de ganhos de capital",
+        "Lei 13.259/2016, art. 1º"
+      ],
+      "observacoes": [
+        "As faixas foram aplicadas progressivamente sobre o ganho, não sobre o valor bruto da alienação."
+      ]
+    },
+    {
+      "caso_id": "cripto_ganho_total_12_milhoes",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "jurisdicao": "brasil",
+      "ganho_atual": 12000000.0,
+      "base_acumulada_informada": 12000000.0,
+      "imposto_independente": 2025000.0,
+      "valor_liquido_independente": 10975000.0,
+      "aliquota_efetiva_independente": 0.16875,
+      "imposto_motor": 2025000.0,
+      "diferenca_imposto": 0.0,
+      "confere_aritmetica": true,
+      "premissas_pendentes": [],
+      "fundamentos": [
+        "Receita Federal — Alíquotas de ganhos de capital",
+        "Lei 13.259/2016, art. 1º"
+      ],
+      "observacoes": [
+        "As faixas foram aplicadas progressivamente sobre o ganho, não sobre o valor bruto da alienação."
+      ]
+    },
+    {
+      "caso_id": "cripto_ganho_total_5_milhoes",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "jurisdicao": "brasil",
+      "ganho_atual": 5000000.0,
+      "base_acumulada_informada": 5000000.0,
+      "imposto_independente": 750000.0,
+      "valor_liquido_independente": 5250000.0,
+      "aliquota_efetiva_independente": 0.15,
+      "imposto_motor": 750000.0,
+      "diferenca_imposto": 0.0,
+      "confere_aritmetica": true,
+      "premissas_pendentes": [],
+      "fundamentos": [
+        "Receita Federal — Alíquotas de ganhos de capital",
+        "Lei 13.259/2016, art. 1º"
+      ],
+      "observacoes": [
+        "As faixas foram aplicadas progressivamente sobre o ganho, não sobre o valor bruto da alienação."
+      ]
+    }
+  ],
+  "aviso": "Primeira camada técnica. Casos pendentes não devem ser marcados como validados na matriz tributária."
+}

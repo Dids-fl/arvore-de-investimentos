@@ -113,6 +113,87 @@ def test_cripto_com_custodia_informada_calcula_estimativa() -> None:
     assert resultado.precisao == PrecisaoTributaria.ESTIMADA
 
 
+def test_cripto_exterior_sem_enquadramento_e_indeterminado() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="cripto",
+            metadados={"jurisdicao_custodia": "exterior"},
+        )
+    )
+    assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+    assert resultado.regra_id == "cripto_exterior_enquadramento_indeterminado"
+
+
+def test_cripto_exterior_confirmado_usa_aliquota_fixa() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            principal=1_000_000,
+            valor_bruto=13_000_000,
+            tipo_produto="cripto",
+            metadados={
+                "jurisdicao_custodia": "exterior",
+                "enquadramento_aplicacao_financeira_exterior_confirmado": (
+                    True
+                ),
+            },
+        )
+    )
+    assert resultado.imposto_estimado == pytest.approx(1_800_000)
+    assert resultado.aliquota_efetiva == pytest.approx(0.15)
+    assert resultado.regra_id == (
+        "cripto_aplicacao_financeira_exterior_2026"
+    )
+
+
+def test_cripto_acumulado_sem_premissa_e_indeterminado() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            principal=10_000_000,
+            valor_bruto=12_000_000,
+            tipo_produto="cripto",
+            metadados={
+                "jurisdicao_custodia": "brasil",
+                "ganho_acumulado_ano": 6_000_000,
+            },
+        )
+    )
+    assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+    assert resultado.regra_id == "cripto_acumulacao_indeterminada"
+
+
+def test_cripto_acumulado_com_premissa_calcula_incremento() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            principal=10_000_000,
+            valor_bruto=12_000_000,
+            tipo_produto="cripto",
+            metadados={
+                "jurisdicao_custodia": "brasil",
+                "ganho_acumulado_ano": 6_000_000,
+                "alienacoes_parciais_mesmo_bem_confirmadas": True,
+            },
+        )
+    )
+    assert resultado.imposto_estimado == pytest.approx(325_000)
+    assert resultado.aliquota_efetiva == pytest.approx(0.1625)
+    assert resultado.regra_id == "cripto_ganho_capital_brasil_2026"
+
+
+def test_cripto_rejeita_confirmacao_textual() -> None:
+    with pytest.raises(TypeError, match="deve ser booleano"):
+        calcular_tributacao(
+            contexto(
+                tipo_produto="cripto",
+                metadados={
+                    "jurisdicao_custodia": "exterior",
+                    "enquadramento_aplicacao_financeira_exterior_confirmado": (
+                        "sim"
+                    ),
+                },
+            )
+        )
+
+
 def test_cri_estruturado_e_isento_para_pessoa_fisica() -> None:
     resultado = calcular_tributacao(contexto(tipo_produto="cri"))
     assert resultado.imposto_estimado == 0

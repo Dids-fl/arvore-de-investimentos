@@ -28,6 +28,10 @@ FONTE_RECEITA_GANHO_CAPITAL = (
     "https://www.gov.br/receitafederal/pt-br/assuntos/"
     "meu-imposto-de-renda/pagamento/ganhos-de-capital/aliquotas"
 )
+FONTE_RFB_APLICACOES_FINANCEIRAS_EXTERIOR = (
+    "https://normas.receita.fazenda.gov.br/sijut2consulta/"
+    "link.action?idAto=136603"
+)
 FONTE_RECEITA_DIRPF = (
     "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/"
     "perguntas-frequentes/imposto-de-renda/dirpf"
@@ -83,6 +87,7 @@ GANHO_CAPITAL_FAIXAS = (
     (30_000_000.0, 0.20),
     (None, 0.225),
 )
+IRPF_APLICACOES_FINANCEIRAS_EXTERIOR = 0.15
 IRPF_ANUAL_2026 = (
     (29_145.60, 0.0, 0.0),
     (33_919.80, 0.075, 2_185.92),
