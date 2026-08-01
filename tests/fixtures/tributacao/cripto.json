@@ -1,0 +1,194 @@
+{
+  "_schema_version": 1,
+  "categoria": "cripto",
+  "data_referencia": "2026-07-31",
+  "validacao_externa": {
+    "status": "pendente_critico",
+    "nota": "Os resultados reproduzem a estimativa conservadora atual. Regras de exterior, offshore, staking e permutas não estão validadas."
+  },
+  "fontes": {
+    "receita_ganho_capital": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/ganhos-de-capital",
+      "acessado_em": "2026-07-31"
+    },
+    "receita_criptoativos": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/declaracoes-e-demonstrativos/criptoativos",
+      "acessado_em": "2026-07-31"
+    },
+    "receita_decripto": {
+      "url": "https://www.gov.br/pt-br/servicos/declarar-operacoes-com-criptoativos",
+      "acessado_em": "2026-07-31"
+    }
+  },
+  "tolerancias": {
+    "monetaria": 0.01,
+    "aliquota": 1e-09
+  },
+  "casos": [
+    {
+      "id": "cripto_sem_jurisdicao",
+      "natureza": "validacao_de_indeterminacao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto"
+      },
+      "esperado": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "cripto_jurisdicao_indeterminada"
+      },
+      "fonte_ids": ["receita_criptoativos"]
+    },
+    {
+      "id": "cripto_brasil_ganho_1000",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {"jurisdicao_custodia": "brasil"}
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_brasil_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital", "receita_criptoativos"]
+    },
+    {
+      "id": "cripto_exterior_ganho_1000",
+      "natureza": "regressao_implementacao_pendente_revisao_critica",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {"jurisdicao_custodia": "exterior"}
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_exterior_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital", "receita_criptoativos"]
+    },
+    {
+      "id": "cripto_isencao_confirmada_externamente",
+      "natureza": "validacao_de_premissa_usuario",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {
+          "jurisdicao_custodia": "brasil",
+          "isencao_confirmada": true
+        }
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "cripto_isencao_informada_2026"
+      },
+      "fonte_ids": ["receita_criptoativos"]
+    },
+    {
+      "id": "cripto_sem_ganho",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 10000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {"jurisdicao_custodia": "brasil"}
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_brasil_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital"]
+    },
+    {
+      "id": "cripto_ganho_acumulado_cruza_5_milhoes",
+      "natureza": "regressao_implementacao_pendente_revisao_critica",
+      "entrada": {
+        "principal": 10000000.0,
+        "valor_bruto": 12000000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {
+          "jurisdicao_custodia": "brasil",
+          "ganho_acumulado_ano": 6000000.0
+        }
+      },
+      "esperado": {
+        "imposto_estimado": 325000.0,
+        "valor_liquido": 11675000.0,
+        "aliquota_efetiva": 0.1625,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_brasil_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital"]
+    },
+    {
+      "id": "cripto_ganho_total_5_milhoes",
+      "natureza": "regressao_implementacao_pendente_revisao_critica",
+      "entrada": {
+        "principal": 1000000.0,
+        "valor_bruto": 6000000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {"jurisdicao_custodia": "brasil"}
+      },
+      "esperado": {
+        "imposto_estimado": 750000.0,
+        "valor_liquido": 5250000.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_brasil_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital"]
+    },
+    {
+      "id": "cripto_ganho_total_12_milhoes",
+      "natureza": "regressao_implementacao_pendente_revisao_critica",
+      "entrada": {
+        "principal": 1000000.0,
+        "valor_bruto": 13000000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cripto",
+        "metadados": {"jurisdicao_custodia": "brasil"}
+      },
+      "esperado": {
+        "imposto_estimado": 2025000.0,
+        "valor_liquido": 10975000.0,
+        "aliquota_efetiva": 0.16875,
+        "precisao": "estimada",
+        "regra_id": "cripto_ganho_capital_brasil_2026"
+      },
+      "fonte_ids": ["receita_ganho_capital"]
+    }
+  ]
+}

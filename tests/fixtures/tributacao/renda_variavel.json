@@ -1,0 +1,232 @@
+{
+  "_schema_version": 1,
+  "categoria": "renda_variavel",
+  "data_referencia": "2026-07-31",
+  "validacao_externa": {
+    "status": "pendente",
+    "nota": "Os casos não reconstituem notas de corretagem, despesas, operações simultâneas ou separação de prejuízos por modalidade."
+  },
+  "fontes": {
+    "receita_bolsa": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/bolsa-de-valores-1",
+      "acessado_em": "2026-07-31"
+    },
+    "receita_isencoes": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/bolsa-de-valores-1/isencoes",
+      "acessado_em": "2026-07-31"
+    },
+    "receita_revar": {
+      "url": "https://www.gov.br/pt-br/servicos/apurar-imposto-sobre-renda-variavel",
+      "acessado_em": "2026-07-31"
+    }
+  },
+  "tolerancias": {
+    "monetaria": 0.01,
+    "aliquota": 1e-09
+  },
+  "casos": [
+    {
+      "id": "acao_comum_vendas_20000_isenta",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 20000.0,
+        "day_trade": false,
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acoes_isencao_mensal_2026"
+      },
+      "fonte_ids": ["receita_isencoes"]
+    },
+    {
+      "id": "acao_comum_vendas_acima_20000",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 20000.01,
+        "day_trade": false
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fonte_ids": ["receita_bolsa"]
+    },
+    {
+      "id": "acao_comum_compensa_prejuizo",
+      "natureza": "conformidade_fonte_oficial_com_entrada_usuario",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 25000.0,
+        "metadados": {"prejuizo_compensavel": 400.0}
+      },
+      "esperado": {
+        "imposto_estimado": 90.0,
+        "valor_liquido": 10910.0,
+        "aliquota_efetiva": 0.09,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fonte_ids": ["receita_bolsa", "receita_revar"]
+    },
+    {
+      "id": "acao_comum_compensa_irrf",
+      "natureza": "conformidade_fonte_oficial_com_entrada_usuario",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 25000.0,
+        "metadados": {"irrf": 20.0}
+      },
+      "esperado": {
+        "imposto_estimado": 130.0,
+        "valor_liquido": 10870.0,
+        "aliquota_efetiva": 0.13,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fonte_ids": ["receita_bolsa", "receita_revar"]
+    },
+    {
+      "id": "acao_day_trade_20_porcento",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-07-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 10000.0,
+        "day_trade": true
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "acao_daytrade_2026"
+      },
+      "fonte_ids": ["receita_bolsa"]
+    },
+    {
+      "id": "fii_venda_com_ganho",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "fii"
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fii_comum_2026"
+      },
+      "fonte_ids": ["receita_bolsa"]
+    },
+    {
+      "id": "etf_comum_sem_isencao_mensal",
+      "natureza": "regressao_implementacao_pendente_classificacao_etf",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "etf",
+        "valor_vendas_mes": 10000.0
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "etf_comum_2026"
+      },
+      "fonte_ids": ["receita_isencoes"]
+    },
+    {
+      "id": "acao_sem_ganho",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 11000.0,
+        "valor_bruto": 10000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao",
+        "valor_vendas_mes": 25000.0
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fonte_ids": ["receita_bolsa"]
+    },
+    {
+      "id": "acao_sem_valor_vendas_nao_aplica_isencao",
+      "natureza": "validacao_conservadora_por_dado_ausente",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "acao"
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fonte_ids": ["receita_isencoes"]
+    },
+    {
+      "id": "produto_bdr_nao_suportado",
+      "natureza": "validacao_de_indeterminacao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "bdr"
+      },
+      "esperado": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "produto_nao_suportado"
+      },
+      "fonte_ids": ["receita_bolsa"]
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "_schema_version": 1,
+  "categoria": "estruturados",
+  "data_referencia": "2026-07-31",
+  "validacao_externa": {
+    "status": "pendente",
+    "nota": "Os casos reproduzem o enquadramento atual por subtipo; elegibilidade concreta para isenção deve ser confirmada no instrumento."
+  },
+  "fontes": {
+    "receita_tabelas_2026": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+      "acessado_em": "2026-07-31"
+    }
+  },
+  "tolerancias": {
+    "monetaria": 0.01,
+    "aliquota": 1e-09
+  },
+  "casos": [
+    {
+      "id": "cra_pessoa_fisica_isento",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "cra",
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cri_pessoa_fisica_isento",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "cri",
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "debenture_incentivada_pf_isenta",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "debenture_incentivada",
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "debenture_comum_721_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "debenture_comum"
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "coe_180_dias",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-06-30",
+        "tipo_produto": "coe"
+      },
+      "esperado": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "coe_29_dias_com_iof",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-01-30",
+        "tipo_produto": "coe"
+      },
+      "esperado": {
+        "imposto_estimado": 248.25,
+        "valor_liquido": 10751.75,
+        "aliquota_efetiva": 0.24825,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cra_pessoa_juridica_nao_isenta",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "cra",
+        "pessoa_fisica": false
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "estruturado_generico_indeterminado",
+      "natureza": "validacao_de_indeterminacao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "estruturado"
+      },
+      "esperado": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "estruturado_subtipo_indeterminado"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    }
+  ]
+}

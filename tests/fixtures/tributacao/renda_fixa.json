@@ -1,0 +1,271 @@
+{
+  "_schema_version": 1,
+  "categoria": "renda_fixa",
+  "data_referencia": "2026-07-31",
+  "validacao_externa": {
+    "status": "pendente",
+    "nota": "Casos derivados das tabelas oficiais e do contrato atual do motor; ainda exigem cálculo independente e revisão profissional."
+  },
+  "fontes": {
+    "receita_tabelas_2026": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+      "acessado_em": "2026-07-31"
+    }
+  },
+  "tolerancias": {
+    "monetaria": 0.01,
+    "aliquota": 1e-09
+  },
+  "casos": [
+    {
+      "id": "cdb_1_dia_com_iof",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-01-02",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 969.0,
+        "valor_liquido": 10031.0,
+        "aliquota_efetiva": 0.969,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_29_dias_com_iof",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-01-30",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 248.25,
+        "valor_liquido": 10751.75,
+        "aliquota_efetiva": 0.24825,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_30_dias_sem_iof",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-01-31",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_180_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-06-30",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_181_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_360_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-12-27",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_361_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-12-28",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_720_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-22",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_721_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "lci_pessoa_fisica_isenta",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "lci",
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "lca_pessoa_fisica_isenta",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "lca",
+        "pessoa_fisica": true
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "lci_pessoa_juridica_nao_isenta",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "lci",
+        "pessoa_fisica": false
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "cdb_sem_ganho",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 10000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "cdb"
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    }
+  ]
+}

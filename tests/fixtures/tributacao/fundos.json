@@ -1,0 +1,243 @@
+{
+  "_schema_version": 1,
+  "categoria": "fundos",
+  "data_referencia": "2026-07-31",
+  "validacao_externa": {
+    "status": "pendente",
+    "nota": "Come-cotas é validado apenas pelo valor antecipado informado; não há reconstrução histórica de cotas."
+  },
+  "fontes": {
+    "receita_tabelas_2026": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+      "acessado_em": "2026-07-31"
+    },
+    "receita_fundos": {
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+      "acessado_em": "2026-07-31"
+    }
+  },
+  "tolerancias": {
+    "monetaria": 0.01,
+    "aliquota": 1e-09
+  },
+  "casos": [
+    {
+      "id": "fundo_curto_180_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-06-30",
+        "tipo_produto": "fundo_curto_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_curto_181_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "fundo_curto_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_180_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-06-30",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_181_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_361_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-12-28",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_721_dias",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_rf_721_dias",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "fundo_rf",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_rf_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_com_come_cotas_parcial",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 100.0}
+      },
+      "esperado": {
+        "imposto_estimado": 50.0,
+        "valor_liquido": 10950.0,
+        "aliquota_efetiva": 0.05,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_longo_come_cotas_superior_imposto_final",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2027-12-23",
+        "tipo_produto": "fundo_longo_prazo",
+        "metadados": {"come_cotas_pago": 200.0}
+      },
+      "esperado": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026"]
+    },
+    {
+      "id": "fundo_acoes_15_porcento",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "fundo_acoes"
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "fonte_ids": ["receita_fundos"]
+    },
+    {
+      "id": "fundo_etf_acoes_15_porcento",
+      "natureza": "regressao_implementacao_pendente_revisao",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-07-01",
+        "tipo_produto": "fundo_etf_acoes"
+      },
+      "esperado": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "fonte_ids": ["receita_fundos"]
+    }
+  ]
+}
