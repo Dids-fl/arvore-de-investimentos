@@ -186,3 +186,85 @@ def test_engine_calcula_cripto_com_jurisdicao_explicita() -> None:
     assert projecao["liquido"] is not None
     assert projecao["imposto_estimado"] is not None
     assert projecao["precisao_tributaria"] == "estimada"
+
+
+def test_engine_escolhe_pgbl_quando_beneficio_supera_vgbl(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "objetivo": "aposentadoria",
+        "ir_tipo": "completo",
+        "regime_previdencia": "regressivo",
+        "elegibilidade_deducao_pgbl": True,
+        "renda_tributavel_anual": 100_000,
+        "valor_aportes_ano": 0,
+    }
+
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    ranking = analise["resultado"]["ranking_previdencia_liquida"]
+
+    assert ranking["aplicado"] is True
+    assert ranking["produto_escolhido"] == "pgbl"
+    assert RK.PREV_PGBL in analise["resultado"]["portfolio"]
+
+
+def test_engine_prefere_vgbl_sem_beneficio_pgbl_confirmado(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "objetivo": "aposentadoria",
+        "ir_tipo": "completo",
+        "regime_previdencia": "regressivo",
+        "elegibilidade_deducao_pgbl": None,
+        "renda_tributavel_anual": 100_000,
+    }
+
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    ranking = analise["resultado"]["ranking_previdencia_liquida"]
+
+    assert ranking["produto_escolhido"] == "vgbl"
+    assert RK.PREV_VGBL in analise["resultado"]["portfolio"]
+
+
+def test_busca_de_fundos_recebe_taxa_cenario_do_engine(monkeypatch) -> None:
+    recebidos = {}
+
+    def recomendar(portfolio, perfil, **kwargs):
+        recebidos.update(
+            {
+                "portfolio": portfolio,
+                "perfil": perfil,
+                **kwargs,
+            }
+        )
+        return {"fundos": [], "_indisponiveis": {}}
+
+    monkeypatch.setattr(engine, "recomendar_por_portfolio", recomendar)
+    analise = {
+        "resultado": {
+            "portfolio_busca": {RK.FUNDOS: 100},
+            "nivel_risco_perfil": 2,
+            "prazo_taxa_meses": 60,
+            "taxa_perfil": 0.11,
+        },
+        "market": {"selic": 0.10, "ipca": 0.04, "ibov_cagr": 0.12},
+        "meta": None,
+        "data_referencia": "2026-07-29",
+    }
+
+    engine.buscar_ativos_da_analise(analise, n=3)
+
+    assert recebidos["retorno_esperado_fundos"] == pytest.approx(0.11)
+    assert recebidos["prazo_anos"] == pytest.approx(5)

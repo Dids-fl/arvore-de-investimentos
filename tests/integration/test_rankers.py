@@ -46,3 +46,47 @@ def test_falha_de_uma_classe_nao_apaga_as_demais(monkeypatch) -> None:
     )
     assert resultado["rf"]
     assert "acoes" in falhas
+
+
+def test_prazo_e_data_chegam_ao_ranker_de_fundos(monkeypatch) -> None:
+    recebidos = {}
+
+    def executar(
+        classe,
+        perfil,
+        limite,
+        *,
+        prazo_anos=None,
+        data_referencia=None,
+        retorno_esperado_fundos=None,
+    ):
+        recebidos.update(
+            {
+                "classe": classe,
+                "perfil": perfil,
+                "limite": limite,
+                "prazo_anos": prazo_anos,
+                "data_referencia": data_referencia,
+                "retorno_esperado_fundos": retorno_esperado_fundos,
+            }
+        )
+        return []
+
+    monkeypatch.setattr(recomendador_ativos, "_executar_classe", executar)
+    recomendador_ativos.recomendar_por_portfolio(
+        {RK.FUNDOS: 100},
+        perfil_risco=2,
+        n=3,
+        prazo_anos=10,
+        data_referencia="2026-07-29",
+        retorno_esperado_fundos=0.11,
+    )
+
+    assert recebidos == {
+        "classe": "fundos",
+        "perfil": 2,
+        "limite": 3,
+        "prazo_anos": 10,
+        "data_referencia": "2026-07-29",
+        "retorno_esperado_fundos": 0.11,
+    }

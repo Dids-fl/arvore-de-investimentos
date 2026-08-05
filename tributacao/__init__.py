@@ -12,6 +12,11 @@ from tributacao.cripto import calcular_cripto
 from tributacao.estruturados import calcular_estruturado
 from tributacao.fundos import calcular_fundo
 from tributacao.previdencia import calcular_previdencia
+from tributacao.projecoes import (
+    FUNDOS_COM_COME_COTAS,
+    ProjecaoComeCotas,
+    projetar_come_cotas,
+)
 from tributacao.regras import FONTE_RECEITA_RENDIMENTOS_CAPITAL, VIGENCIA_BASE
 from tributacao.renda_fixa import calcular_renda_fixa
 from tributacao.renda_variavel import calcular_renda_variavel
@@ -82,8 +87,11 @@ def calcular_tributacao(
 
 
 __all__ = [
+    "FUNDOS_COM_COME_COTAS",
     "ContextoTributario",
     "PrecisaoTributaria",
+    "ProjecaoComeCotas",
     "ResultadoTributario",
     "calcular_tributacao",
+    "projetar_come_cotas",
 ]

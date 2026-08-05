@@ -152,6 +152,36 @@ O score:
 - depende da qualidade e atualidade da fonte;
 - não deve ser interpretado como probabilidade de retorno.
 
+#### Eficiência líquida como critério secundário
+
+A adequação continua sendo aplicada antes da eficiência tributária. O motor
+não recomenda um produto inadequado somente porque ele paga menos imposto.
+
+Quando há uma parcela de previdência, PGBL e VGBL equivalentes são comparados
+com os mesmos aportes, prazo, retorno bruto e regime. A escolha usa a maior
+TIR líquida anual. O benefício fiscal do PGBL só entra no fluxo quando o
+usuário confirma declaração completa e elegibilidade legal, informa a renda
+tributável e informa quanto do limite anual já foi utilizado. A restituição ou
+economia de imposto é registrada como fluxo separado no fim de cada ano; não é
+tratada como reinvestimento automático no plano.
+
+Nos fundos, o score final preserva 85% do score de adequação e reserva 15% para
+a eficiência líquida projetada no horizonte do usuário. O retorno histórico da
+cota permanece entre as evidências do score de adequação, mas não é mais usado
+automaticamente como previsão. A projeção tributária usa a taxa-cenário do
+perfil produzida pelo engine. Essa taxa é tratada como já líquida das despesas
+internas refletidas na cota. Depois são simulados os tributos do cotista,
+inclusive os eventos futuros de come-cotas quando aplicáveis. Se a
+classificação tributária ou a taxa-cenário não estiver disponível, o score
+original é preservado e a eficiência fica indeterminada.
+
+Essa camada melhora a comparação econômica entre alternativas equivalentes,
+mas não comprova que a rentabilidade histórica se repetirá.
+
+Renda futura, retorno e legislação continuam sendo cenários. O sistema permite
+variar a renda tributável por ano e informa os anos em que a regra tributária
+de 2026 foi extrapolada. Ele não apresenta essa extrapolação como lei futura.
+
 ## Meta financeira
 
 Quando valor e prazo são fornecidos, o engine calcula:

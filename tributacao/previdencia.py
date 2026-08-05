@@ -52,6 +52,25 @@ def _calcular_regressivo(
     base: float,
 ) -> ResultadoTributario:
     aliquota = aliquota_previdencia(contexto.prazo_anos)
+    lote_individual = contexto.metadados.get(
+        "lote_individual_projetado",
+        False,
+    )
+    if not isinstance(lote_individual, bool):
+        raise TypeError("lote_individual_projetado deve ser booleano.")
+    if lote_individual:
+        premissas_lote = (
+            (
+                "Este contexto representa um lote individual; a alíquota "
+                "foi definida pela idade deste aporte."
+            ),
+            "Os demais aportes da projeção são liquidados separadamente.",
+        )
+    else:
+        premissas_lote = (
+            "Todo o saldo informado foi tratado como um único lote.",
+            "Aportes reais devem ser tributados pela idade de cada lote.",
+        )
     return resultado_calculado(
         contexto,
         imposto=base * aliquota,
@@ -63,8 +82,7 @@ def _calcular_regressivo(
                 if contexto.tipo_produto == "pgbl"
                 else "VGBL tributado apenas sobre o rendimento."
             ),
-            "Todo o saldo foi tratado como um único lote.",
-            "Aportes reais devem ser tributados pela idade de cada lote.",
+            *premissas_lote,
             "A regra de 2026 foi mantida como hipótese até o resgate.",
         ),
         fonte=FONTE_PREVIDENCIA,

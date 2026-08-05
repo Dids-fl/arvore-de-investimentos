@@ -9,6 +9,7 @@ import math
 import os
 from pathlib import Path
 
+from calendarios.sincronizar_b3 import sincronizar_calendarios_relevantes
 from cli import (
     _APD,
     _CAD,
@@ -135,6 +136,10 @@ def _coletar_respostas(primeira: object) -> dict:
         respostas.setdefault("aporte_mensal", 0.0)
         respostas.setdefault("regime_previdencia", None)
         respostas.setdefault("renda_tributavel_anual", None)
+        respostas.setdefault("elegibilidade_deducao_pgbl", None)
+        respostas.setdefault("renda_tributavel_por_ano", {})
+        respostas.setdefault("crescimento_renda_tributavel_anual", 0.0)
+        respostas.setdefault("valor_aportes_ano", 0.0)
         respostas.setdefault("jurisdicao_cripto", None)
         return respostas
 
@@ -295,11 +300,44 @@ def _coletar_respostas(primeira: object) -> dict:
         "   Regime da previdência (regressivo | progressivo | Enter)",
         {"regressivo", "progressivo"},
     )
+    elegibilidade_deducao_pgbl = None
+    if ir_tipo == 1:
+        elegibilidade_texto = _entrada_opcional(
+            (
+                "   Cumpre as condições legais da dedução do PGBL? "
+                "(sim | não | Enter)"
+            ),
+            {"sim", "não", "nao"},
+        )
+        elegibilidade_deducao_pgbl = {
+            "sim": True,
+            "não": False,
+            "nao": False,
+            None: None,
+        }[elegibilidade_texto]
     renda_tributavel_anual = None
-    if regime_previdencia == "progressivo":
+    if (
+        regime_previdencia == "progressivo"
+        or elegibilidade_deducao_pgbl is True
+    ):
         renda_tributavel_anual = _numero_opcional(
             "   Renda tributável anual aproximada (R$ | Enter)"
         )
+    valor_aportes_ano = 0.0
+    crescimento_renda_tributavel_anual = 0.0
+    if elegibilidade_deducao_pgbl is True:
+        valor_aportes_ano = (
+            _numero_opcional(
+                "   PGBL/FAPI já usado no limite deste ano (R$ | Enter)"
+            )
+            or 0.0
+        )
+        crescimento_renda_tributavel_anual = (
+            _numero_opcional(
+                "   Crescimento anual esperado da renda (% | Enter = 0)"
+            )
+            or 0.0
+        ) / 100.0
     jurisdicao_cripto = _entrada_opcional(
         "   Custódia de cripto (brasil | exterior | Enter)",
         {"brasil", "exterior"},
@@ -334,6 +372,12 @@ def _coletar_respostas(primeira: object) -> dict:
         "aporte_mensal": aporte_mensal,
         "regime_previdencia": regime_previdencia,
         "renda_tributavel_anual": renda_tributavel_anual,
+        "elegibilidade_deducao_pgbl": elegibilidade_deducao_pgbl,
+        "valor_aportes_ano": valor_aportes_ano,
+        "renda_tributavel_por_ano": {},
+        "crescimento_renda_tributavel_anual": (
+            crescimento_renda_tributavel_anual
+        ),
         "jurisdicao_cripto": jurisdicao_cripto,
     }
     return respostas
@@ -580,6 +624,13 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
 
 
 def main() -> None:
+    for sincronizacao in sincronizar_calendarios_relevantes():
+        if sincronizacao.status not in {"atualizado", "sem_alteracao"}:
+            logger.warning(
+                "Calendário B3 %s: %s",
+                sincronizacao.ano,
+                sincronizacao.mensagem,
+            )
     try:
         market = load_market_data()
         resumo_mercado = resumo_taxas_mercado(market)

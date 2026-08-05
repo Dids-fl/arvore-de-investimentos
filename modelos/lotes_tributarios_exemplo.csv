@@ -1,0 +1,3 @@
+id_lote,categoria,tipo_lote,principal,saldo_atual,data_aplicacao,base_tributaria_atual,ganho_antecipado,come_cotas_pago_historico,saldo_categoria_esperado
+FUNDO-001,fundos_rf,fundo,8000.00,10000.00,2022-03-15,9300.00,700.00,105.00,10000.00
+PREV-001,prev_pgbl,previdencia,6000.00,7500.00,2019-08-10,,,,7500.00

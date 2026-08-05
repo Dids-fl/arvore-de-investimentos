@@ -17,9 +17,12 @@ Pipeline em 3 estágios, do mais barato para o mais caro:
    Sharpe e Sortino, then aplica o score ponderado por perfil.
 """
 
+import datetime as dt
 import logging
 
 import pandas as pd
+
+from core.ranking_liquido import avaliar_fundo_liquido, combinar_scores
 
 from .filtros import filtrar_para_ranking
 from .indicadores import calcular_indicadores_df
@@ -162,7 +165,30 @@ def _score_sortino(sortino):
 # Score unificado
 # ---------------------------------------------------------------------
 
-def calcular_score(indicadores, perfil, incluir_sharpe_sortino=True):
+def _data_referencia(valor):
+    if valor is None:
+        return dt.datetime.now(dt.UTC).date()
+    if isinstance(valor, dt.date):
+        return valor
+    if isinstance(valor, str):
+        try:
+            return dt.date.fromisoformat(valor)
+        except ValueError as exc:
+            raise ValueError(
+                "data_referencia deve estar no formato AAAA-MM-DD."
+            ) from exc
+    raise TypeError("data_referencia deve ser date, texto ISO ou None.")
+
+
+def calcular_score(
+    indicadores,
+    perfil,
+    incluir_sharpe_sortino=True,
+    *,
+    prazo_anos=None,
+    data_referencia=None,
+    retorno_esperado_anual=None,
+):
     """
     Calcula o score de um fundo com base nos indicadores e perfil.
     """
@@ -206,8 +232,9 @@ def calcular_score(indicadores, perfil, incluir_sharpe_sortino=True):
             chave_score = chave
         score_total += scores.get(chave_score, 0) * peso
 
+    score_adequacao = round(score_total, 2)
     resultado = {
-        "score": round(score_total, 2),
+        "score": score_adequacao,
         "retorno": round(scores["retorno"], 2),
         "volatilidade": round(scores["volatilidade"], 2),
         "drawdown": round(scores["drawdown"], 2),
@@ -218,6 +245,28 @@ def calcular_score(indicadores, perfil, incluir_sharpe_sortino=True):
         resultado["sharpe"] = round(scores["sharpe"], 2)
         resultado["sortino"] = round(scores["sortino"], 2)
 
+    if prazo_anos is not None:
+        eficiencia = avaliar_fundo_liquido(
+            indicadores,
+            prazo_anos=prazo_anos,
+            data_referencia=_data_referencia(data_referencia),
+            retorno_esperado_anual=retorno_esperado_anual,
+        )
+        resultado["eficiencia_liquida"] = eficiencia
+        resultado["score_adequacao"] = score_adequacao
+        if eficiencia["aplicado"]:
+            score_liquido = _score_retorno(
+                eficiencia["retorno_liquido_anual"]
+            )
+            resultado["score_eficiencia_liquida"] = round(
+                score_liquido,
+                2,
+            )
+            resultado["score"] = combinar_scores(
+                score_adequacao,
+                score_liquido,
+            )
+
     return resultado
 
 
@@ -226,7 +275,16 @@ def calcular_score(indicadores, perfil, incluir_sharpe_sortino=True):
 # ---------------------------------------------------------------------
 
 class RankerFundos:
-    def __init__(self, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
+    def __init__(
+        self,
+        perfil=PERFIL_MODERADO,
+        incluir_sharpe_sortino=True,
+        *,
+        prazo_anos=None,
+        data_referencia=None,
+        retorno_esperado_anual=None,
+        **filtro_kwargs,
+    ):
         """
         Args:
             perfil: 1=Conservador, 2=Moderado, 3=Agressivo
@@ -237,6 +295,9 @@ class RankerFundos:
         """
         self.perfil = perfil
         self.incluir_sharpe_sortino = incluir_sharpe_sortino
+        self.prazo_anos = prazo_anos
+        self.data_referencia = data_referencia
+        self.retorno_esperado_anual = retorno_esperado_anual
         self.filtro_kwargs = filtro_kwargs
         self._ranking = None  # Cache do ranking
 
@@ -321,17 +382,27 @@ class RankerFundos:
                 indicadores,
                 self.perfil,
                 incluir_sharpe_sortino=self.incluir_sharpe_sortino,
+                prazo_anos=self.prazo_anos,
+                data_referencia=self.data_referencia,
+                retorno_esperado_anual=self.retorno_esperado_anual,
             )
 
-            ranking.append({
+            item = {
                 "cnpj": cnpj,
                 "nome": indicadores.get("nome"),
                 "classe": indicadores.get("classe"),
                 "tipo": indicadores.get("tipo"),
                 "score": score["score"],
-                "subscores": {k: v for k, v in score.items() if k != "score"},
+                "subscores": {
+                    k: v
+                    for k, v in score.items()
+                    if k not in {"score", "eficiencia_liquida"}
+                },
                 "indicadores": indicadores,
-            })
+            }
+            if "eficiencia_liquida" in score:
+                item["eficiencia_liquida"] = score["eficiencia_liquida"]
+            ranking.append(item)
 
         ranking.sort(key=lambda x: x["score"], reverse=True)
         logger.info(f"Ranking final: {len(ranking)} fundos com score calculado.")
@@ -384,19 +455,66 @@ class RankerFundos:
 # API pública
 # ---------------------------------------------------------------------
 
-def gerar_ranking(perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
-    return RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking()
+def gerar_ranking(
+    perfil=PERFIL_MODERADO,
+    incluir_sharpe_sortino=True,
+    *,
+    prazo_anos=None,
+    data_referencia=None,
+    retorno_esperado_anual=None,
+    **filtro_kwargs,
+):
+    return RankerFundos(
+        perfil,
+        incluir_sharpe_sortino,
+        prazo_anos=prazo_anos,
+        data_referencia=data_referencia,
+        retorno_esperado_anual=retorno_esperado_anual,
+        **filtro_kwargs,
+    ).gerar_ranking()
 
 
-def top_fundos(quantidade=20, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True, **filtro_kwargs):
-    return RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).top(quantidade)
+def top_fundos(
+    quantidade=20,
+    perfil=PERFIL_MODERADO,
+    incluir_sharpe_sortino=True,
+    *,
+    prazo_anos=None,
+    data_referencia=None,
+    retorno_esperado_anual=None,
+    **filtro_kwargs,
+):
+    return RankerFundos(
+        perfil,
+        incluir_sharpe_sortino,
+        prazo_anos=prazo_anos,
+        data_referencia=data_referencia,
+        retorno_esperado_anual=retorno_esperado_anual,
+        **filtro_kwargs,
+    ).top(quantidade)
 
 
-def rankear_fundos(perfil=PERFIL_MODERADO, limite=10, incluir_sharpe_sortino=True, **filtro_kwargs):
+def rankear_fundos(
+    perfil=PERFIL_MODERADO,
+    limite=10,
+    incluir_sharpe_sortino=True,
+    *,
+    prazo_anos=None,
+    data_referencia=None,
+    retorno_esperado_anual=None,
+    **filtro_kwargs,
+):
     """
     Função principal para o recomendador.
     """
-    ranking = RankerFundos(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking()
+    ranking = RankerFundos(
+        perfil,
+        incluir_sharpe_sortino,
+        prazo_anos=prazo_anos,
+        data_referencia=data_referencia,
+        retorno_esperado_anual=retorno_esperado_anual,
+        **filtro_kwargs,
+    ).gerar_ranking()
     return ranking[:limite]
 
 

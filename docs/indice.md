@@ -14,6 +14,8 @@ curta do projeto.
   indisponibilidade.
 - [Motor tributário](tributacao.md): contratos, escopo, precisão e limitações
   fiscais.
+- [Exemplos de metadados tributários](exemplos-metadados-tributarios.md):
+  lotes existentes, come-cotas histórico e renda anual.
 - [Configuração](configuracao.md): variáveis de ambiente e parâmetros
   operacionais.
 - [Testes e integração contínua](testes-ci.md): organização da suíte, comandos

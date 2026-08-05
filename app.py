@@ -20,6 +20,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from calendarios.sincronizar_b3 import sincronizar_calendarios_relevantes
 from engine import (
     DividaJurosAltosError,
     RecomendacaoBloqueadaError,
@@ -27,6 +28,10 @@ from engine import (
     criar_analise,
     montar_payload_exportacao,
     rotulo_classe_ativo,
+)
+from importacao.lotes_tributarios import (
+    importar_lotes_tributarios,
+    mesclar_metadados_tributarios,
 )
 from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
@@ -46,7 +51,12 @@ st.set_page_config(
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_market_data() -> dict:
     """Cache da interface; mercado.py mantém também o cache persistente."""
-    return load_market_data()
+    sincronizacoes = sincronizar_calendarios_relevantes()
+    market = dict(load_market_data())
+    market["_calendarios_b3"] = [
+        resultado.como_dict() for resultado in sincronizacoes
+    ]
+    return market
 
 
 def _market_signature(market: dict) -> tuple:
@@ -84,6 +94,19 @@ def _render_sidebar(market: dict) -> None:
 
         for aviso in market.get("avisos", []):
             st.caption(aviso)
+
+        sincronizacoes = market.get("_calendarios_b3", [])
+        if sincronizacoes:
+            with st.expander("Calendários B3"):
+                for item in sincronizacoes:
+                    simbolo = (
+                        "✅"
+                        if item["status"] in {"atualizado", "sem_alteracao"}
+                        else "⚠️"
+                    )
+                    st.caption(
+                        f"{simbolo} {item['ano']}: {item['mensagem']}"
+                    )
 
         with st.expander("Fontes"):
             for fonte in market.get("fontes", []):
@@ -269,9 +292,8 @@ def _render_questionario(market: dict) -> None:
                 step=5_000.0,
                 format="%.2f",
                 help=(
-                    "Usada somente no regime progressivo. Zero é uma "
-                    "renda informada; selecione 'não informado' no regime "
-                    "quando não souber."
+                    "Usada no regime progressivo e para estimar o benefício "
+                    "fiscal do PGBL quando a elegibilidade for confirmada."
                 ),
             )
         with tcol3:
@@ -286,6 +308,63 @@ def _render_questionario(market: dict) -> None:
                 help="Afeta hipóteses de isenção de alguns produtos.",
             )
 
+        pcol1, pcol2, pcol3 = st.columns(3)
+        with pcol1:
+            elegibilidade_pgbl_informada = st.selectbox(
+                "Elegibilidade para dedução do PGBL",
+                ["não informado", "sim", "não"],
+                help=(
+                    "Marque sim somente se usar deduções legais e cumprir "
+                    "as condições da Receita, inclusive contribuição ao "
+                    "RGPS/RPPS quando aplicável."
+                ),
+            )
+        with pcol2:
+            aportes_pgbl_ano_informados = st.number_input(
+                "PGBL/FAPI já usado no limite deste ano (R$)",
+                min_value=0.0,
+                value=0.0,
+                step=1_000.0,
+                format="%.2f",
+                help=(
+                    "Reduz o espaço ainda disponível dentro do limite de "
+                    "12% no primeiro ano da projeção."
+                ),
+            )
+        with pcol3:
+            crescimento_renda_pgbl_pct = st.number_input(
+                "Crescimento anual da renda (%)",
+                min_value=-99.0,
+                max_value=100.0,
+                value=0.0,
+                step=0.5,
+                format="%.2f",
+                help=(
+                    "Cenário para a renda tributável dos anos futuros. "
+                    "Não representa previsão nem mudança da legislação."
+                ),
+            )
+
+        metadados_fiscais_json = st.text_area(
+            "Metadados fiscais avançados por categoria (JSON)",
+            value="{}",
+            height=100,
+            help=(
+                "Opcional: permite informar lotes previdenciários existentes, "
+                "estado tributário de fundos, feriados adicionais e bases "
+                "anuais. Use as chaves canônicas das categorias do catálogo."
+            ),
+        )
+        arquivo_lotes = st.file_uploader(
+            "Importar lotes históricos de fundos/previdência",
+            type=["csv", "xlsx", "xlsm"],
+            help=(
+                "Use o modelo modelos/lotes_tributarios_exemplo.csv. O "
+                "arquivo é validado e convertido para os metadados fiscais; "
+                "nenhum valor digitado no JSON é sobrescrito."
+            ),
+        )
+
         submitted = st.form_submit_button(
             "Gerar recomendação",
             type="primary",
@@ -294,6 +373,41 @@ def _render_questionario(market: dict) -> None:
 
     if not submitted:
         return
+
+    try:
+        metadados_fiscais = json.loads(metadados_fiscais_json or "{}")
+    except json.JSONDecodeError as exc:
+        st.error(f"JSON de metadados fiscais inválido: {exc}")
+        return
+    if not isinstance(metadados_fiscais, dict):
+        st.error("Os metadados fiscais avançados devem formar um objeto JSON.")
+        return
+
+    if arquivo_lotes is not None:
+        try:
+            importacao = importar_lotes_tributarios(
+                arquivo_lotes.getvalue(),
+                nome_arquivo=arquivo_lotes.name,
+                data_referencia=dt.datetime.now(dt.timezone.utc).date(),
+            )
+            metadados_fiscais = mesclar_metadados_tributarios(
+                metadados_fiscais,
+                importacao.metadados_por_categoria,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            st.error(f"Arquivo de lotes inválido: {exc}")
+            return
+        st.success(
+            f"{importacao.quantidade_lotes} lote(s) importado(s), com saldo "
+            f"total de R$ {importacao.saldo_total:,.2f}."
+        )
+        st.dataframe(
+            pd.DataFrame(importacao.resumo),
+            hide_index=True,
+            use_container_width=True,
+        )
+        for aviso_importacao in importacao.avisos:
+            st.warning(aviso_importacao)
 
     respostas = {
         "prazo": prazo,
@@ -325,9 +439,23 @@ def _render_questionario(market: dict) -> None:
         "regime_previdencia": regime_previdencia_informado,
         "renda_tributavel_anual": (
             float(renda_tributavel_anual_informada)
-            if regime_previdencia_informado == "progressivo"
+            if (
+                regime_previdencia_informado == "progressivo"
+                or elegibilidade_pgbl_informada == "sim"
+            )
             else None
         ),
+        "elegibilidade_deducao_pgbl": {
+            "não informado": None,
+            "sim": True,
+            "não": False,
+        }[elegibilidade_pgbl_informada],
+        "valor_aportes_ano": float(aportes_pgbl_ano_informados),
+        "crescimento_renda_tributavel_anual": (
+            float(crescimento_renda_pgbl_pct) / 100.0
+        ),
+        "renda_tributavel_por_ano": {},
+        "metadados_tributarios_por_categoria": metadados_fiscais,
         "jurisdicao_cripto": jurisdicao_cripto_informada,
         "pessoa_fisica": pessoa_fisica,
     }
@@ -406,6 +534,22 @@ def _render_recomendacao_principal(analise: dict) -> None:
                 st.write(f"• {item}")
         else:
             st.info("O catálogo não possui itens para essa categoria.")
+
+    ranking = resultado.get("ranking_previdencia_liquida")
+    if isinstance(ranking, dict):
+        if ranking.get("aplicado"):
+            alternativas = ranking["alternativas"]
+            pgbl = alternativas["pgbl"]
+            vgbl = alternativas["vgbl"]
+            st.caption(
+                "Comparação previdenciária: "
+                f"PGBL {pgbl['tir_liquida_anual'] * 100:.2f}% a.a. líquido "
+                f"versus VGBL {vgbl['tir_liquida_anual'] * 100:.2f}% a.a. "
+                "líquido. A adequação à aposentadoria foi mantida antes "
+                "desta comparação."
+            )
+        elif ranking.get("motivo_escolha_conservadora"):
+            st.caption(ranking["motivo_escolha_conservadora"])
 
 
 def _render_alocacao(analise: dict) -> None:
@@ -635,6 +779,22 @@ def _render_tributacao(analise: dict) -> None:
                 f"`{detalhe['tipo_produto']}` · "
                 f"{detalhe['precisao']} · imposto {imposto_texto}"
             )
+            metodo = detalhe.get("metodo_tributacao")
+            if metodo == "come_cotas_prospectivo_por_lote":
+                st.caption(
+                    "Come-cotas futuro: "
+                    f"{detalhe['eventos_come_cotas']} evento(s), "
+                    f"R$ {detalhe['come_cotas_estimado']:,.2f} antecipados e "
+                    "sem reconstrução de histórico anterior."
+                )
+            elif (
+                metodo == "lotes_individuais"
+                and detalhe["tipo_produto"] in {"pgbl", "vgbl"}
+            ):
+                st.caption(
+                    f"Previdência calculada em {detalhe['quantidade_lotes']} "
+                    "lote(s), conforme a idade de cada aporte."
+                )
             for premissa in detalhe["premissas"]:
                 st.caption(f"• {premissa}")
 

@@ -9,10 +9,17 @@ from datetime import date
 from typing import Any
 
 from tributacao import (
+    FUNDOS_COM_COME_COTAS,
     ContextoTributario,
     PrecisaoTributaria,
     ResultadoTributario,
     calcular_tributacao,
+    projetar_come_cotas,
+)
+from tributacao.regras import (
+    FONTE_B3_CALENDARIO_2026,
+    FONTE_RECEITA_FUNDOS,
+    VIGENCIA_BASE,
 )
 
 TaxRule = Callable[[float], float]
@@ -261,6 +268,81 @@ def _lotes_projetados(
     return lotes
 
 
+def _data_iso(nome: str, valor: object) -> date:
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, str):
+        try:
+            return date.fromisoformat(valor)
+        except ValueError as exc:
+            raise ValueError(f"{nome} deve estar no formato AAAA-MM-DD.") from exc
+    raise TypeError(f"{nome} deve ser datetime.date ou texto ISO.")
+
+
+def _lotes_previdencia_importados(
+    lotes_brutos: object,
+    *,
+    capital_atual: float,
+    taxa_mensal: float,
+    meses: int,
+    data_referencia: date,
+) -> list[tuple[float, float, date]]:
+    if lotes_brutos is None:
+        return []
+    if isinstance(lotes_brutos, (str, bytes)):
+        raise TypeError("lotes_previdencia_existentes deve ser uma lista.")
+    try:
+        itens = list(lotes_brutos)
+    except TypeError as exc:
+        raise TypeError(
+            "lotes_previdencia_existentes deve ser uma lista."
+        ) from exc
+    if not itens:
+        return []
+
+    lotes: list[tuple[float, float, date]] = []
+    saldo_total = 0.0
+    for indice, item in enumerate(itens):
+        if not isinstance(item, Mapping):
+            raise TypeError(
+                "Cada lote previdenciário existente deve ser um mapeamento."
+            )
+        principal = _numero_finito(
+            f"lote[{indice}].principal",
+            item.get("principal"),
+        )
+        saldo_atual = _numero_finito(
+            f"lote[{indice}].saldo_atual",
+            item.get("saldo_atual"),
+        )
+        if principal < 0 or saldo_atual < 0:
+            raise ValueError("Principal e saldo do lote não podem ser negativos.")
+        data_aplicacao = _data_iso(
+            f"lote[{indice}].data_aplicacao",
+            item.get("data_aplicacao"),
+        )
+        if data_aplicacao > data_referencia:
+            raise ValueError(
+                "Lote previdenciário existente não pode começar no futuro."
+            )
+        saldo_total += saldo_atual
+        lotes.append(
+            (
+                principal,
+                saldo_atual * _fator_mensal(taxa_mensal, meses),
+                data_aplicacao,
+            )
+        )
+
+    tolerancia = max(0.01, capital_atual * 1e-6)
+    if abs(saldo_total - capital_atual) > tolerancia:
+        raise ValueError(
+            "A soma de saldo_atual dos lotes previdenciários deve ser igual "
+            "ao capital inicial destinado à previdência."
+        )
+    return lotes
+
+
 def _precisao_pior(
     resultados: list[ResultadoTributario],
 ) -> PrecisaoTributaria:
@@ -343,9 +425,26 @@ def _vf_liquido_tributado(
     meses = _meses(anos)
     taxa_m = _taxa_mensal(taxa_a)
     data_resgate = _somar_meses(data_base, meses)
-    lotes = _lotes_projetados(cap, ap, taxa_m, meses, data_base)
-    principal_total = cap + ap * meses
-    bruto_total = _vf_bruto(cap, ap, taxa_a, anos)
+    tipo_normalizado = tipo_produto.strip().casefold()
+    dados_extras = dict(metadados or {})
+    lotes_importados = []
+    if tipo_normalizado in {"pgbl", "vgbl"}:
+        lotes_importados = _lotes_previdencia_importados(
+            dados_extras.pop("lotes_previdencia_existentes", None),
+            capital_atual=cap,
+            taxa_mensal=taxa_m,
+            meses=meses,
+            data_referencia=data_base,
+        )
+    if lotes_importados:
+        lotes_novos = _lotes_projetados(0.0, ap, taxa_m, meses, data_base)
+        lotes = [*lotes_importados, *lotes_novos]
+        principal_total = sum(lote[0] for lote in lotes)
+        bruto_total = sum(lote[1] for lote in lotes)
+    else:
+        lotes = _lotes_projetados(cap, ap, taxa_m, meses, data_base)
+        principal_total = cap + ap * meses
+        bruto_total = _vf_bruto(cap, ap, taxa_a, anos)
 
     if not lotes:
         return {
@@ -367,8 +466,97 @@ def _vf_liquido_tributado(
             "data_resgate": data_resgate.isoformat(),
         }
 
-    tipo_normalizado = tipo_produto.strip().casefold()
-    dados_extras = dict(metadados or {})
+    simular_come_cotas = dados_extras.pop(
+        "simular_come_cotas_futuro",
+        True,
+    )
+    if not isinstance(simular_come_cotas, bool):
+        raise TypeError("simular_come_cotas_futuro deve ser booleano.")
+    if (
+        tipo_normalizado in FUNDOS_COM_COME_COTAS
+        and simular_come_cotas
+        and (
+            "come_cotas_pago" not in dados_extras
+            or "lotes_fundo_existentes" in dados_extras
+        )
+    ):
+        lotes_fundo_existentes = dados_extras.pop(
+            "lotes_fundo_existentes",
+            None,
+        )
+        if (
+            lotes_fundo_existentes is not None
+            and "come_cotas_pago" in dados_extras
+        ):
+            raise ValueError(
+                "Com lotes_fundo_existentes, informe o histórico em cada "
+                "lote por come_cotas_pago_historico."
+            )
+        feriados_adicionais = dados_extras.pop(
+            "feriados_mercado",
+            None,
+        )
+        anos_calendario_confirmados = dados_extras.pop(
+            "anos_calendario_mercado_confirmados",
+            None,
+        )
+        projecao = projetar_come_cotas(
+            cap,
+            ap,
+            taxa_a,
+            meses,
+            data_referencia=data_base,
+            tipo_produto=tipo_normalizado,
+            lotes_existentes=lotes_fundo_existentes,
+            feriados_adicionais=feriados_adicionais,
+            anos_calendario_confirmados=anos_calendario_confirmados,
+        )
+        return {
+            "tipo_produto": tipo_normalizado,
+            "principal": projecao.principal,
+            "bruto": projecao.bruto_sem_tributos,
+            "imposto_estimado": projecao.imposto_total,
+            "imposto_calculado_parcial": projecao.imposto_total,
+            "liquido": projecao.valor_liquido,
+            "liquido_calculado_parcial": projecao.valor_liquido,
+            "bruto_indeterminado": 0.0,
+            "precisao": PrecisaoTributaria.ESTIMADA.value,
+            "premissas": list(projecao.premissas),
+            "fontes": [
+                {
+                    "url": FONTE_RECEITA_FUNDOS,
+                    "vigencia": VIGENCIA_BASE.isoformat(),
+                },
+                {
+                    "url": FONTE_B3_CALENDARIO_2026,
+                    "vigencia": "2026-01-09",
+                },
+            ],
+            "regras": [f"{tipo_normalizado}_come_cotas_prospectivo_2026"],
+            "quantidade_lotes": projecao.quantidade_lotes,
+            "lotes_indeterminados": 0,
+            "data_referencia": data_base.isoformat(),
+            "data_resgate": projecao.data_resgate.isoformat(),
+            "metodo_tributacao": "come_cotas_prospectivo_por_lote",
+            "eventos_come_cotas": projecao.eventos_come_cotas,
+            "datas_eventos_come_cotas": list(
+                projecao.datas_eventos_come_cotas
+            ),
+            "come_cotas_estimado": projecao.come_cotas_pago,
+            "come_cotas_historico_informado": (
+                projecao.come_cotas_historico_informado
+            ),
+            "ir_no_resgate": projecao.ir_no_resgate,
+            "iof_no_resgate": projecao.iof_no_resgate,
+            "saldo_apos_come_cotas": projecao.saldo_antes_resgate,
+            "custo_oportunidade_come_cotas": (
+                projecao.custo_oportunidade_come_cotas
+            ),
+            "feriados_considerados": projecao.feriados_considerados,
+            "anos_sem_calendario_confirmado": list(
+                projecao.anos_sem_calendario_confirmado
+            ),
+        }
     tributacao_agregada = (
         tipo_normalizado in _TIPOS_TRIBUTACAO_AGREGADA
         or (
@@ -399,6 +587,11 @@ def _vf_liquido_tributado(
         come_cotas_total = dados_extras.get("come_cotas_pago")
         for principal_lote, bruto_lote, data_aplicacao in lotes:
             metadados_lote = dict(dados_extras)
+            if (
+                tipo_normalizado in {"pgbl", "vgbl"}
+                and str(regime or "").casefold() == "regressivo"
+            ):
+                metadados_lote["lote_individual_projetado"] = True
             if come_cotas_total is not None and bruto_total > 0:
                 metadados_lote["come_cotas_pago"] = (
                     float(come_cotas_total) * bruto_lote / bruto_total
@@ -491,9 +684,19 @@ def _vf_liquido_tributado(
             resultado.regra_id for resultado in resultados
         ),
         "quantidade_lotes": len(lotes),
+        "quantidade_lotes_importados": len(lotes_importados),
+        "capital_atual_inicio": cap,
         "lotes_indeterminados": len(pares) - len(determinados),
         "data_referencia": data_base.isoformat(),
         "data_resgate": data_resgate.isoformat(),
+        "metodo_tributacao": (
+            "agregado" if tributacao_agregada else "lotes_individuais"
+        ),
+        "aliquotas_efetivas": _unicos(
+            resultado.aliquota_efetiva
+            for resultado in resultados
+            if resultado.aliquota_efetiva is not None
+        ),
     }
 
 

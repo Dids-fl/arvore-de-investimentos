@@ -10,10 +10,9 @@ FONTE_RECEITA_RENDIMENTOS_CAPITAL = (
     "meu-imposto-de-renda/tabelas/2026"
 )
 FONTE_RECEITA_FUNDOS = (
-    "https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2025/"
-    "fevereiro/receita-federal-define-forma-e-prazo-para-que-os-"
-    "administradores-de-fundos-comuniquem-o-nao-recolhimento-do-irrf-"
-    "pela-falta-de-provimento-de-recursos"
+    "https://www.gov.br/receitafederal/pt-br/assuntos/"
+    "meu-imposto-de-renda/pagamento/renda-variavel/"
+    "fundos-de-investimento-no-brasil"
 )
 FONTE_RECEITA_PGBL_VGBL = (
     "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/"
@@ -52,6 +51,10 @@ FONTE_LEI_12431_DEBENTURES = (
     "https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2011/"
     "lei/l12431.htm"
 )
+FONTE_B3_CALENDARIO_2026 = (
+    "https://www.b3.com.br/pt_br/noticias/"
+    "calendario-de-negociacao-da-b3-confira-o-funcionamento-da-bolsa-em-2026.htm"
+)
 
 VIGENCIA_BASE = date(2026, 1, 1)
 
@@ -82,6 +85,11 @@ FUNDO_CURTO_PRAZO_DIAS = (
     (180, 0.225),
     (None, 0.20),
 )
+COME_COTAS_ALIQUOTAS = {
+    "fundo_curto_prazo": 0.20,
+    "fundo_longo_prazo": 0.15,
+    "fundo_rf": 0.15,
+}
 PREVIDENCIA_REGRESSIVA_ANOS = (
     (2.0, 0.35),
     (4.0, 0.30),

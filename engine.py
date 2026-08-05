@@ -15,7 +15,8 @@ from calculos import (
     _vf_real,
 )
 from core.catalogo import _disp, _get_prod, _tipo_tributario
-from core.categorias import _risco
+from core.categorias import RK, _risco
+from core.ranking_liquido import comparar_pgbl_vgbl
 from macroeconomia.curva_selic import (
     ProjecaoSelic,
     projetar_selic,
@@ -337,6 +338,17 @@ def _numero_tributario_opcional(
     return _numero_finito(nome, valor, minimo=0)
 
 
+def _booleano_tributario_opcional(
+    nome: str,
+    valor: object,
+) -> bool | None:
+    if valor is None or valor == "":
+        return None
+    if not isinstance(valor, bool):
+        raise TypeError(f"{nome} deve ser booleano ou None.")
+    return valor
+
+
 def _contexto_fiscal_das_respostas(
     respostas: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -354,6 +366,25 @@ def _contexto_fiscal_das_respostas(
     day_trade = respostas.get("day_trade", False)
     if not isinstance(day_trade, bool):
         raise TypeError("day_trade deve ser booleano.")
+
+    renda_por_ano_bruta = respostas.get("renda_tributavel_por_ano", {})
+    if not isinstance(renda_por_ano_bruta, Mapping):
+        raise TypeError("renda_tributavel_por_ano deve ser um mapeamento.")
+    renda_por_ano: dict[int, float] = {}
+    for ano, valor in renda_por_ano_bruta.items():
+        if isinstance(ano, bool):
+            raise TypeError("As chaves de renda_tributavel_por_ano devem ser anos.")
+        try:
+            ano_inteiro = int(ano)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "As chaves de renda_tributavel_por_ano devem ser anos."
+            ) from exc
+        renda_por_ano[ano_inteiro] = _numero_finito(
+            f"renda_tributavel_por_ano[{ano_inteiro}]",
+            valor,
+            minimo=0.0,
+        )
 
     metadados_normalizados: dict[str, dict] = {}
     for categoria, metadados in metadados_por_categoria.items():
@@ -373,6 +404,16 @@ def _contexto_fiscal_das_respostas(
         "renda_tributavel_anual": _numero_tributario_opcional(
             "renda_tributavel_anual",
             respostas.get("renda_tributavel_anual"),
+        ),
+        "elegibilidade_deducao_pgbl": _booleano_tributario_opcional(
+            "elegibilidade_deducao_pgbl",
+            respostas.get("elegibilidade_deducao_pgbl"),
+        ),
+        "renda_tributavel_por_ano": renda_por_ano,
+        "crescimento_renda_tributavel_anual": _numero_finito(
+            "crescimento_renda_tributavel_anual",
+            respostas.get("crescimento_renda_tributavel_anual", 0.0),
+            minimo=-0.999999,
         ),
         "jurisdicao_cripto": _opcao_tributaria(
             "jurisdicao_cripto",
@@ -568,6 +609,15 @@ def _validar_respostas(respostas: object) -> dict:
             ],
             "renda_tributavel_anual": contexto_fiscal[
                 "renda_tributavel_anual"
+            ],
+            "elegibilidade_deducao_pgbl": contexto_fiscal[
+                "elegibilidade_deducao_pgbl"
+            ],
+            "renda_tributavel_por_ano": contexto_fiscal[
+                "renda_tributavel_por_ano"
+            ],
+            "crescimento_renda_tributavel_anual": contexto_fiscal[
+                "crescimento_renda_tributavel_anual"
             ],
             "jurisdicao_cripto": contexto_fiscal["jurisdicao_cripto"],
             "valor_vendas_mes": contexto_fiscal["valor_vendas_mes"],
@@ -1092,6 +1142,174 @@ def _perfil_resumo(
     return resumo
 
 
+_PREVIDENCIA_PGBL = {RK.PREV_PGBL, RK.PREV_PGBL_RF}
+_PREVIDENCIA_VGBL = {RK.PREV_VGBL, RK.PREV_VGBL_RF}
+_PREVIDENCIA_TODAS = _PREVIDENCIA_PGBL | _PREVIDENCIA_VGBL
+
+
+def _categoria_previdencia_equivalente(
+    categoria_atual: str,
+    produto: str,
+) -> str:
+    renda_fixa = categoria_atual in {RK.PREV_PGBL_RF, RK.PREV_VGBL_RF}
+    if produto == "pgbl":
+        return RK.PREV_PGBL_RF if renda_fixa else RK.PREV_PGBL
+    if produto == "vgbl":
+        return RK.PREV_VGBL_RF if renda_fixa else RK.PREV_VGBL
+    raise ValueError("produto deve ser pgbl ou vgbl.")
+
+
+def _prazo_comparacao_previdencia(
+    respostas: Mapping[str, Any],
+    prazo_taxa_meses: int,
+) -> float:
+    meta_prazo = respostas.get("meta_prazo")
+    if respostas.get("modo_meta") == 1 and meta_prazo is not None:
+        try:
+            prazo = float(meta_prazo)
+        except (TypeError, ValueError):
+            prazo = 0.0
+        if math.isfinite(prazo) and prazo > 0:
+            return prazo
+    return prazo_taxa_meses / 12.0
+
+
+def _ajustar_previdencia_por_eficiencia(
+    rec_key: str,
+    portfolio: dict[str, float],
+    respostas: Mapping[str, Any],
+    contexto_fiscal: Mapping[str, Any],
+    taxas: Mapping[int, float],
+    prazo_taxa_meses: int,
+    data_base: date,
+    avisos: list[str],
+) -> tuple[str, dict[str, float], dict[str, Any] | None]:
+    categoria_atual = next(
+        (
+            categoria
+            for categoria, percentual in portfolio.items()
+            if categoria in _PREVIDENCIA_TODAS and percentual > 0
+        ),
+        None,
+    )
+    if categoria_atual is None:
+        return rec_key, portfolio, None
+
+    percentual = float(portfolio[categoria_atual])
+    peso = percentual / 100.0
+    prazo = _prazo_comparacao_previdencia(
+        respostas,
+        prazo_taxa_meses,
+    )
+    metadados_por_categoria = contexto_fiscal.get(
+        "metadados_por_categoria",
+        {},
+    )
+    metadados_pgbl = dict(
+        metadados_por_categoria.get(categoria_atual, {})
+        if isinstance(metadados_por_categoria, Mapping)
+        else {}
+    )
+    if metadados_pgbl.get("lotes_previdencia_existentes"):
+        return rec_key, portfolio, {
+            "aplicado": False,
+            "produto_escolhido": None,
+            "categoria_original": categoria_atual,
+            "categoria_escolhida": categoria_atual,
+            "percentual_previdencia": percentual,
+            "prazo_anos": prazo,
+            "motivo": (
+                "Lotes previdenciários existentes foram informados. O motor "
+                "não converte automaticamente PGBL em VGBL ou VGBL em PGBL; "
+                "a comparação deve ser aplicada apenas a novos aportes."
+            ),
+        }
+    comparacao = comparar_pgbl_vgbl(
+        float(respostas["cap_inicial"]) * peso,
+        float(respostas["aporte_mensal"]) * peso,
+        float(taxas[_risco(categoria_atual)]),
+        prazo,
+        data_referencia=data_base,
+        regime=contexto_fiscal.get("regime_previdencia"),
+        renda_tributavel_anual=contexto_fiscal.get(
+            "renda_tributavel_anual"
+        ),
+        declaracao_completa=respostas["ir_tipo"] == 1,
+        elegibilidade_deducao_pgbl=contexto_fiscal.get(
+            "elegibilidade_deducao_pgbl"
+        ),
+        deducao_ja_utilizada_primeiro_ano=float(
+            contexto_fiscal.get("valor_aportes_ano") or 0.0
+        ),
+        metadados_pgbl=metadados_pgbl,
+        renda_tributavel_por_ano=contexto_fiscal.get(
+            "renda_tributavel_por_ano"
+        ),
+        crescimento_renda_anual=float(
+            contexto_fiscal.get("crescimento_renda_tributavel_anual")
+            or 0.0
+        ),
+    )
+
+    anos_extrapolados = comparacao.get(
+        "anos_regra_tributaria_extrapolada",
+        [],
+    )
+    if anos_extrapolados:
+        avisos.append(
+            "⚠️ A regra tributária de 2026 foi usada apenas como cenário "
+            "nos anos futuros: "
+            + ", ".join(str(ano) for ano in anos_extrapolados)
+            + "."
+        )
+
+    escolhido = comparacao.get("produto_escolhido")
+    if not comparacao.get("aplicado"):
+        if contexto_fiscal.get("elegibilidade_deducao_pgbl") is not True:
+            escolhido = "vgbl"
+            comparacao["produto_escolhido"] = escolhido
+            comparacao["escolha_conservadora"] = True
+            comparacao["motivo_escolha_conservadora"] = (
+                "Sem benefício fiscal do PGBL confirmado, o motor não o "
+                "considera na escolha automática."
+            )
+        else:
+            avisos.append(
+                "⚠️ PGBL e VGBL não puderam ser comparados integralmente: "
+                + str(comparacao.get("motivo", "dados insuficientes"))
+            )
+            return rec_key, portfolio, comparacao
+
+    nova_categoria = _categoria_previdencia_equivalente(
+        categoria_atual,
+        str(escolhido),
+    )
+    portfolio_ajustado = dict(portfolio)
+    if nova_categoria != categoria_atual:
+        valor = portfolio_ajustado.pop(categoria_atual)
+        portfolio_ajustado[nova_categoria] = (
+            float(portfolio_ajustado.get(nova_categoria, 0.0)) + float(valor)
+        )
+    if rec_key in _PREVIDENCIA_TODAS:
+        rec_key = _categoria_previdencia_equivalente(rec_key, str(escolhido))
+
+    if comparacao.get("aplicado"):
+        avisos.append(
+            "ℹ️ Previdência escolhida por eficiência líquida comparável: "
+            f"{str(escolhido).upper()}."
+        )
+    else:
+        avisos.append(
+            "ℹ️ VGBL mantido como escolha conservadora porque o benefício "
+            "fiscal do PGBL não foi confirmado."
+        )
+    comparacao["categoria_original"] = categoria_atual
+    comparacao["categoria_escolhida"] = nova_categoria
+    comparacao["percentual_previdencia"] = percentual
+    comparacao["prazo_anos"] = prazo
+    return rec_key, portfolio_ajustado, comparacao
+
+
 def gerar_recomendacao_completa(
     respostas: dict,
     market: dict,
@@ -1175,6 +1393,18 @@ def gerar_recomendacao_completa(
         respostas_validas["idade"],
         avisos,
     )
+    rec_key, portfolio, ranking_previdencia = (
+        _ajustar_previdencia_por_eficiencia(
+            rec_key,
+            portfolio,
+            respostas_validas,
+            contexto_fiscal,
+            taxas,
+            prazo_taxa_meses,
+            data_base,
+            avisos,
+        )
+    )
     perfil_exibido, risco_recomendado = _classificar_portfolio_final(
         portfolio
     )
@@ -1222,6 +1452,7 @@ def gerar_recomendacao_completa(
             tratamento_representativo.como_dict()
         ),
         "contexto_fiscal": contexto_fiscal,
+        "ranking_previdencia_liquida": ranking_previdencia,
         "taxa_base": projecao_selic_base.taxa_anual_equivalente,
         "metodo_taxa_base": "curva_selic_focus_composta",
         "prazo_taxa_meses": prazo_taxa_meses,
@@ -1575,6 +1806,9 @@ def buscar_ativos_sugeridos(
     market: dict,
     *,
     n: int = 5,
+    prazo_anos: float | None = None,
+    data_referencia: date | str | None = None,
+    retorno_esperado_fundos: float | None = None,
 ) -> tuple[dict, dict]:
     """Busca ativos sem misturar falhas de fonte às sugestões válidas."""
     dados = _validar_market(market)
@@ -1585,6 +1819,13 @@ def buscar_ativos_sugeridos(
         selic=dados["selic"],
         ipca=dados["ipca"],
         ibov_cagr=dados["ibov_cagr"],
+        prazo_anos=prazo_anos,
+        data_referencia=(
+            _data_referencia_valida(data_referencia)
+            if data_referencia is not None
+            else None
+        ),
+        retorno_esperado_fundos=retorno_esperado_fundos,
     )
     if not isinstance(payload, Mapping):
         raise TypeError("O recomendador de ativos retornou formato inválido.")
@@ -1613,11 +1854,19 @@ def buscar_ativos_da_analise(
         nivel_risco = resultado["nivel_risco_perfil"]
     except (KeyError, TypeError) as exc:
         raise ValueError("Estrutura de análise inválida.") from exc
+    meta = analise.get("meta")
+    if isinstance(meta, Mapping) and meta.get("prazo_anos") is not None:
+        prazo_anos = float(meta["prazo_anos"])
+    else:
+        prazo_anos = float(resultado["prazo_taxa_meses"]) / 12.0
     return buscar_ativos_sugeridos(
         portfolio_busca,
         nivel_risco,
         market,
         n=n,
+        prazo_anos=prazo_anos,
+        data_referencia=analise.get("data_referencia"),
+        retorno_esperado_fundos=float(resultado["taxa_perfil"]),
     )
 
 
@@ -1663,6 +1912,20 @@ def _tributacao_exportacao(
                     "lotes_indeterminados"
                 ],
             }
+            for campo_auditoria in (
+                "metodo_tributacao",
+                "aliquotas_efetivas",
+                "eventos_come_cotas",
+                "come_cotas_estimado",
+                "ir_no_resgate",
+                "iof_no_resgate",
+                "saldo_apos_come_cotas",
+                "custo_oportunidade_come_cotas",
+            ):
+                if campo_auditoria in detalhe:
+                    classes[categoria][campo_auditoria] = detalhe[
+                        campo_auditoria
+                    ]
         horizontes.append(
             {
                 "anos": linha["anos"],
@@ -1752,6 +2015,9 @@ def montar_payload_exportacao(
             ),
         },
         "tributacao": _tributacao_exportacao(analise),
+        "ranking_previdencia_liquida": resultado.get(
+            "ranking_previdencia_liquida"
+        ),
         "perfil": resultado["perfil_resumo"],
         "respostas_normalizadas": dict(respostas),
         "meta": analise.get("meta"),

@@ -271,6 +271,56 @@ class TestRanker:
         assert "sharpe" in score
         assert "sortino" in score
 
+    def test_calcular_score_aplica_eficiencia_liquida_no_prazo(self):
+        from fundos.ranker_fundos import calcular_score
+
+        indicadores = {
+            "classe": "Renda Fixa",
+            "cagr": 0.10,
+            "retorno_12m": 0.10,
+            "volatilidade": 0.08,
+            "drawdown": -0.04,
+            "fluxo_liquido": 1_000_000,
+            "patrimonio_atual": 500_000_000,
+        }
+        score = calcular_score(
+            indicadores,
+            perfil=2,
+            incluir_sharpe_sortino=False,
+            prazo_anos=5,
+            data_referencia="2026-01-01",
+            retorno_esperado_anual=0.10,
+        )
+
+        assert score["eficiencia_liquida"]["aplicado"] is True
+        assert score["score_adequacao"] != score["score"]
+        assert 0 <= score["score_eficiencia_liquida"] <= 10
+
+    def test_fundo_sem_classe_tributaria_preserva_score_de_adequacao(self):
+        from fundos.ranker_fundos import calcular_score
+
+        indicadores = {
+            "classe": "Estratégia não classificada",
+            "cagr": 0.10,
+            "retorno_12m": 0.10,
+            "volatilidade": 0.08,
+            "drawdown": -0.04,
+            "fluxo_liquido": 1_000_000,
+            "patrimonio_atual": 500_000_000,
+        }
+        score = calcular_score(
+            indicadores,
+            perfil=2,
+            incluir_sharpe_sortino=False,
+            prazo_anos=5,
+            data_referencia="2026-01-01",
+            retorno_esperado_anual=0.10,
+        )
+
+        assert score["eficiencia_liquida"]["aplicado"] is False
+        assert "score_adequacao" in score
+        assert score["score"] == score["score_adequacao"]
+
     def test_rankear_fundos(self, mock_coletor):
         from fundos.ranker_fundos import rankear_fundos
         resultado = rankear_fundos(perfil=2, limite=3, incluir_sharpe_sortino=False)

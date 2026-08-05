@@ -28,9 +28,13 @@ de rentabilidade ou orientação tributária.
 ## Limitações tributárias
 
 - Regras podem mudar após a vigência documentada.
-- Fundos exigem histórico de come-cotas.
-- Previdência regressiva deve considerar cada aporte.
+- O come-cotas histórico só é considerado quando o estado tributário de cada
+  lote é fornecido; o motor não o descobre a partir do saldo atual.
+- Lotes previdenciários existentes dependem de principal, saldo e data
+  informados corretamente pelo usuário.
 - Regime progressivo depende da declaração completa.
+- O benefício do PGBL depende da elegibilidade legal confirmada, da renda
+  tributável e das deduções já utilizadas.
 - Compensações de renda variável exigem histórico operacional.
 - Cripto depende de custódia, natureza do evento e jurisdição.
 - Estruturados dependem do subtipo e documentação.
@@ -55,6 +59,10 @@ Quando o contexto é insuficiente, o resultado correto é `indeterminada`.
 - Liquidez recente não garante liquidez futura.
 - Rankings podem mudar com pequenas diferenças de dados.
 - O melhor score não implica adequação ao usuário.
+- A eficiência líquida usa uma taxa-cenário do engine; ela não é previsão.
+- A classificação tributária de fundos depende da nomenclatura cadastral.
+- Calendários de mercado posteriores a 2026 precisam ser confirmados ou
+  fornecidos; o sistema identifica os anos sem calendário confirmado.
 
 ## Limitações do backtest
 

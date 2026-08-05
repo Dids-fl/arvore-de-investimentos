@@ -110,6 +110,10 @@ def _executar_classe(
     classe: str,
     perfil_risco: int,
     n: int,
+    *,
+    prazo_anos: float | None = None,
+    data_referencia: object = None,
+    retorno_esperado_fundos: float | None = None,
 ) -> list[dict[str, Any]]:
     if classe == "acoes":
         funcao = _modulo("acoes_fiis.screener").top_acoes
@@ -128,7 +132,13 @@ def _executar_classe(
         ativos = funcao(perfil=perfil_risco, limite=n)
     elif classe == "fundos":
         funcao = _modulo("fundos.ranker_fundos").rankear_fundos
-        ativos = funcao(perfil=perfil_risco, limite=n)
+        ativos = funcao(
+            perfil=perfil_risco,
+            limite=n,
+            prazo_anos=prazo_anos,
+            data_referencia=data_referencia,
+            retorno_esperado_anual=retorno_esperado_fundos,
+        )
     elif classe == "estruturados":
         funcao = _modulo(
             "produtos_estruturados.ranker"
@@ -153,6 +163,10 @@ def _buscar_classes(
     classes: AbstractSet[str],
     perfil_risco: int,
     n: int,
+    *,
+    prazo_anos: float | None = None,
+    data_referencia: object = None,
+    retorno_esperado_fundos: float | None = None,
 ) -> tuple[dict[str, list], dict[str, str]]:
     """Consulta as classes em paralelo e mantém falhas fora das listas."""
     desconhecidas = set(classes) - set(_ORDEM)
@@ -166,6 +180,15 @@ def _buscar_classes(
     temporario: dict[str, list] = {}
     falhas: dict[str, str] = {}
     trabalhadores = min(MAX_WORKERS_ATIVOS, len(classes))
+    opcoes_execucao = {}
+    if prazo_anos is not None:
+        opcoes_execucao["prazo_anos"] = prazo_anos
+    if data_referencia is not None:
+        opcoes_execucao["data_referencia"] = data_referencia
+    if retorno_esperado_fundos is not None:
+        opcoes_execucao["retorno_esperado_fundos"] = (
+            retorno_esperado_fundos
+        )
 
     with ThreadPoolExecutor(max_workers=trabalhadores) as executor:
         futuros = {
@@ -174,6 +197,7 @@ def _buscar_classes(
                 classe,
                 perfil_risco,
                 n,
+                **opcoes_execucao,
             ): classe
             for classe in classes
         }
@@ -217,6 +241,9 @@ def recomendar_por_portfolio(
     selic: float | None = None,
     ipca: float | None = None,
     ibov_cagr: float | None = None,
+    prazo_anos: float | None = None,
+    data_referencia: object = None,
+    retorno_esperado_fundos: float | None = None,
 ) -> dict[str, list]:
     """
     Retorna rankings para classes com pelo menos ``MIN_PCT`` de alocação.
@@ -245,7 +272,14 @@ def recomendar_por_portfolio(
     if not classes:
         return {}
 
-    resultado, indisponiveis = _buscar_classes(classes, perfil, limite)
+    resultado, indisponiveis = _buscar_classes(
+        classes,
+        perfil,
+        limite,
+        prazo_anos=prazo_anos,
+        data_referencia=data_referencia,
+        retorno_esperado_fundos=retorno_esperado_fundos,
+    )
     resultado["_indisponiveis"] = indisponiveis
     return resultado
 
