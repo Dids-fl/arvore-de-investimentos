@@ -1,0 +1,373 @@
+{
+  "_schema_version": 1,
+  "categoria": "renda_variavel",
+  "independente_do_motor": true,
+  "fontes_oficiais": {
+    "receita_renda_variavel": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/bolsa-de-valores-1",
+    "servico_revar": "https://www.gov.br/pt-br/servicos/apurar-imposto-sobre-renda-variavel"
+  },
+  "resumo": {
+    "total": 10,
+    "VALIDADO_PRIMEIRA_CAMADA": 0,
+    "PENDENTE_PREMISSA": 9,
+    "DIVERGENTE": 0,
+    "FORA_DO_ESCOPO": 1
+  },
+  "resultados": [
+    {
+      "caso_id": "acao_comum_vendas_20000_isenta",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acoes_isencao_mensal_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acoes_isencao_mensal_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acoes_isencao_mensal_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "O total mensal de vendas foi aceito como informado pelo usuário."
+      ],
+      "fundamentos": [
+        "Isenção aplicada apenas a operações comuns com ações elegíveis."
+      ]
+    },
+    {
+      "caso_id": "acao_comum_vendas_acima_20000",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "acao_comum_compensa_prejuizo",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 90.0,
+        "valor_liquido": 10910.0,
+        "aliquota_efetiva": 0.09,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 90.0,
+        "valor_liquido": 10910.0,
+        "aliquota_efetiva": 0.09,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 90.0,
+        "valor_liquido": 10910.0,
+        "aliquota_efetiva": 0.09,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "acao_comum_compensa_irrf",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 130.0,
+        "valor_liquido": 10870.0,
+        "aliquota_efetiva": 0.13,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 130.0,
+        "valor_liquido": 10870.0,
+        "aliquota_efetiva": 0.13,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 130.0,
+        "valor_liquido": 10870.0,
+        "aliquota_efetiva": 0.13,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "acao_day_trade_20_porcento",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "acao_daytrade_2026"
+      },
+      "motor": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "acao_daytrade_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "acao_daytrade_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 20% aplicada à modalidade day_trade.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "fii_venda_com_ganho",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fii_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fii_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fii_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 20% aplicada à modalidade fii.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "etf_comum_sem_isencao_mensal",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "etf_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "etf_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "etf_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "acao_sem_ganho",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 10000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "acao_sem_valor_vendas_nao_aplica_isencao",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "acao_comum_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "Custos, notas de corretagem e operações simultâneas não foram reconstruídos.",
+        "Prejuízo acumulado e IRRF foram aceitos como informados pelo usuário."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% aplicada à modalidade comum.",
+        "Compensação limitada ao saldo da modalidade informada."
+      ]
+    },
+    {
+      "caso_id": "produto_bdr_nao_suportado",
+      "status": "FORA_DO_ESCOPO",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "produto_nao_suportado"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "produto_nao_suportado"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "produto_nao_suportado"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "Produto não suportado pela fachada: bdr."
+      ],
+      "fundamentos": []
+    }
+  ],
+  "aviso": "Validação técnica do escopo modelado; não substitui apuração fiscal oficial nem revisão profissional."
+}

@@ -40,6 +40,18 @@ FONTE_SUSEP_VGBL_IOF = (
     "https://www.gov.br/susep/pt-br/central-de-conteudos/noticias/"
     "2025/junho/novo-decreto-atualiza-regra-de-iof-para-planos-vgbl"
 )
+FONTE_IOF = (
+    "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/"
+    "decreto/d6306.htm"
+)
+FONTE_LEI_11033_ISENCOES = (
+    "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/"
+    "lei/l11033compilado.htm"
+)
+FONTE_LEI_12431_DEBENTURES = (
+    "https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2011/"
+    "lei/l12431.htm"
+)
 
 VIGENCIA_BASE = date(2026, 1, 1)
 
@@ -54,12 +66,9 @@ class RegraTributaria:
     vigencia_fim: date | None = None
 
     def vigente_em(self, data_referencia: date) -> bool:
-        return (
-            data_referencia >= self.vigencia_inicio
-            and (
-                self.vigencia_fim is None
-                or data_referencia <= self.vigencia_fim
-            )
+        return data_referencia >= self.vigencia_inicio and (
+            self.vigencia_fim is None
+            or data_referencia <= self.vigencia_fim
         )
 
 
@@ -95,6 +104,11 @@ IRPF_ANUAL_2026 = (
     (55_976.16, 0.225, 8_105.85),
     (None, 0.275, 10_904.66),
 )
+IRPF_REDUCAO_ANUAL_LIMITE_INTEGRAL = 60_000.0
+IRPF_REDUCAO_ANUAL_MAXIMA = 2_694.15
+IRPF_REDUCAO_ANUAL_LIMITE_FINAL = 88_200.0
+IRPF_REDUCAO_ANUAL_CONSTANTE = 8_429.73
+IRPF_REDUCAO_ANUAL_COEFICIENTE = 0.095575
 
 # Percentual de IOF sobre o rendimento em resgates com menos de 30 dias.
 IOF_RENDA_FIXA_DIAS = {
@@ -151,16 +165,58 @@ def aliquota_previdencia(prazo_anos: float) -> float:
     )
 
 
-def imposto_irpf_anual(base: float) -> float:
-    base_valida = max(0.0, float(base))
+def imposto_irpf_anual_bruto(base_calculo: float) -> float:
+    """Calcula o IRPF antes da redução anual criada para 2026."""
+    base_valida = max(0.0, float(base_calculo))
     for limite, aliquota, deducao in IRPF_ANUAL_2026:
         if limite is None or base_valida <= limite:
             return max(0.0, base_valida * aliquota - deducao)
     raise RuntimeError("Tabela anual sem faixa final.")
 
 
+def reducao_irpf_anual_2026(
+    rendimentos_tributaveis: float,
+    imposto_bruto: float,
+) -> float:
+    """Calcula a redução anual, limitada ao imposto apurado."""
+    rendimentos = max(0.0, float(rendimentos_tributaveis))
+    imposto = max(0.0, float(imposto_bruto))
+    if rendimentos <= IRPF_REDUCAO_ANUAL_LIMITE_INTEGRAL:
+        reducao = IRPF_REDUCAO_ANUAL_MAXIMA
+    elif rendimentos <= IRPF_REDUCAO_ANUAL_LIMITE_FINAL:
+        reducao = max(
+            0.0,
+            IRPF_REDUCAO_ANUAL_CONSTANTE
+            - IRPF_REDUCAO_ANUAL_COEFICIENTE * rendimentos,
+        )
+    else:
+        reducao = 0.0
+    return min(imposto, reducao)
+
+
+def imposto_irpf_anual(
+    base_calculo: float,
+    *,
+    rendimentos_tributaveis: float | None = None,
+) -> float:
+    """Aplica tabela e redução anual de 2026.
+
+    A base de cálculo e os rendimentos sujeitos ao ajuste são conceitos
+    diferentes. Quando o segundo valor não é informado, a função usa a base
+    como aproximação explícita para manter compatibilidade.
+    """
+    imposto_bruto = imposto_irpf_anual_bruto(base_calculo)
+    rendimentos = (
+        base_calculo
+        if rendimentos_tributaveis is None
+        else rendimentos_tributaveis
+    )
+    reducao = reducao_irpf_anual_2026(rendimentos, imposto_bruto)
+    return max(0.0, imposto_bruto - reducao)
+
+
 def imposto_ganho_capital(ganho_acumulado: float) -> float:
-    """Aplica as faixas progressivamente, sem tributar tudo pela última faixa."""
+    """Aplica as faixas progressivamente, sem tributar tudo pela última."""
     restante = max(0.0, float(ganho_acumulado))
     imposto = 0.0
     limite_anterior = 0.0

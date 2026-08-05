@@ -3,8 +3,8 @@
   "categoria": "renda_variavel",
   "data_referencia": "2026-07-31",
   "validacao_externa": {
-    "status": "pendente",
-    "nota": "Os casos não reconstituem notas de corretagem, despesas, operações simultâneas ou separação de prejuízos por modalidade."
+    "status": "parcial_primeira_camada",
+    "nota": "Dez casos foram recalculados por módulo independente: 9 pendentes porque saldos e vendas são dados informados sem reconstrução de notas e 1 fora do escopo; prejuízos e IRRF são separados por modalidade; 0 divergências."
   },
   "fontes": {
     "receita_bolsa": {
@@ -78,7 +78,7 @@
         "data_resgate": "2026-07-01",
         "tipo_produto": "acao",
         "valor_vendas_mes": 25000.0,
-        "metadados": {"prejuizo_compensavel": 400.0}
+        "metadados": {"prejuizo_compensavel_comum": 400.0}
       },
       "esperado": {
         "imposto_estimado": 90.0,
@@ -99,7 +99,7 @@
         "data_resgate": "2026-07-01",
         "tipo_produto": "acao",
         "valor_vendas_mes": 25000.0,
-        "metadados": {"irrf": 20.0}
+        "metadados": {"irrf_comum": 20.0}
       },
       "esperado": {
         "imposto_estimado": 130.0,

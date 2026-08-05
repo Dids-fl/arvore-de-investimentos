@@ -1,0 +1,408 @@
+{
+  "_schema_version": 1,
+  "categoria": "previdencia",
+  "independente_do_motor": true,
+  "fontes_oficiais": {
+    "receita_tabelas_2026": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+    "receita_pgbl_vgbl": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf/declaracao/pgvl-vgbl",
+    "previdencia_faq": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar"
+  },
+  "resumo": {
+    "total": 11,
+    "VALIDADO_PRIMEIRA_CAMADA": 0,
+    "PENDENTE_PREMISSA": 11,
+    "DIVERGENTE": 0,
+    "FORA_DO_ESCOPO": 0
+  },
+  "resultados": [
+    {
+      "caso_id": "pgbl_regressivo_ate_2_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 3849.9999999999995,
+        "valor_liquido": 7150.0,
+        "aliquota_efetiva": 0.35,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 3849.9999999999995,
+        "valor_liquido": 7150.0,
+        "aliquota_efetiva": 0.35,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 3850.0,
+        "valor_liquido": 7150.0,
+        "aliquota_efetiva": 0.35,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_regressivo_acima_2_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 3300.0,
+        "valor_liquido": 7700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 3300.0,
+        "valor_liquido": 7700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 3300.0,
+        "valor_liquido": 7700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_regressivo_acima_4_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 2750.0,
+        "valor_liquido": 8250.0,
+        "aliquota_efetiva": 0.25,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 2750.0,
+        "valor_liquido": 8250.0,
+        "aliquota_efetiva": 0.25,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 2750.0,
+        "valor_liquido": 8250.0,
+        "aliquota_efetiva": 0.25,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_regressivo_acima_6_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 2200.0,
+        "valor_liquido": 8800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 2200.0,
+        "valor_liquido": 8800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 2200.0,
+        "valor_liquido": 8800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_regressivo_acima_8_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 1650.0,
+        "valor_liquido": 9350.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 1650.0,
+        "valor_liquido": 9350.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 1650.0,
+        "valor_liquido": 9350.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_regressivo_acima_10_anos",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 1100.0,
+        "valor_liquido": 9900.0,
+        "aliquota_efetiva": 0.1,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 1100.0,
+        "valor_liquido": 9900.0,
+        "aliquota_efetiva": 0.1,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 1100.0,
+        "valor_liquido": 9900.0,
+        "aliquota_efetiva": 0.1,
+        "precisao": "estimada",
+        "regra_id": "pgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "vgbl_regressivo_tributa_so_ganho",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 300.0,
+        "valor_liquido": 10700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "vgbl_regressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 300.0,
+        "valor_liquido": 10700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "vgbl_regressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 300.0,
+        "valor_liquido": 10700.0,
+        "aliquota_efetiva": 0.3,
+        "precisao": "estimada",
+        "regra_id": "vgbl_regressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Todo o saldo foi tratado como um lote com uma única idade."
+      ],
+      "fundamentos": [
+        "PGBL sobre o saldo total; VGBL apenas sobre o rendimento.",
+        "Tabela regressiva aplicada pela idade do lote simplificado."
+      ]
+    },
+    {
+      "caso_id": "pgbl_progressivo_renda_30000",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "pgbl_progressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "pgbl_progressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "pgbl_progressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "A renda tributável foi usada como aproximação da base anual."
+      ],
+      "fundamentos": [
+        "Tabela anual e redução anual de 2026 recalculadas separadamente.",
+        "Imposto incremental calculado com e sem o resgate."
+      ]
+    },
+    {
+      "caso_id": "vgbl_progressivo_renda_30000",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "vgbl_progressivo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "vgbl_progressivo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "vgbl_progressivo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "A renda tributável foi usada como aproximação da base anual."
+      ],
+      "fundamentos": [
+        "Tabela anual e redução anual de 2026 recalculadas separadamente.",
+        "Imposto incremental calculado com e sem o resgate."
+      ]
+    },
+    {
+      "caso_id": "pgbl_progressivo_sem_renda",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pgbl_progressivo_sem_renda"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pgbl_progressivo_sem_renda"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pgbl_progressivo_sem_renda"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "A renda tributável anual não foi informada."
+      ],
+      "fundamentos": []
+    },
+    {
+      "caso_id": "pgbl_regime_ausente",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "previdencia_regime_indeterminado"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "previdencia_regime_indeterminado"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "previdencia_regime_indeterminado"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "O regime progressivo ou regressivo não foi informado."
+      ],
+      "fundamentos": []
+    }
+  ],
+  "aviso": "Validação técnica do escopo modelado; não substitui apuração fiscal oficial nem revisão profissional."
+}

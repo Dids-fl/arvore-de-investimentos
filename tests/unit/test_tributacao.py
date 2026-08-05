@@ -11,7 +11,11 @@ from tributacao import (
     PrecisaoTributaria,
     calcular_tributacao,
 )
-from tributacao.regras import imposto_ganho_capital
+from tributacao.regras import (
+    imposto_ganho_capital,
+    imposto_irpf_anual,
+    imposto_irpf_anual_bruto,
+)
 
 
 def contexto(**alteracoes) -> ContextoTributario:
@@ -74,6 +78,21 @@ def test_previdencia_progressiva_com_renda_e_estimada() -> None:
     assert resultado.imposto_estimado is not None
 
 
+def test_previdencia_progressiva_aplica_reducao_anual_2026() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="pgbl",
+            regime="progressivo",
+            renda_tributavel=30_000,
+            principal=10_000,
+            valor_bruto=11_000,
+        )
+    )
+    assert resultado.imposto_estimado == 0
+    assert imposto_irpf_anual_bruto(41_000) > 0
+    assert imposto_irpf_anual(41_000) == 0
+
+
 def test_fundo_longo_prazo_informa_aproximacao_de_come_cotas() -> None:
     resultado = calcular_tributacao(
         contexto(
@@ -83,6 +102,21 @@ def test_fundo_longo_prazo_informa_aproximacao_de_come_cotas() -> None:
     )
     assert resultado.imposto_estimado == pytest.approx(200)
     assert resultado.precisao == PrecisaoTributaria.ESTIMADA
+
+
+def test_fundo_curto_prazo_aplica_iof_antes_do_ir() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="fundo_curto_prazo",
+            principal=10_000,
+            valor_bruto=11_000,
+            data_aplicacao=date(2026, 1, 1),
+            data_resgate=date(2026, 1, 11),
+            metadados={"come_cotas_pago": 0.0},
+        )
+    )
+    assert resultado.imposto_estimado == pytest.approx(736.5)
+    assert resultado.valor_liquido == pytest.approx(10_263.5)
 
 
 def test_acao_com_vendas_abaixo_de_vinte_mil() -> None:
@@ -95,6 +129,29 @@ def test_acao_com_vendas_abaixo_de_vinte_mil() -> None:
 def test_fii_usa_aliquota_de_vinte_por_cento_na_venda() -> None:
     resultado = calcular_tributacao(contexto(tipo_produto="fii"))
     assert resultado.imposto_estimado == pytest.approx(400)
+
+
+def test_renda_variavel_separa_saldos_por_modalidade() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="acao",
+            valor_vendas_mes=25_000,
+            metadados={"prejuizo_compensavel_comum": 400},
+        )
+    )
+    assert resultado.imposto_estimado == pytest.approx(240)
+
+
+def test_renda_variavel_rejeita_saldo_sem_modalidade() -> None:
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="acao",
+            valor_vendas_mes=25_000,
+            metadados={"prejuizo_compensavel": 400},
+        )
+    )
+    assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+    assert resultado.regra_id == "rv_saldo_sem_modalidade"
 
 
 def test_cripto_exige_jurisdicao() -> None:
@@ -195,13 +252,32 @@ def test_cripto_rejeita_confirmacao_textual() -> None:
 
 
 def test_cri_estruturado_e_isento_para_pessoa_fisica() -> None:
-    resultado = calcular_tributacao(contexto(tipo_produto="cri"))
+    resultado = calcular_tributacao(
+        contexto(
+            tipo_produto="cri",
+            metadados={"elegibilidade_isencao_confirmada": True},
+        )
+    )
     assert resultado.imposto_estimado == 0
+
+
+def test_cri_sem_confirmacao_de_elegibilidade_e_indeterminado() -> None:
+    resultado = calcular_tributacao(contexto(tipo_produto="cri"))
+    assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+    assert resultado.regra_id == "rf_isencao_elegibilidade_indeterminada"
 
 
 def test_estruturado_sem_subtipo_nao_recebe_fallback() -> None:
     resultado = calcular_tributacao(contexto(tipo_produto="estruturado"))
     assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+
+
+def test_pessoa_juridica_fica_fora_do_escopo() -> None:
+    resultado = calcular_tributacao(
+        contexto(tipo_produto="cdb", pessoa_fisica=False)
+    )
+    assert resultado.precisao == PrecisaoTributaria.INDETERMINADA
+    assert resultado.regra_id == "pessoa_juridica_fora_escopo"
 
 
 def test_produto_desconhecido_nao_recebe_aliquota_inventada() -> None:

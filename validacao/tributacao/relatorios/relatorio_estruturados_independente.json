@@ -1,0 +1,322 @@
+{
+  "_schema_version": 1,
+  "categoria": "estruturados",
+  "independente_do_motor": true,
+  "fontes_oficiais": {
+    "receita_tabelas_2026": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+    "lei_11033_2004": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/lei/l11033compilado.htm",
+    "lei_12431_2011": "https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2011/lei/l12431.htm"
+  },
+  "resumo": {
+    "total": 9,
+    "VALIDADO_PRIMEIRA_CAMADA": 2,
+    "PENDENTE_PREMISSA": 6,
+    "DIVERGENTE": 0,
+    "FORA_DO_ESCOPO": 1
+  },
+  "resultados": [
+    {
+      "caso_id": "cra_pessoa_fisica_isento",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "A confirmação foi aceita sem inspeção do documento do instrumento."
+      ],
+      "fundamentos": [
+        "Isenção condicionada à elegibilidade confirmada para pessoa física."
+      ]
+    },
+    {
+      "caso_id": "cri_pessoa_fisica_isento",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "A confirmação foi aceita sem inspeção do documento do instrumento."
+      ],
+      "fundamentos": [
+        "Isenção condicionada à elegibilidade confirmada para pessoa física."
+      ]
+    },
+    {
+      "caso_id": "debenture_incentivada_pf_isenta",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_isenta_pf_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "A confirmação foi aceita sem inspeção do documento do instrumento."
+      ],
+      "fundamentos": [
+        "Isenção condicionada à elegibilidade confirmada para pessoa física."
+      ]
+    },
+    {
+      "caso_id": "debenture_comum_721_dias",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate."
+      ],
+      "fundamentos": [
+        "COE e debênture comum tratados pela tabela regressiva informada.",
+        "IOF aplicado antes do IR quando o prazo é inferior a 30 dias."
+      ]
+    },
+    {
+      "caso_id": "coe_180_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "motor": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "COE e debênture comum tratados pela tabela regressiva informada.",
+        "IOF aplicado antes do IR quando o prazo é inferior a 30 dias."
+      ]
+    },
+    {
+      "caso_id": "coe_29_dias_com_iof",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 248.25,
+        "valor_liquido": 10751.75,
+        "aliquota_efetiva": 0.24825,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "motor": {
+        "imposto_estimado": 248.25,
+        "valor_liquido": 10751.75,
+        "aliquota_efetiva": 0.24825,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 248.25,
+        "valor_liquido": 10751.75,
+        "aliquota_efetiva": 0.24825,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "COE e debênture comum tratados pela tabela regressiva informada.",
+        "IOF aplicado antes do IR quando o prazo é inferior a 30 dias."
+      ]
+    },
+    {
+      "caso_id": "cra_pessoa_juridica_nao_isenta",
+      "status": "FORA_DO_ESCOPO",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pessoa_juridica_fora_escopo"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pessoa_juridica_fora_escopo"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pessoa_juridica_fora_escopo"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "A tributação da pessoa jurídica está fora do escopo."
+      ],
+      "fundamentos": []
+    },
+    {
+      "caso_id": "cri_sem_confirmacao_de_elegibilidade",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "rf_isencao_elegibilidade_indeterminada"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "rf_isencao_elegibilidade_indeterminada"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "rf_isencao_elegibilidade_indeterminada"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "A elegibilidade legal do instrumento não foi confirmada."
+      ],
+      "fundamentos": []
+    },
+    {
+      "caso_id": "estruturado_generico_indeterminado",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "estruturado_subtipo_indeterminado"
+      },
+      "motor": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "estruturado_subtipo_indeterminado"
+      },
+      "fixture": {
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "estruturado_subtipo_indeterminado"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": null,
+      "pendencias": [
+        "O subtipo do produto estruturado não foi informado."
+      ],
+      "fundamentos": []
+    }
+  ],
+  "aviso": "Validação técnica do escopo modelado; não substitui apuração fiscal oficial nem revisão profissional."
+}

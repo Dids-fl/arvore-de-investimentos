@@ -22,7 +22,7 @@ ARQUIVOS_ESPERADOS = {
     "renda_fixa.json",
     "renda_variavel.json",
 }
-TOTAL_CASOS_ESPERADO = 61
+TOTAL_CASOS_ESPERADO = 63
 
 
 def _carregar_documentos() -> list[tuple[Path, dict[str, Any]]]:

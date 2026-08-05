@@ -40,7 +40,7 @@ jobs:
       - name: Validate syntax
         run: |
           python -m compileall -q \
-            backtest core macroeconomia tributacao tests \
+            backtest core macroeconomia tributacao validacao tests \
             app.py calculos.py config.py engine.py main.py mercado.py \
             portfolio.py recomendador.py recomendador_ativos.py
 
@@ -62,6 +62,14 @@ jobs:
             --cov-report=html \
             --cov-fail-under=65
 
+      - name: Run independent tax validation
+        run: |
+          python validacao/tributacao/validar_cripto_independente.py \
+            --fixtures tests/fixtures/tributacao/cripto.json \
+            --saida relatorios_tributarios/relatorio_cripto_independente.json
+          python -m validacao.tributacao.validar_tudo \
+            --saida relatorios_tributarios
+
       - name: Upload coverage report
         if: ${{ matrix.python-version == '3.12' && always() }}
         uses: actions/upload-artifact@v7
@@ -72,3 +80,12 @@ jobs:
             htmlcov/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload independent tax reports
+        if: ${{ matrix.python-version == '3.12' && always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: validacao-tributaria-python-3.12
+          path: relatorios_tributarios/
+          if-no-files-found: error
+          retention-days: 30

@@ -48,6 +48,17 @@ def calcular_tributacao(
     """Seleciona a estratégia sem aplicar fallback tributário arbitrário."""
     if not isinstance(contexto, ContextoTributario):
         raise TypeError("contexto deve ser ContextoTributario.")
+    if not contexto.pessoa_fisica:
+        return resultado_indeterminado(
+            contexto,
+            motivo=(
+                "O motor implementa regras para pessoa física. "
+                "Pessoa jurídica exige regime, IRPJ, CSLL e contexto contábil."
+            ),
+            fonte=FONTE_RECEITA_RENDIMENTOS_CAPITAL,
+            vigencia=VIGENCIA_BASE,
+            regra_id="pessoa_juridica_fora_escopo",
+        )
     tipo = contexto.tipo_produto
     if tipo in RENDA_FIXA:
         return calcular_renda_fixa(contexto)

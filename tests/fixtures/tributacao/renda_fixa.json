@@ -3,13 +3,21 @@
   "categoria": "renda_fixa",
   "data_referencia": "2026-07-31",
   "validacao_externa": {
-    "status": "pendente",
-    "nota": "Casos derivados das tabelas oficiais e do contrato atual do motor; ainda exigem cálculo independente e revisão profissional."
+    "status": "parcial_primeira_camada",
+    "nota": "Treze casos foram recalculados por módulo independente: 8 validados, 4 pendentes por vigência futura e 1 fora do escopo por pessoa jurídica; 0 divergências."
   },
   "fontes": {
     "receita_tabelas_2026": {
       "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
       "acessado_em": "2026-07-31"
+    },
+    "lei_11033_2004": {
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/lei/l11033compilado.htm",
+      "acessado_em": "2026-08-04"
+    },
+    "decreto_iof_6306_2007": {
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/decreto/d6306.htm",
+      "acessado_em": "2026-08-04"
     }
   },
   "tolerancias": {
@@ -34,7 +42,7 @@
         "precisao": "exata_para_premissas",
         "regra_id": "rf_regressiva_2026"
       },
-      "fonte_ids": ["receita_tabelas_2026"]
+      "fonte_ids": ["receita_tabelas_2026", "decreto_iof_6306_2007"]
     },
     {
       "id": "cdb_29_dias_com_iof",
@@ -53,7 +61,7 @@
         "precisao": "exata_para_premissas",
         "regra_id": "rf_regressiva_2026"
       },
-      "fonte_ids": ["receita_tabelas_2026"]
+      "fonte_ids": ["receita_tabelas_2026", "decreto_iof_6306_2007"]
     },
     {
       "id": "cdb_30_dias_sem_iof",
@@ -206,7 +214,7 @@
         "precisao": "exata_para_premissas",
         "regra_id": "rf_isenta_pf_2026"
       },
-      "fonte_ids": ["receita_tabelas_2026"]
+      "fonte_ids": ["lei_11033_2004"]
     },
     {
       "id": "lca_pessoa_fisica_isenta",
@@ -226,7 +234,7 @@
         "precisao": "exata_para_premissas",
         "regra_id": "rf_isenta_pf_2026"
       },
-      "fonte_ids": ["receita_tabelas_2026"]
+      "fonte_ids": ["lei_11033_2004"]
     },
     {
       "id": "lci_pessoa_juridica_nao_isenta",
@@ -240,13 +248,13 @@
         "pessoa_fisica": false
       },
       "esperado": {
-        "imposto_estimado": 150.0,
-        "valor_liquido": 10850.0,
-        "aliquota_efetiva": 0.15,
-        "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "imposto_estimado": null,
+        "valor_liquido": null,
+        "aliquota_efetiva": null,
+        "precisao": "indeterminada",
+        "regra_id": "pessoa_juridica_fora_escopo"
       },
-      "fonte_ids": ["receita_tabelas_2026"]
+      "fonte_ids": ["lei_11033_2004"]
     },
     {
       "id": "cdb_sem_ganho",

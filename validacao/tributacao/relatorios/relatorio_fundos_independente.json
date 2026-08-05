@@ -1,0 +1,427 @@
+{
+  "_schema_version": 1,
+  "categoria": "fundos",
+  "independente_do_motor": true,
+  "fontes_oficiais": {
+    "receita_tabelas_2026": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+    "lei_14754_2023": "https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14754.htm",
+    "decreto_iof_6306_2007": "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/decreto/d6306.htm"
+  },
+  "resumo": {
+    "total": 12,
+    "VALIDADO_PRIMEIRA_CAMADA": 7,
+    "PENDENTE_PREMISSA": 5,
+    "DIVERGENTE": 0,
+    "FORA_DO_ESCOPO": 0
+  },
+  "resultados": [
+    {
+      "caso_id": "fundo_curto_10_dias_com_iof",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 736.5,
+        "valor_liquido": 10263.5,
+        "aliquota_efetiva": 0.7365,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 736.5,
+        "valor_liquido": 10263.5,
+        "aliquota_efetiva": 0.7365,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 736.5,
+        "valor_liquido": 10263.5,
+        "aliquota_efetiva": 0.7365,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_curto_180_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_curto_181_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_180_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_181_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 200.0,
+        "valor_liquido": 10800.0,
+        "aliquota_efetiva": 0.2,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_361_dias",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 175.0,
+        "valor_liquido": 10825.0,
+        "aliquota_efetiva": 0.175,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_721_dias",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate."
+      ],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_rf_721_dias",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_rf_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_rf_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_rf_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Fundo RF genérico foi tratado como fundo de longo prazo."
+      ],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_com_come_cotas_parcial",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 50.0,
+        "valor_liquido": 10950.0,
+        "aliquota_efetiva": 0.05,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 50.0,
+        "valor_liquido": 10950.0,
+        "aliquota_efetiva": 0.05,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 50.0,
+        "valor_liquido": 10950.0,
+        "aliquota_efetiva": 0.05,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Come-cotas foi aceito como total informado, sem reconstrução de cotas."
+      ],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_longo_come_cotas_superior_imposto_final",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "motor": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
+        "precisao": "estimada",
+        "regra_id": "fundo_longo_prazo_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A legislação de 2026 foi mantida como hipótese até o resgate.",
+        "Come-cotas foi aceito como total informado, sem reconstrução de cotas."
+      ],
+      "fundamentos": [
+        "IOF calculado antes do IR quando o prazo é inferior a 30 dias.",
+        "Come-cotas informado reduz somente o IR adicional no resgate."
+      ]
+    },
+    {
+      "caso_id": "fundo_acoes_15_porcento",
+      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [],
+      "fundamentos": [
+        "Alíquota de 15% para fundo de ações informado."
+      ]
+    },
+    {
+      "caso_id": "fundo_etf_acoes_15_porcento",
+      "status": "PENDENTE_PREMISSA",
+      "independente": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "motor": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "fixture": {
+        "imposto_estimado": 150.0,
+        "valor_liquido": 10850.0,
+        "aliquota_efetiva": 0.15,
+        "precisao": "estimada",
+        "regra_id": "fundo_acoes_2026"
+      },
+      "confere_motor": true,
+      "confere_fixture": true,
+      "diferenca_imposto_motor": 0.0,
+      "pendencias": [
+        "A classificação concreta do ETF como fundo de ações deve ser confirmada."
+      ],
+      "fundamentos": [
+        "Alíquota de 15% para fundo de ações informado."
+      ]
+    }
+  ],
+  "aviso": "Validação técnica do escopo modelado; não substitui apuração fiscal oficial nem revisão profissional."
+}

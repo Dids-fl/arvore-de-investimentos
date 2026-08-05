@@ -3,8 +3,8 @@
   "categoria": "fundos",
   "data_referencia": "2026-07-31",
   "validacao_externa": {
-    "status": "pendente",
-    "nota": "Come-cotas é validado apenas pelo valor antecipado informado; não há reconstrução histórica de cotas."
+    "status": "parcial_primeira_camada",
+    "nota": "Doze casos foram recalculados por módulo independente: 7 validados e 5 pendentes por classificação, vigência futura ou come-cotas informado sem reconstrução de cotas; 0 divergências."
   },
   "fontes": {
     "receita_tabelas_2026": {
@@ -21,6 +21,26 @@
     "aliquota": 1e-09
   },
   "casos": [
+    {
+      "id": "fundo_curto_10_dias_com_iof",
+      "natureza": "conformidade_fonte_oficial",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-01-11",
+        "tipo_produto": "fundo_curto_prazo",
+        "metadados": {"come_cotas_pago": 0.0}
+      },
+      "esperado": {
+        "imposto_estimado": 736.5,
+        "valor_liquido": 10263.5,
+        "aliquota_efetiva": 0.7365,
+        "precisao": "estimada",
+        "regra_id": "fundo_curto_prazo_2026"
+      },
+      "fonte_ids": ["receita_tabelas_2026", "receita_fundos"]
+    },
     {
       "id": "fundo_curto_180_dias",
       "natureza": "conformidade_fonte_oficial",

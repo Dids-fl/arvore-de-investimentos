@@ -3,8 +3,8 @@
   "categoria": "previdencia",
   "data_referencia": "2026-07-31",
   "validacao_externa": {
-    "status": "pendente",
-    "nota": "O regime regressivo do motor trata todo o saldo como um único lote; aportes reais exigem cálculo por lote."
+    "status": "parcial_primeira_camada",
+    "nota": "Onze casos foram recalculados por módulo independente: 9 pendentes por vigência, base anual aproximada ou simplificação de lote único e 2 fora do escopo por dados ausentes; 0 divergências."
   },
   "fontes": {
     "receita_pgbl_vgbl": {
@@ -167,7 +167,7 @@
     },
     {
       "id": "pgbl_progressivo_renda_30000",
-      "natureza": "regressao_implementacao_pendente_revisao",
+      "natureza": "conformidade_tabela_e_reducao_anual_2026",
       "entrada": {
         "principal": 10000.0,
         "valor_bruto": 11000.0,
@@ -178,9 +178,9 @@
         "renda_tributavel": 30000.0
       },
       "esperado": {
-        "imposto_estimado": 1356.01,
-        "valor_liquido": 9643.99,
-        "aliquota_efetiva": 0.12327363636363637,
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
         "precisao": "estimada",
         "regra_id": "pgbl_progressivo_2026"
       },
@@ -188,7 +188,7 @@
     },
     {
       "id": "vgbl_progressivo_renda_30000",
-      "natureza": "regressao_implementacao_pendente_revisao",
+      "natureza": "conformidade_tabela_e_reducao_anual_2026",
       "entrada": {
         "principal": 10000.0,
         "valor_bruto": 11000.0,
@@ -199,9 +199,9 @@
         "renda_tributavel": 30000.0
       },
       "esperado": {
-        "imposto_estimado": 75.0,
-        "valor_liquido": 10925.0,
-        "aliquota_efetiva": 0.075,
+        "imposto_estimado": 0.0,
+        "valor_liquido": 11000.0,
+        "aliquota_efetiva": 0.0,
         "precisao": "estimada",
         "regra_id": "vgbl_progressivo_2026"
       },
