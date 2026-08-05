@@ -8,6 +8,12 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from calendarios.validacao import (
+    CalendarioExtraido,
+    fonte_b3_oficial,
+    validar_calendario_extraido,
+)
+
 _DIRETORIO_PADRAO = Path(__file__).with_name("b3")
 
 
@@ -19,13 +25,16 @@ def registrar_calendario(
     destino: Path = _DIRETORIO_PADRAO,
 ) -> Path:
     """Valida e grava um calendário confirmado sem inferir datas ausentes."""
-    if not fonte.startswith("https://www.b3.com.br/"):
+    if not fonte_b3_oficial(fonte):
         raise ValueError("A fonte deve ser uma página HTTPS oficial da B3.")
-    normalizadas = sorted({date.fromisoformat(valor).isoformat() for valor in datas})
-    if not normalizadas:
+    datas_convertidas = tuple(sorted(date.fromisoformat(valor) for valor in datas))
+    if not datas_convertidas:
         raise ValueError("Informe ao menos um dia sem negociação.")
-    if any(date.fromisoformat(valor).year != ano for valor in normalizadas):
-        raise ValueError("Todas as datas devem pertencer ao ano informado.")
+    validar_calendario_extraido(
+        CalendarioExtraido(ano=ano, datas=datas_convertidas),
+        anos_permitidos=(ano,),
+    )
+    normalizadas = [valor.isoformat() for valor in datas_convertidas]
 
     destino.mkdir(parents=True, exist_ok=True)
     arquivo = destino / f"{ano}.json"

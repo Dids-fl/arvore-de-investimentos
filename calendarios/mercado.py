@@ -10,6 +10,12 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
+from calendarios.validacao import (
+    CalendarioExtraido,
+    fonte_b3_oficial,
+    validar_calendario_extraido,
+)
+
 try:
     import holidays
 except ImportError:  # pragma: no cover - dependência declarada no projeto
@@ -31,11 +37,14 @@ def _diretorio_cache_b3() -> Path:
     )
 
 
-def _arquivo_calendario(ano: int) -> Path:
+def _arquivos_calendario(ano: int) -> tuple[Path, ...]:
     cache = _diretorio_cache_b3() / f"{ano}.json"
-    if cache.exists():
-        return cache
-    return _DIRETORIO_B3 / f"{ano}.json"
+    versionado = _DIRETORIO_B3 / f"{ano}.json"
+    return tuple(
+        arquivo
+        for arquivo in (cache, versionado)
+        if arquivo.exists()
+    )
 
 
 @dataclass(frozen=True)
@@ -66,37 +75,49 @@ def carregar_ano(ano: int) -> CalendarioMercado:
     if ano < 2000 or ano > 2200:
         raise ValueError("ano deve estar entre 2000 e 2200.")
 
-    arquivo = _arquivo_calendario(ano)
-    if arquivo.exists():
-        dados = json.loads(arquivo.read_text(encoding="utf-8"))
-        if dados.get("ano") != ano:
-            raise ValueError(f"Ano inconsistente em {arquivo}.")
-        if dados.get("status") != "confirmado":
-            raise ValueError(
-                f"Arquivo {arquivo} não pode ser tratado como confirmado."
+    falhas: list[str] = []
+    for arquivo in _arquivos_calendario(ano):
+        try:
+            dados = json.loads(arquivo.read_text(encoding="utf-8"))
+            if dados.get("ano") != ano:
+                raise ValueError(f"Ano inconsistente em {arquivo}.")
+            if dados.get("status") != "confirmado":
+                raise ValueError(
+                    f"Arquivo {arquivo} não pode ser tratado como confirmado."
+                )
+            fonte = dados.get("fonte")
+            if not fonte_b3_oficial(fonte):
+                raise ValueError(f"Fonte oficial ausente em {arquivo}.")
+            valores = dados.get("dias_sem_negociacao")
+            if not isinstance(valores, list):
+                raise TypeError(f"dias_sem_negociacao inválido em {arquivo}.")
+            datas = tuple(
+                _data_iso(valor, contexto=f"calendário B3 {ano}")
+                for valor in valores
             )
-        fonte = dados.get("fonte")
-        if (
-            not isinstance(fonte, str)
-            or not fonte.startswith("https://")
-            or "b3.com.br/" not in fonte
-        ):
-            raise ValueError(f"Fonte oficial ausente em {arquivo}.")
-        valores = dados.get("dias_sem_negociacao")
-        if not isinstance(valores, list):
-            raise TypeError(f"dias_sem_negociacao inválido em {arquivo}.")
-        feriados = frozenset(
-            _data_iso(valor, contexto=f"calendário B3 {ano}")
-            for valor in valores
+            validar_calendario_extraido(
+                CalendarioExtraido(
+                    ano=ano,
+                    datas=datas,
+                    hash_conteudo=str(dados.get("hash_fonte", "")),
+                ),
+                anos_permitidos=(ano,),
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            falhas.append(f"{arquivo}: {exc}")
+            continue
+
+        avisos = (
+            ("Calendário inválido descartado: " + " | ".join(falhas),)
+            if falhas
+            else ()
         )
-        if any(item.year != ano for item in feriados):
-            raise ValueError(f"Há data de outro ano em {arquivo}.")
         return CalendarioMercado(
-            feriados=feriados,
+            feriados=frozenset(datas),
             anos_confirmados=frozenset({ano}),
             anos_provisorios=frozenset(),
             fontes=(fonte,),
-            avisos=(),
+            avisos=avisos,
         )
 
     if holidays is None:
@@ -105,7 +126,8 @@ def carregar_ano(ano: int) -> CalendarioMercado:
             anos_confirmados=frozenset(),
             anos_provisorios=frozenset({ano}),
             fontes=(),
-            avisos=(
+            avisos=tuple(falhas)
+            + (
                 (
                     f"Calendário B3 {ano} ausente e biblioteca holidays não "
                     "instalada; apenas fins de semana serão considerados."
@@ -119,7 +141,8 @@ def carregar_ano(ano: int) -> CalendarioMercado:
         anos_confirmados=frozenset(),
         anos_provisorios=frozenset({ano}),
         fontes=("https://pypi.org/project/holidays/",),
-        avisos=(
+        avisos=tuple(falhas)
+        + (
             (
                 f"Calendário B3 {ano} ainda não foi confirmado. Foram usados "
                 "somente feriados nacionais calculados; fechamentos especiais "

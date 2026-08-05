@@ -9,20 +9,19 @@ import re
 import shutil
 import tempfile
 import unicodedata
-from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup, Tag
 
-try:
-    import holidays
-except ImportError:  # pragma: no cover - dependência declarada no projeto
-    holidays = None
+from calendarios.validacao import (
+    CalendarioExtraido,
+    fonte_b3_oficial,
+    validar_calendario_extraido,
+)
 
 URL_CALENDARIO_B3 = (
     "https://www.b3.com.br/pt_br/solucoes/plataformas/"
@@ -46,13 +45,6 @@ MESES = {
 
 
 @dataclass(frozen=True)
-class CalendarioExtraido:
-    ano: int
-    datas: tuple[date, ...]
-    hash_conteudo: str
-
-
-@dataclass(frozen=True)
 class ResultadoSincronizacao:
     ano: int
     status: str
@@ -73,18 +65,6 @@ def _normalizar(valor: str) -> str:
         if not unicodedata.combining(caractere)
     )
     return " ".join(sem_acentos.split())
-
-
-def _dominio_oficial(url: str) -> bool:
-    parsed = urlparse(url)
-    return (
-        parsed.scheme == "https"
-        and parsed.hostname is not None
-        and (
-            parsed.hostname == "b3.com.br"
-            or parsed.hostname.endswith(".b3.com.br")
-        )
-    )
 
 
 def _cabecalho_do_ano(sopa: BeautifulSoup, ano: int) -> Tag | None:
@@ -150,62 +130,6 @@ def extrair_calendario_b3(html: str, ano: int) -> CalendarioExtraido | None:
         datas=tuple(sorted(datas)),
         hash_conteudo=hashlib.sha256(canonico.encode()).hexdigest(),
     )
-
-
-def _pascoa(ano: int) -> date:
-    a = ano % 19
-    b, c = divmod(ano, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    mes = (h + l - 7 * m + 114) // 31
-    dia = (h + l - 7 * m + 114) % 31 + 1
-    return date(ano, mes, dia)
-
-
-def _fechamentos_minimos(ano: int) -> set[date]:
-    esperados: set[date] = set()
-    if holidays is not None:
-        for feriado in holidays.country_holidays("BR", years=[ano]):
-            if feriado.weekday() < 5:
-                esperados.add(feriado)
-    pascoa = _pascoa(ano)
-    esperados.update(
-        {
-            pascoa - timedelta(days=48),
-            pascoa - timedelta(days=47),
-            pascoa - timedelta(days=2),
-            pascoa + timedelta(days=60),
-        }
-    )
-    return esperados
-
-
-def validar_calendario_extraido(
-    calendario: CalendarioExtraido,
-    *,
-    anos_permitidos: Iterable[int],
-) -> None:
-    """Rejeita ano incorreto, extração parcial ou calendário incoerente."""
-    permitidos = {int(ano) for ano in anos_permitidos}
-    if calendario.ano not in permitidos:
-        raise ValueError("O calendário extraído não pertence a um ano permitido.")
-    if len(calendario.datas) < 8 or len(calendario.datas) > 30:
-        raise ValueError("Quantidade anormal de fechamentos no calendário B3.")
-    if len(calendario.datas) != len(set(calendario.datas)):
-        raise ValueError("O calendário B3 contém datas duplicadas.")
-    if any(item.year != calendario.ano for item in calendario.datas):
-        raise ValueError("O calendário B3 contém data de outro ano.")
-    ausentes = _fechamentos_minimos(calendario.ano) - set(calendario.datas)
-    if ausentes:
-        datas = ", ".join(item.isoformat() for item in sorted(ausentes))
-        raise ValueError(
-            "A extração não contém fechamentos mínimos esperados: " + datas
-        )
 
 
 def _diretorio_cache() -> Path:
@@ -321,7 +245,7 @@ def sincronizar_calendarios_relevantes(
             },
         )
         resposta.raise_for_status()
-        if not _dominio_oficial(str(resposta.url)):
+        if not fonte_b3_oficial(str(resposta.url)):
             raise ValueError("A consulta foi redirecionada para domínio não oficial.")
     except (requests.RequestException, ValueError) as exc:
         return tuple(

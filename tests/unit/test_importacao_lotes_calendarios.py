@@ -219,14 +219,51 @@ def test_registro_de_calendario_exige_fonte_oficial(tmp_path) -> None:
             destino=tmp_path,
         )
 
+    extraido = extrair_calendario_b3(_html_b3_2026(), 2026)
+    assert extraido is not None
     arquivo = registrar_calendario(
-        ano=2027,
-        fonte="https://www.b3.com.br/pt_br/calendario-2027.htm",
-        datas=["2027-12-25", "2027-01-01"],
+        ano=2026,
+        fonte=URL_CALENDARIO_B3,
+        datas=[item.isoformat() for item in extraido.datas],
         destino=tmp_path,
     )
-    assert arquivo.name == "2027.json"
+    assert arquivo.name == "2026.json"
     assert '"status": "confirmado"' in arquivo.read_text(encoding="utf-8")
+
+
+def test_registro_manual_rejeita_calendario_incompleto(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Quantidade anormal"):
+        registrar_calendario(
+            ano=2026,
+            fonte=URL_CALENDARIO_B3,
+            datas=["2026-01-01", "2026-12-25"],
+            destino=tmp_path,
+        )
+
+
+def test_loader_revalida_json_confirmado(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("RECOMENDADOR_CALENDARIOS_CACHE_DIR", str(tmp_path))
+    (tmp_path / "2026.json").write_text(
+        json.dumps(
+            {
+                "ano": 2026,
+                "status": "confirmado",
+                "fonte": URL_CALENDARIO_B3,
+                "dias_sem_negociacao": ["2026-01-01"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    carregar_ano.cache_clear()
+
+    calendario = carregar_ano(2026)
+
+    assert len(calendario.feriados) == 14
+    assert calendario.anos_confirmados == frozenset({2026})
+    assert any("inválido descartado" in item for item in calendario.avisos)
 
 
 def test_parser_b3_ignora_horario_especial_e_feriado_estrangeiro() -> None:
