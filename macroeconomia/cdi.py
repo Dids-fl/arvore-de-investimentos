@@ -1,193 +1,301 @@
-# macroeconomia/cdi.py
-"""
-Módulo para obtenção da taxa CDI (Certificado de Depósito Interbancário)
-diretamente do Banco Central do Brasil via API SGS.
+"""Obtenção do CDI oficial com cache e contenção de falhas da API SGS."""
 
-Séries SGS oficiais:
-    - 12: CDI diário (taxa percentual ao dia) - recomendado para cálculos
-    - 4391: CDI mensal (taxa acumulada no mês) - para consultas/relatórios
+from __future__ import annotations
 
-Referência: https://dadosabertos.bcb.gov.br/dataset/sistema-gerenciador-de-series-temporarias-sgs
-"""
-
+import json
 import logging
+import math
+import threading
+import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
+import pandas as pd
+import requests
 from bcb import sgs
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
-# Séries SGS oficiais
-SERIE_CDI_DIARIO = 12   # Taxa percentual ao dia
-SERIE_CDI_MENSAL = 4391 # Taxa acumulada no mês
-
-# Dias úteis por ano (aproximado para anualização)
+SERIE_CDI_DIARIO = 12
+SERIE_CDI_MENSAL = 4391
 DIAS_UTEIS_ANO = 252
 
+_CACHE_FILE = (
+    Path.home()
+    / ".cache"
+    / "recomendador_investimentos"
+    / "cdi_periodos.json"
+)
+_CACHE_TTL_SECONDS = 24 * 60 * 60
+_CACHE_HISTORICO_TTL_SECONDS = 30 * 24 * 60 * 60
+_CIRCUIT_BREAKER_SECONDS = 5 * 60
+_LOCK = threading.Lock()
+_MEMORIA: dict[str, float] = {}
+_CIRCUITO_ABERTO_ATE = 0.0
 
-def obter_cdi_diario(data: str | None = None) -> float:
-    """
-    Retorna a taxa CDI diária (percentual ao dia) para uma data específica.
-    Se data não for fornecida, retorna o último valor disponível.
+_HTTP = requests.Session()
+_retry = Retry(
+    total=2,
+    connect=2,
+    read=2,
+    backoff_factor=0.5,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET"}),
+)
+_HTTP.mount("https://", HTTPAdapter(max_retries=_retry))
 
-    Args:
-        data (str, optional): Data no formato 'YYYY-MM-DD'.
 
-    Returns:
-        float: Taxa CDI diária em decimal (ex: 0.0005 para 0,05% ao dia),
-               ou None se não houver dado disponível.
-    """
+def _chave_periodo(data_inicio: str, data_fim: str) -> str:
+    return f"{data_inicio}:{data_fim}"
+
+
+def _carregar_cache() -> dict:
     try:
-        if data is None:
-            data = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if not _CACHE_FILE.exists():
+            return {"periodos": {}}
+        payload = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return {"periodos": {}}
+        periodos = payload.get("periodos")
+        if not isinstance(periodos, dict):
+            return {"periodos": {}}
+        return payload
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logger.warning("Cache de CDI inválido; será reconstruído: %s", exc)
+        return {"periodos": {}}
 
-        # Busca apenas o dia específico
-        df = sgs.get(
+
+def _salvar_cache(payload: dict) -> None:
+    try:
+        _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temporario = _CACHE_FILE.with_suffix(".tmp")
+        temporario.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporario.replace(_CACHE_FILE)
+    except OSError as exc:
+        logger.warning("Não foi possível salvar o cache de CDI: %s", exc)
+
+
+def _ler_periodo_cache(
+    chave: str,
+    *,
+    aceitar_expirado: bool = False,
+) -> float | None:
+    payload = _carregar_cache()
+    registro = payload.get("periodos", {}).get(chave)
+    if not isinstance(registro, dict):
+        return None
+    try:
+        valor = float(registro["valor"])
+        armazenado_em = float(registro["armazenado_em"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not math.isfinite(valor) or valor <= -1:
+        return None
+    if aceitar_expirado:
+        return valor
+    data_fim = date.fromisoformat(chave.split(":", maxsplit=1)[1])
+    ttl = (
+        _CACHE_HISTORICO_TTL_SECONDS
+        if data_fim
+        < datetime.now(timezone.utc).date() - timedelta(days=7)
+        else _CACHE_TTL_SECONDS
+    )
+    if time.time() - armazenado_em > ttl:
+        return None
+    return valor
+
+
+def _gravar_periodo_cache(chave: str, valor: float) -> None:
+    payload = _carregar_cache()
+    payload.setdefault("periodos", {})[chave] = {
+        "valor": valor,
+        "armazenado_em": time.time(),
+    }
+    _salvar_cache(payload)
+
+
+def _anualizar_valores_percentuais(valores) -> float | None:
+    serie = valores.dropna()
+    if serie.empty:
+        return None
+    fator_acumulado = (1 + serie.astype(float) / 100).prod()
+    dias_uteis = len(serie)
+    if dias_uteis == 0 or fator_acumulado <= 0:
+        return None
+    return float(fator_acumulado ** (DIAS_UTEIS_ANO / dias_uteis) - 1)
+
+
+def _buscar_cdi_python_bcb(data_inicio: str, data_fim: str) -> float | None:
+    dataframe = sgs.get(
+        {"cdi_diario": SERIE_CDI_DIARIO},
+        start=data_inicio,
+        end=data_fim,
+    )
+    if dataframe.empty:
+        return None
+    return _anualizar_valores_percentuais(dataframe.iloc[:, 0])
+
+
+def _buscar_cdi_http(data_inicio: str, data_fim: str) -> float | None:
+    url = (
+        "https://api.bcb.gov.br/dados/serie/"
+        f"bcdata.sgs.{SERIE_CDI_DIARIO}/dados"
+    )
+    resposta = _HTTP.get(
+        url,
+        params={
+            "formato": "json",
+            "dataInicial": date.fromisoformat(data_inicio).strftime(
+                "%d/%m/%Y"
+            ),
+            "dataFinal": date.fromisoformat(data_fim).strftime("%d/%m/%Y"),
+        },
+        headers={"User-Agent": "recomendador-investimentos/1.0"},
+        timeout=20,
+    )
+    resposta.raise_for_status()
+    dados = resposta.json()
+    if not isinstance(dados, list):
+        return None
+
+    valores = pd.Series(
+        [
+            str(item.get("valor", "")).replace(",", ".")
+            for item in dados
+            if isinstance(item, dict)
+        ],
+        dtype="object",
+    )
+    valores = pd.to_numeric(valores, errors="coerce")
+    return _anualizar_valores_percentuais(valores)
+
+
+def _buscar_cdi_online(data_inicio: str, data_fim: str) -> float | None:
+    erros: list[str] = []
+    try:
+        valor = _buscar_cdi_python_bcb(data_inicio, data_fim)
+        if valor is not None:
+            return valor
+        erros.append("python-bcb retornou série vazia")
+    except Exception as exc:  # noqa: BLE001
+        erros.append(f"python-bcb: {type(exc).__name__}: {exc}")
+
+    try:
+        valor = _buscar_cdi_http(data_inicio, data_fim)
+        if valor is not None:
+            return valor
+        erros.append("API SGS direta retornou série vazia")
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        erros.append(f"API SGS direta: {type(exc).__name__}: {exc}")
+
+    logger.warning(
+        "CDI indisponível para %s a %s (%s).",
+        data_inicio,
+        data_fim,
+        "; ".join(erros),
+    )
+    return None
+
+
+def obter_cdi_diario(data: str | None = None) -> float | None:
+    """Retorna a taxa diária em decimal para a data ou último dia útil."""
+    try:
+        data = data or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        dataframe = sgs.get(
             {"cdi_diario": SERIE_CDI_DIARIO},
             start=data,
             end=data,
         )
-        if df.empty:
-            # Se não houver dado para a data, tenta o último dia útil disponível
-            df = sgs.get({"cdi_diario": SERIE_CDI_DIARIO}, end=data)
-            if df.empty:
-                return None
-
-        # A série 12 retorna valores percentuais (ex: 0.05 para 0,05% ao dia)
-        valor = df.iloc[-1, 0]
-        return valor / 100  # converte para decimal
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Erro ao buscar CDI diário: {e}")
+        if dataframe.empty:
+            dataframe = sgs.get({"cdi_diario": SERIE_CDI_DIARIO}, end=data)
+        if dataframe.empty:
+            return None
+        return float(dataframe.iloc[-1, 0]) / 100
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Erro ao buscar CDI diário: %s", exc)
         return None
 
 
-def obter_cdi_mensal(ano: int, mes: int) -> float:
-    """
-    Retorna a taxa CDI acumulada em um mês específico (série 4391).
-    Útil para relatórios e conferência.
-
-    Args:
-        ano (int): Ano (ex: 2026).
-        mes (int): Mês (1 a 12).
-
-    Returns:
-        float: Taxa CDI mensal em decimal (ex: 0.0087 para 0,87% ao mês),
-               ou None se não houver dados.
-    """
+def obter_cdi_mensal(ano: int, mes: int) -> float | None:
+    """Retorna o CDI acumulado mensal em decimal."""
+    if not 1 <= mes <= 12:
+        raise ValueError("mes deve estar entre 1 e 12.")
+    inicio = date(ano, mes, 1)
+    proximo_mes = date(ano + (mes == 12), mes % 12 + 1, 1)
+    fim = proximo_mes - timedelta(days=1)
     try:
-        data_inicio = f"{ano:04d}-{mes:02d}-01"
-        # Último dia do mês
-        if mes == 12:
-            data_fim = f"{ano + 1:04d}-01-01"
-        else:
-            data_fim = f"{ano:04d}-{mes + 1:02d}-01"
-        data_fim = (
-            date.fromisoformat(data_fim) - timedelta(days=1)
-        ).isoformat()
-
-        df = sgs.get(
+        dataframe = sgs.get(
             {"cdi_mensal": SERIE_CDI_MENSAL},
-            start=data_inicio,
-            end=data_fim,
+            start=inicio.isoformat(),
+            end=fim.isoformat(),
         )
-        if df.empty:
+        if dataframe.empty:
             return None
-
-        # A série 4391 já retorna a taxa mensal acumulada em percentual
-        valor = df.iloc[-1, 0]
-        return valor / 100  # converte para decimal
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Erro ao buscar CDI mensal: {e}")
+        return float(dataframe.iloc[-1, 0]) / 100
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Erro ao buscar CDI mensal: %s", exc)
         return None
 
 
-def obter_cdi_periodo(data_inicio: str, data_fim: str) -> float:
-    """
-    Retorna a taxa CDI acumulada no período, anualizada (equivalente anual),
-    calculada a partir da série diária (série 12).
+def obter_cdi_periodo(data_inicio: str, data_fim: str) -> float | None:
+    """Retorna o CDI anualizado e consulta a rede no máximo uma vez."""
+    global _CIRCUITO_ABERTO_ATE
 
-    Args:
-        data_inicio (str): Data de início no formato 'YYYY-MM-DD'.
-        data_fim (str): Data de fim no formato 'YYYY-MM-DD'.
-
-    Returns:
-        float: Taxa CDI anualizada em decimal (ex: 0.105 para 10,5% ao ano),
-               ou None se não houver dados suficientes.
-    """
-    try:
-        inicio = date.fromisoformat(data_inicio)
-        fim = date.fromisoformat(data_fim)
-
-        if inicio >= fim:
-            logger.warning("Data de início deve ser anterior à data de fim.")
-            return None
-
-        # Busca a série diária no período
-        df = sgs.get(
-            {"cdi_diario": SERIE_CDI_DIARIO},
-            start=data_inicio,
-            end=data_fim,
-        )
-
-        if df.empty:
-            logger.warning("Nenhum dado de CDI diário encontrado no período.")
-            return None
-
-        # Cálculo: fator acumulado = (1 + taxa/100) para cada dia
-        fator_acumulado = (1 + df.iloc[:, 0] / 100).prod()
-
-        dias_uteis = len(df)
-        if dias_uteis == 0:
-            return None
-
-        # Anualiza: fator ^ (252 / dias_uteis) - 1
-        cdi_anual = fator_acumulado ** (DIAS_UTEIS_ANO / dias_uteis) - 1
-
-        return float(cdi_anual)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Erro ao calcular CDI do período: {e}")
+    inicio = date.fromisoformat(data_inicio)
+    fim = date.fromisoformat(data_fim)
+    if inicio >= fim:
+        logger.warning("Data de início deve ser anterior à data de fim.")
         return None
 
+    chave = _chave_periodo(data_inicio, data_fim)
+    with _LOCK:
+        if chave in _MEMORIA:
+            return _MEMORIA[chave]
+        valor_cache = _ler_periodo_cache(chave)
+        if valor_cache is not None:
+            _MEMORIA[chave] = valor_cache
+            return valor_cache
+        circuito_aberto = time.monotonic() < _CIRCUITO_ABERTO_ATE
 
-def obter_cdi_anualizado() -> float:
-    """
-    Retorna o CDI anualizado aproximado (últimos 12 meses).
-    Usa a série diária para calcular o acumulado do período.
+    if circuito_aberto:
+        return _ler_periodo_cache(chave, aceitar_expirado=True)
 
-    Returns:
-        float: Taxa CDI anualizada em decimal, ou None se não houver dados.
-    """
-    try:
-        hoje = datetime.now(timezone.utc)
-        um_ano_atras = hoje - timedelta(days=365)
-        return obter_cdi_periodo(
-            um_ano_atras.strftime("%Y-%m-%d"),
-            hoje.strftime("%Y-%m-%d"),
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Erro ao buscar CDI anualizado: {e}")
-        return None
+    valor = _buscar_cdi_online(data_inicio, data_fim)
+    if valor is None:
+        with _LOCK:
+            _CIRCUITO_ABERTO_ATE = (
+                time.monotonic() + _CIRCUIT_BREAKER_SECONDS
+            )
+        antigo = _ler_periodo_cache(chave, aceitar_expirado=True)
+        if antigo is not None:
+            logger.warning("Usando CDI expirado em cache após falha da fonte.")
+        return antigo
+
+    with _LOCK:
+        _MEMORIA[chave] = valor
+        _CIRCUITO_ABERTO_ATE = 0.0
+        _gravar_periodo_cache(chave, valor)
+    return valor
 
 
-# ---------------------------------------------------------------------
-# Teste rápido
-# ---------------------------------------------------------------------
+def obter_cdi_anualizado() -> float | None:
+    """Retorna o CDI equivalente anual calculado nos últimos 12 meses."""
+    hoje = datetime.now(timezone.utc)
+    inicio = hoje - timedelta(days=365)
+    return obter_cdi_periodo(
+        inicio.strftime("%Y-%m-%d"),
+        hoje.strftime("%Y-%m-%d"),
+    )
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
 
-    # CDI diário atual
-    cdi_dia = obter_cdi_diario()
-    print(f"CDI diário (último): {cdi_dia:.6%}" if cdi_dia else "CDI diário não disponível")
-
-    # CDI anualizado
-    cdi_ano = obter_cdi_anualizado()
-    print(f"CDI anualizado: {cdi_ano:.2%}" if cdi_ano else "CDI anual não disponível")
-
-    # CDI de um período específico (ex: 2025)
-    cdi_periodo = obter_cdi_periodo("2025-01-01", "2025-12-31")
-    print(f"CDI 2025: {cdi_periodo:.2%}" if cdi_periodo else "CDI 2025 não disponível")
-
-    # CDI mensal (ex: Janeiro 2026)
-    cdi_mensal = obter_cdi_mensal(2026, 1)
-    print(f"CDI Janeiro 2026: {cdi_mensal:.4%}" if cdi_mensal else "CDI mensal não disponível")
+def limpar_cache_memoria() -> None:
+    """Limpa estado em memória; destinada a testes e atualização forçada."""
+    global _CIRCUITO_ABERTO_ATE
+    with _LOCK:
+        _MEMORIA.clear()
+        _CIRCUITO_ABERTO_ATE = 0.0

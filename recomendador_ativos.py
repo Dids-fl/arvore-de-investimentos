@@ -63,6 +63,33 @@ _ORDEM = (
     "etf",
     "cripto",
 )
+_ESCALA_SCORE_ORIGEM = {
+    "acoes": 100.0,
+    "etf": 100.0,
+    "fiis": 100.0,
+    "cripto": 100.0,
+    "rf": 10.0,
+    "fundos": 10.0,
+    "estruturados": 10.0,
+}
+
+
+def _padronizar_scores(
+    classe: str,
+    ativos: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Converte o contrato público de todos os rankers para 0–100."""
+    escala = _ESCALA_SCORE_ORIGEM[classe]
+    resultado: list[dict[str, Any]] = []
+    for ativo in ativos:
+        item = dict(ativo)
+        score = item.get("score")
+        if isinstance(score, (int, float)) and math.isfinite(float(score)):
+            normalizado = 100.0 * float(score) / escala
+            item["score"] = round(max(0.0, min(100.0, normalizado)), 2)
+            item["score_escala"] = 100
+        resultado.append(item)
+    return resultado
 
 
 def _validar_perfil(perfil_risco: object) -> int:
@@ -129,7 +156,12 @@ def _executar_classe(
         ativos = funcao(perfil_risco, n=min(n, 4))
     elif classe == "rf":
         funcao = _modulo("renda_fixa.ranker").rankear_rf
-        ativos = funcao(perfil=perfil_risco, limite=n)
+        ativos = funcao(
+            perfil=perfil_risco,
+            limite=n,
+            prazo_anos=prazo_anos,
+            data_referencia=data_referencia,
+        )
     elif classe == "fundos":
         funcao = _modulo("fundos.ranker_fundos").rankear_fundos
         ativos = funcao(
@@ -156,7 +188,7 @@ def _executar_classe(
             raise TypeError(
                 "O ranker deve retornar uma coleção de ativos."
             ) from exc
-    return ativos
+    return _padronizar_scores(classe, ativos)
 
 
 def _buscar_classes(

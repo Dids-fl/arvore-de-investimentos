@@ -4,7 +4,6 @@ e lista de tickers da B3, sem salvar arquivos intermediários.
 """
 
 from io import StringIO
-from typing import dict, list
 
 import pandas as pd
 import requests
@@ -61,7 +60,11 @@ def get_all_bulk() -> dict[str, dict]:
             return {}
 
         # Usa pandas para ler a tabela diretamente
-        df = pd.read_html(str(table), decimal=',', thousands='.')[0]
+        df = pd.read_html(
+            StringIO(str(table)),
+            decimal=',',
+            thousands='.',
+        )[0]
 
         # Mapeamento de colunas (cabeçalho em português → campo interno)
         col_map = {
@@ -148,8 +151,61 @@ def get_all_tickers() -> list[dict[str, str]]:
 def get_ticker_list() -> list[str]:
     return list(get_all_bulk().keys())
 
-# ── 4. FIIs (filtro por ticker terminando em 11) ──────────────────────────
+# ── 4. FIIs (universo dedicado; nunca inferido apenas pelo ticker) ─────────
 
 def get_fiis_bulk() -> dict[str, dict]:
-    todos = get_all_bulk()
-    return {t: info for t, info in todos.items() if t.endswith('11')}
+    """Carrega exclusivamente a tabela dedicada de fundos imobiliários."""
+    try:
+        html = get_raw_data(f"{BASE_URL}/fii_resultado.php")
+        soup = BeautifulSoup(html, features="html.parser")
+        tabela = soup.find("table", {"id": "resultado"})
+        if not tabela:
+            return {}
+        dataframe = pd.read_html(
+            StringIO(str(tabela)),
+            decimal=",",
+            thousands=".",
+        )[0]
+        dataframe.columns = [str(coluna).strip() for coluna in dataframe.columns]
+        colunas = {
+            "Papel": "ticker",
+            "Segmento": "tipo",
+            "Cotação": "cotacao",
+            "Dividend Yield": "dy",
+            "Div.Yield": "dy",
+            "P/VP": "pvp",
+            "Liquidez": "liquidez",
+            "Liquidez 2 meses": "liquidez",
+            "Vacância Média": "vacancia",
+            "Valor de Mercado": "valor_mercado",
+        }
+        resultado: dict[str, dict] = {}
+        for _, linha in dataframe.iterrows():
+            item = {
+                "tipo_ativo": "fii",
+                "fonte_classificacao": "Fundamentus/FIIs",
+            }
+            for origem, destino in colunas.items():
+                if origem not in dataframe.columns:
+                    continue
+                valor = linha[origem]
+                item[destino] = (
+                    str(valor).strip().upper()
+                    if destino == "ticker"
+                    else str(valor).strip()
+                    if destino == "tipo"
+                    else _to_float(valor)
+                )
+            ticker = item.get("ticker", "")
+            if ticker and ticker.isalnum() and len(ticker) <= 7:
+                resultado[ticker] = item
+        return resultado
+    except (
+        requests.exceptions.RequestException,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        AttributeError,
+        OSError,
+    ):
+        return {}

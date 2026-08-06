@@ -11,8 +11,13 @@ from typing import Any
 from validacao.tributacao.comum import (
     DIVERGENTE,
     FORA_ESCOPO,
-    PENDENTE,
-    VALIDADO,
+    PENDENTE_EVIDENCIA,
+    STATUS_VALIDACAO,
+    VALIDADO_CALCULO,
+    VALIDADO_GUARDRAIL,
+)
+from validacao.tributacao.validar_cripto_independente import (
+    validar as validar_cripto,
 )
 from validacao.tributacao.validar_estruturados_independente import (
     validar as validar_estruturados,
@@ -36,6 +41,7 @@ VALIDADORES = (
     validar_fundos,
     validar_previdencia,
     validar_renda_variavel,
+    validar_cripto,
 )
 
 
@@ -44,21 +50,23 @@ def executar(saida_dir: Path) -> dict[str, Any]:
     relatorios = [validador(saida_dir) for validador in VALIDADORES]
     totais = {
         status: sum(relatorio["resumo"][status] for relatorio in relatorios)
-        for status in (VALIDADO, PENDENTE, DIVERGENTE, FORA_ESCOPO)
+        for status in STATUS_VALIDACAO
     }
     consolidado = {
-        "_schema_version": 1,
-        "escopo": "validacao_tributaria_independente_cinco_categorias",
+        "_schema_version": 2,
+        "escopo": "validacao_tributaria_independente_seis_categorias",
         "categorias": [relatorio["categoria"] for relatorio in relatorios],
         "resumo": {
             "total": sum(relatorio["resumo"]["total"] for relatorio in relatorios),
             **totais,
         },
         "relatorios": {
-            relatorio["categoria"]: relatorio["arquivo"]
-            for relatorio in relatorios
+            relatorio["categoria"]: relatorio["arquivo"] for relatorio in relatorios
         },
-        "criterio_ci": "falha somente quando DIVERGENTE > 0",
+        "criterio_ci": (
+            "falha quando DIVERGENTE > 0; fontes e governança são "
+            "auditadas em etapa própria"
+        ),
     }
     saida_dir.mkdir(parents=True, exist_ok=True)
     destino = saida_dir / "relatorio_tributario_consolidado.json"
@@ -86,8 +94,9 @@ def main() -> int:
     resumo = consolidado["resumo"]
     print("VALIDAÇÃO TRIBUTÁRIA INDEPENDENTE — CONSOLIDADO")
     print(f"Total: {resumo['total']}")
-    print(f"Validados: {resumo[VALIDADO]}")
-    print(f"Pendentes por premissa: {resumo[PENDENTE]}")
+    print(f"Cálculos validados: {resumo[VALIDADO_CALCULO]}")
+    print(f"Guardrails validados: {resumo[VALIDADO_GUARDRAIL]}")
+    print(f"Pendentes por evidência: {resumo[PENDENTE_EVIDENCIA]}")
     print(f"Fora do escopo: {resumo[FORA_ESCOPO]}")
     print(f"Divergentes: {resumo[DIVERGENTE]}")
     print(f"Relatório: {consolidado['arquivo']}")

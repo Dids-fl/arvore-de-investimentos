@@ -134,6 +134,8 @@ def _coletar_respostas(primeira: object) -> dict:
         respostas.setdefault("meta_prazo", None)
         respostas.setdefault("cap_inicial", 0.0)
         respostas.setdefault("aporte_mensal", 0.0)
+        respostas.setdefault("despesas_essenciais_mensais", 0.0)
+        respostas.setdefault("reserva_atual", 0.0)
         respostas.setdefault("regime_previdencia", None)
         respostas.setdefault("renda_tributavel_anual", None)
         respostas.setdefault("elegibilidade_deducao_pgbl", None)
@@ -196,6 +198,22 @@ def _coletar_respostas(primeira: object) -> dict:
         "9. Como são suas obrigações financeiras fixas?\n"
         "   (nenhuma | baixas | altas)",
         _DD,
+    )
+    despesas_essenciais_mensais = (
+        _n(
+            "   9a. Qual é o valor mensal das despesas essenciais? (R$)\n"
+            "       Inclua moradia, alimentação, saúde, transporte e contas.",
+            mn=0,
+        )
+        or 0.0
+    )
+    reserva_atual = (
+        _n(
+            "   9b. Quanto já possui separado para emergências? (R$)\n"
+            "       Considere somente valores de liquidez imediata.",
+            mn=0,
+        )
+        or 0.0
     )
     faixa_valor = _p(
         "10. Quanto possui para investir agora?\n"
@@ -354,6 +372,10 @@ def _coletar_respostas(primeira: object) -> dict:
         "reserva_emerg": reserva_emerg,
         "idade": idade,
         "despesas": despesas,
+        "despesas_essenciais_mensais": (
+            despesas_essenciais_mensais
+        ),
+        "reserva_atual": reserva_atual,
         "faixa_valor": faixa_valor,
         "patrim_pct": patrim_pct,
         "renda": renda,
@@ -405,7 +427,7 @@ def _imprimir_mercado(market: dict, resumo: dict) -> None:
 
     if resumo["focus_selic"] is not None:
         print(
-            "\n   Taxa-base = média da SELIC atual com o Focus: "
+            "\n   Taxa-base equivalente da curva SELIC/Focus: "
             f"{resumo['taxa_base'] * 100:.2f}% a.a."
         )
 
@@ -435,7 +457,7 @@ def _imprimir_recomendacao(analise: dict) -> None:
     print(f"   Perfil de risco: {resultado['nivel_risco_display']}")
     if resultado["perfil_exibido"] != resultado["recomendacao_principal"]:
         print(
-            "   Categoria representativa: "
+            "   Classe usada apenas para resumir o risco: "
             f"{resultado['perfil_display']}"
         )
     if resultado["risco_recomendado"] != resultado["nivel_risco_perfil"]:
@@ -466,13 +488,15 @@ def _imprimir_recomendacao(analise: dict) -> None:
         "   Cenário pessimista:   "
         f"{resultado['taxa_pess'] * 100:.2f}% a.a."
     )
-    tratamento = resultado["tratamento_tributario_representativo"]
-    print(
-        "   Enquadramento fiscal representativo: "
-        f"{tratamento['tipo_produto']} "
-        f"({tratamento['precisao_maxima']})."
-    )
-    print("   Tributação efetiva calculada separadamente por classe e lote.")
+    print("   Tributação calculada separadamente por classe e lote.")
+    reserva = resultado.get("plano_reserva")
+    if isinstance(reserva, dict):
+        print(
+            "   Reserva-alvo: "
+            f"R$ {reserva['valor_alvo']:,.2f} | "
+            f"Atual: R$ {reserva['valor_atual']:,.2f} | "
+            f"Déficit: R$ {reserva['deficit']:,.2f}"
+        )
 
 
 def _imprimir_projecoes(analise: dict) -> None:
@@ -568,12 +592,15 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
         "fiis": "~20s — consulta e ranking de bolsa",
         "cripto": "~20s — consulta online",
         "rf": "~1s — indicadores e títulos atuais",
-        "fundos": "~5–10s — histórico da CVM",
+        "fundos": (
+            "primeira execução pode levar vários minutos; "
+            "as seguintes usam cache"
+        ),
         "etf": "~5s — cotações de ETFs",
         "estruturados": "~15s — dados cadastrais e de balcão",
     }
     _sep()
-    print("\n📈 Classes com ranking disponível:")
+    print("\n📈 Classes que serão consultadas:")
     for classe in sorted(classes):
         print(
             f"   • {rotulo_classe_ativo(classe):<35} "
@@ -609,7 +636,7 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
             preco = ativo.get("preco")
             print(f"\n   {indice}. {ticker:<10} {nome}")
             if isinstance(score, (int, float)):
-                print(f"      Score: {score:.2f}", end="")
+                print(f"      Score: {score:.2f}/100", end="")
             if isinstance(preco, (int, float)) and preco:
                 print(f"   Preço: R$ {preco:,.2f}", end="")
             print()
@@ -621,6 +648,11 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
         print("\n⚠️  Fontes indisponíveis:")
         for classe, motivo in indisponiveis.items():
             print(f"   • {rotulo_classe_ativo(classe)}: {motivo}")
+        print(
+            "\n   Carteira executável incompleta: nenhuma redistribuição "
+            "automática foi feita. Mantenha em liquidez o percentual sem "
+            "ativo selecionado e tente novamente mais tarde."
+        )
 
 
 def main() -> None:

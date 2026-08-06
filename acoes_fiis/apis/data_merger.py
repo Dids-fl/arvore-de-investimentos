@@ -4,7 +4,6 @@ Remove a dependência da BRAPI para dados complementares.
 """
 
 from datetime import datetime, timezone
-from typing import dict
 
 import yfinance as yf
 

@@ -79,6 +79,104 @@ def test_criar_analise_entrega_contrato_completo(
     assert resultado["prazo_taxa_meses"] == 120
 
 
+def test_sem_reserva_concentra_carteira_em_liquidez(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "reserva_emerg": "não tenho",
+        "despesas_essenciais_mensais": 2_000,
+        "reserva_atual": 0,
+        "renda": "sem renda",
+        "patrim_pct": "alto",
+        "conhecimento": "iniciante",
+        "experiencia": ["nenhum"],
+        "aporte": "único",
+        "aporte_mensal": 0,
+        "modo_meta": "rendendo",
+    }
+
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    resultado = analise["resultado"]
+
+    assert resultado["rec_key"] == RK.RF_RESERVA
+    assert resultado["portfolio"] == {RK.RF_RESERVA: 100.0}
+    assert resultado["classes_no_portfolio"] == {"rf"}
+    assert any(
+        "Todo o capital inicial é necessário" in aviso
+        for aviso in resultado["avisos"]
+    )
+
+
+def test_sem_despesas_nao_inventa_deficit_de_reserva(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "reserva_emerg": "não tenho",
+        "despesas": "nenhuma",
+        "despesas_essenciais_mensais": 0,
+        "reserva_atual": 0,
+        "renda": "sem renda",
+        "patrim_pct": "alto",
+        "conhecimento": "iniciante",
+        "experiencia": ["nenhum"],
+        "aporte": "único",
+        "aporte_mensal": 0,
+        "modo_meta": "rendendo",
+    }
+
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    resultado = analise["resultado"]
+
+    assert resultado["plano_reserva"]["deficit"] == 0
+    assert resultado["portfolio"] != {RK.RF_RESERVA: 100.0}
+    assert len(resultado["portfolio"]) > 1
+    assert sum(resultado["portfolio"].values()) == pytest.approx(100)
+
+
+def test_deficit_parcial_preserva_capital_excedente_diversificado(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "reserva_emerg": "não tenho",
+        "despesas": "baixas",
+        "despesas_essenciais_mensais": 500,
+        "reserva_atual": 0,
+        "renda": "sem renda",
+        "cap_inicial": 6_000,
+        "aporte": "único",
+        "aporte_mensal": 0,
+        "modo_meta": "rendendo",
+    }
+
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    resultado = analise["resultado"]
+
+    assert resultado["plano_reserva"]["valor_alvo"] == 3_000
+    assert resultado["plano_reserva"]["deficit"] == 3_000
+    assert resultado["plano_reserva"]["percentual_capital"] == 50
+    assert resultado["portfolio"][RK.RF_RESERVA] >= 50
+    assert len(resultado["portfolio"]) > 1
+    assert sum(resultado["portfolio"].values()) == pytest.approx(100)
+
+
 def test_exportacao_e_serializavel(
     respostas_padrao,
     mercado_valido,

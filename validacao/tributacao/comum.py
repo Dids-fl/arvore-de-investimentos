@@ -14,10 +14,23 @@ RAIZ_PROJETO = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = RAIZ_PROJETO / "tests" / "fixtures" / "tributacao"
 RELATORIOS_DIR = Path(__file__).resolve().parent
 
-VALIDADO = "VALIDADO_PRIMEIRA_CAMADA"
-PENDENTE = "PENDENTE_PREMISSA"
+VALIDADO_CALCULO = "VALIDADO_CALCULO"
+VALIDADO_GUARDRAIL = "VALIDADO_GUARDRAIL"
+PENDENTE_EVIDENCIA = "PENDENTE_EVIDENCIA"
 DIVERGENTE = "DIVERGENTE"
 FORA_ESCOPO = "FORA_DO_ESCOPO"
+
+# Compatibilidade com integrações que ainda importam os nomes anteriores.
+VALIDADO = VALIDADO_CALCULO
+PENDENTE = PENDENTE_EVIDENCIA
+
+STATUS_VALIDACAO = (
+    VALIDADO_CALCULO,
+    VALIDADO_GUARDRAIL,
+    PENDENTE_EVIDENCIA,
+    FORA_ESCOPO,
+    DIVERGENTE,
+)
 
 Calculadora = Callable[[Mapping[str, Any]], dict[str, Any]]
 
@@ -41,10 +54,7 @@ def resultado_calculado(
     fundamentos: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Monta um resultado independente com o mesmo contrato comparável."""
-    imposto_valido = min(
-        max(0.0, float(imposto)),
-        float(entrada["valor_bruto"]),
-    )
+    imposto_valido = min(max(0.0, float(imposto)), float(entrada["valor_bruto"]))
     return {
         "imposto_estimado": imposto_valido,
         "valor_liquido": float(entrada["valor_bruto"]) - imposto_valido,
@@ -64,13 +74,7 @@ def resultado_indeterminado(
     fundamentos: tuple[str, ...] = (),
     fora_escopo: bool = False,
 ) -> dict[str, Any]:
-    """
-    Representa um resultado que não deve receber uma alíquota inventada.
-
-    Por padrão, o resultado é considerado pendente por falta de dados ou
-    premissas. O chamador deve informar ``fora_escopo=True`` somente quando
-    a categoria, pessoa ou operação não é suportada pelo motor.
-    """
+    """Representa recusa segura por falta de dado ou por escopo declarado."""
     return {
         "imposto_estimado": None,
         "valor_liquido": None,
@@ -85,12 +89,8 @@ def resultado_indeterminado(
 
 def _contexto(entrada: Mapping[str, Any]) -> ContextoTributario:
     dados = dict(entrada)
-    dados["data_aplicacao"] = date.fromisoformat(
-        str(dados["data_aplicacao"])
-    )
-    dados["data_resgate"] = date.fromisoformat(
-        str(dados["data_resgate"])
-    )
+    dados["data_aplicacao"] = date.fromisoformat(str(dados["data_aplicacao"]))
+    dados["data_resgate"] = date.fromisoformat(str(dados["data_resgate"]))
     return ContextoTributario(**dados)
 
 
@@ -102,6 +102,8 @@ def _resultado_motor(entrada: Mapping[str, Any]) -> dict[str, Any]:
         "aliquota_efetiva": resultado.aliquota_efetiva,
         "precisao": resultado.precisao.value,
         "regra_id": resultado.regra_id,
+        "fonte": resultado.fonte,
+        "vigencia": resultado.vigencia.isoformat(),
     }
 
 
@@ -171,12 +173,7 @@ def validar_categoria(
         independente = calculadora(caso["entrada"])
         motor = _resultado_motor(caso["entrada"])
         fixture = caso["esperado"]
-
-        confere_motor = _resultado_confere(
-            motor,
-            independente,
-            tolerancias,
-        )
+        confere_motor = _resultado_confere(motor, independente, tolerancias)
         confere_fixture = _resultado_confere(
             fixture,
             independente,
@@ -187,10 +184,12 @@ def validar_categoria(
             status = DIVERGENTE
         elif independente["fora_escopo"]:
             status = FORA_ESCOPO
+        elif independente["precisao"] == "indeterminada":
+            status = VALIDADO_GUARDRAIL
         elif independente["pendencias"]:
-            status = PENDENTE
+            status = PENDENTE_EVIDENCIA
         else:
-            status = VALIDADO
+            status = VALIDADO_CALCULO
 
         resultados.append(
             {
@@ -220,27 +219,15 @@ def validar_categoria(
         )
 
     contagens = {
-        status: sum(
-            item["status"] == status
-            for item in resultados
-        )
-        for status in (
-            VALIDADO,
-            PENDENTE,
-            DIVERGENTE,
-            FORA_ESCOPO,
-        )
+        status: sum(item["status"] == status for item in resultados)
+        for status in STATUS_VALIDACAO
     }
-
     relatorio = {
-        "_schema_version": 1,
+        "_schema_version": 2,
         "categoria": categoria,
         "independente_do_motor": True,
         "fontes_oficiais": dict(fontes_oficiais),
-        "resumo": {
-            "total": len(resultados),
-            **contagens,
-        },
+        "resumo": {"total": len(resultados), **contagens},
         "resultados": resultados,
         "aviso": (
             "Validação técnica do escopo modelado; não substitui apuração "
@@ -250,41 +237,26 @@ def validar_categoria(
 
     diretorio = saida_dir or RELATORIOS_DIR
     diretorio.mkdir(parents=True, exist_ok=True)
-
-    destino = (
-        diretorio
-        / f"relatorio_{categoria}_independente.json"
-    )
+    destino = diretorio / f"relatorio_{categoria}_independente.json"
     destino.write_text(
-        json.dumps(
-            relatorio,
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
+        json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-
     relatorio["arquivo"] = str(destino)
     return relatorio
 
 
 def imprimir_resumo(relatorio: Mapping[str, Any]) -> None:
-    """Exibe o resumo do relatório no terminal."""
     resumo = relatorio["resumo"]
-
-    print(
-        f"VALIDAÇÃO INDEPENDENTE — "
-        f"{relatorio['categoria'].upper()}"
-    )
+    print(f"VALIDAÇÃO INDEPENDENTE — {relatorio['categoria'].upper()}")
     print(f"Total: {resumo['total']}")
-    print(f"Validados: {resumo[VALIDADO]}")
-    print(f"Pendentes por premissa: {resumo[PENDENTE]}")
+    print(f"Cálculos validados: {resumo[VALIDADO_CALCULO]}")
+    print(f"Guardrails validados: {resumo[VALIDADO_GUARDRAIL]}")
+    print(f"Pendentes por evidência: {resumo[PENDENTE_EVIDENCIA]}")
     print(f"Fora do escopo: {resumo[FORA_ESCOPO]}")
     print(f"Divergentes: {resumo[DIVERGENTE]}")
     print(f"Relatório: {relatorio['arquivo']}")
 
 
 def codigo_saida(relatorio: Mapping[str, Any]) -> int:
-    """Retorna falha somente quando existe divergência."""
     return int(relatorio["resumo"][DIVERGENTE] > 0)

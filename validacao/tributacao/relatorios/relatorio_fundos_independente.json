@@ -1,5 +1,5 @@
 {
-  "_schema_version": 1,
+  "_schema_version": 2,
   "categoria": "fundos",
   "independente_do_motor": true,
   "fontes_oficiais": {
@@ -9,15 +9,16 @@
   },
   "resumo": {
     "total": 12,
-    "VALIDADO_PRIMEIRA_CAMADA": 7,
-    "PENDENTE_PREMISSA": 5,
-    "DIVERGENTE": 0,
-    "FORA_DO_ESCOPO": 0
+    "VALIDADO_CALCULO": 7,
+    "VALIDADO_GUARDRAIL": 0,
+    "PENDENTE_EVIDENCIA": 5,
+    "FORA_DO_ESCOPO": 0,
+    "DIVERGENTE": 0
   },
   "resultados": [
     {
       "caso_id": "fundo_curto_10_dias_com_iof",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 736.5,
         "valor_liquido": 10263.5,
@@ -30,7 +31,9 @@
         "valor_liquido": 10263.5,
         "aliquota_efetiva": 0.7365,
         "precisao": "estimada",
-        "regra_id": "fundo_curto_prazo_2026"
+        "regra_id": "fundo_curto_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 736.5,
@@ -50,7 +53,7 @@
     },
     {
       "caso_id": "fundo_curto_180_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 225.0,
         "valor_liquido": 10775.0,
@@ -63,7 +66,9 @@
         "valor_liquido": 10775.0,
         "aliquota_efetiva": 0.225,
         "precisao": "estimada",
-        "regra_id": "fundo_curto_prazo_2026"
+        "regra_id": "fundo_curto_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 225.0,
@@ -83,7 +88,7 @@
     },
     {
       "caso_id": "fundo_curto_181_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 200.0,
         "valor_liquido": 10800.0,
@@ -96,7 +101,9 @@
         "valor_liquido": 10800.0,
         "aliquota_efetiva": 0.2,
         "precisao": "estimada",
-        "regra_id": "fundo_curto_prazo_2026"
+        "regra_id": "fundo_curto_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 200.0,
@@ -116,7 +123,7 @@
     },
     {
       "caso_id": "fundo_longo_180_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 225.0,
         "valor_liquido": 10775.0,
@@ -129,7 +136,9 @@
         "valor_liquido": 10775.0,
         "aliquota_efetiva": 0.225,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 225.0,
@@ -149,7 +158,7 @@
     },
     {
       "caso_id": "fundo_longo_181_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 200.0,
         "valor_liquido": 10800.0,
@@ -162,7 +171,9 @@
         "valor_liquido": 10800.0,
         "aliquota_efetiva": 0.2,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 200.0,
@@ -182,7 +193,7 @@
     },
     {
       "caso_id": "fundo_longo_361_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 175.0,
         "valor_liquido": 10825.0,
@@ -195,7 +206,9 @@
         "valor_liquido": 10825.0,
         "aliquota_efetiva": 0.175,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 175.0,
@@ -215,7 +228,7 @@
     },
     {
       "caso_id": "fundo_longo_721_dias",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 150.0,
         "valor_liquido": 10850.0,
@@ -228,7 +241,9 @@
         "valor_liquido": 10850.0,
         "aliquota_efetiva": 0.15,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 150.0,
@@ -250,7 +265,7 @@
     },
     {
       "caso_id": "fundo_rf_721_dias",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 150.0,
         "valor_liquido": 10850.0,
@@ -263,7 +278,9 @@
         "valor_liquido": 10850.0,
         "aliquota_efetiva": 0.15,
         "precisao": "estimada",
-        "regra_id": "fundo_rf_2026"
+        "regra_id": "fundo_rf_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 150.0,
@@ -286,7 +303,7 @@
     },
     {
       "caso_id": "fundo_longo_com_come_cotas_parcial",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 50.0,
         "valor_liquido": 10950.0,
@@ -299,7 +316,9 @@
         "valor_liquido": 10950.0,
         "aliquota_efetiva": 0.05,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 50.0,
@@ -322,7 +341,7 @@
     },
     {
       "caso_id": "fundo_longo_come_cotas_superior_imposto_final",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 11000.0,
@@ -335,7 +354,9 @@
         "valor_liquido": 11000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "estimada",
-        "regra_id": "fundo_longo_prazo_2026"
+        "regra_id": "fundo_longo_prazo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,
@@ -358,7 +379,7 @@
     },
     {
       "caso_id": "fundo_acoes_15_porcento",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 150.0,
         "valor_liquido": 10850.0,
@@ -371,7 +392,9 @@
         "valor_liquido": 10850.0,
         "aliquota_efetiva": 0.15,
         "precisao": "estimada",
-        "regra_id": "fundo_acoes_2026"
+        "regra_id": "fundo_acoes_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 150.0,
@@ -390,7 +413,7 @@
     },
     {
       "caso_id": "fundo_etf_acoes_15_porcento",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 150.0,
         "valor_liquido": 10850.0,
@@ -403,7 +426,9 @@
         "valor_liquido": 10850.0,
         "aliquota_efetiva": 0.15,
         "precisao": "estimada",
-        "regra_id": "fundo_acoes_2026"
+        "regra_id": "fundo_acoes_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 150.0,

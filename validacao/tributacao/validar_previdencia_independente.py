@@ -91,11 +91,7 @@ def calcular_independente(entrada: Mapping[str, Any]) -> dict[str, Any]:
             motivo="O regime progressivo ou regressivo não foi informado.",
         )
 
-    base_resgate = (
-        float(entrada["valor_bruto"])
-        if tipo == "pgbl"
-        else ganho(entrada)
-    )
+    base_resgate = float(entrada["valor_bruto"]) if tipo == "pgbl" else ganho(entrada)
     pendencias = []
     fim = date.fromisoformat(str(entrada["data_resgate"]))
     if fim.year > 2026:
@@ -104,9 +100,7 @@ def calcular_independente(entrada: Mapping[str, Any]) -> dict[str, Any]:
         )
 
     if regime == "regressivo":
-        pendencias.append(
-            "Todo o saldo foi tratado como um lote com uma única idade."
-        )
+        pendencias.append("Todo o saldo foi tratado como um lote com uma única idade.")
         aliquota = _aliquota_regressiva(_prazo_anos(entrada))
         imposto = base_resgate * aliquota
         return resultado_calculado(
@@ -131,9 +125,7 @@ def calcular_independente(entrada: Mapping[str, Any]) -> dict[str, Any]:
 
     rendimentos_antes = float(renda)
     metadados = dict(entrada.get("metadados", {}))
-    base_antes = float(
-        metadados.get("base_calculo_irpf_anual", rendimentos_antes)
-    )
+    base_antes = float(metadados.get("base_calculo_irpf_anual", rendimentos_antes))
     if "base_calculo_irpf_anual" not in metadados:
         pendencias.append(
             "A renda tributável foi usada como aproximação da base anual."

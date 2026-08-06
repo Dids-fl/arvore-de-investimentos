@@ -16,7 +16,7 @@ Sem token: 15 req/min. Com token gratuito: limite maior.
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, dict, list
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter

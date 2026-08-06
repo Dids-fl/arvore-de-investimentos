@@ -1,112 +1,89 @@
-Validação tributária independente
+# Validação tributária independente
 
-Este diretório mantém cálculos de conferência separados das fórmulas deprodução. O objetivo é detectar regressões e tornar explícitas as premissasque impedem uma conclusão tributária automática.
+Este diretório mantém uma segunda implementação das fórmulas, separada das
+tabelas de produção, e ferramentas de governança para auditar o motor.
 
-Escopo deste pacote
+## O que o pacote cobre
 
-Os validadores independentes cobrem cinco grupos:
+- 63 casos dourados de renda fixa, fundos, previdência, renda variável,
+  estruturados e criptoativos;
+- comparação entre cálculo independente, fixture e motor de produção;
+- registro versionado de fontes oficiais e auditoria estrutural offline;
+- reconciliação com informes ou memórias de cálculo reais anonimizados;
+- registro de revisão humana vinculado ao SHA-256 do relatório;
+- execução determinística no CI.
 
-renda fixa;
+## Estados
 
-fundos;
+| Estado | Significado |
+|---|---|
+| `VALIDADO_CALCULO` | Fórmula independente, fixture e motor coincidem, sem evidência pendente no caso simplificado. |
+| `VALIDADO_GUARDRAIL` | O motor recusou corretamente calcular porque faltou um dado essencial. |
+| `PENDENTE_EVIDENCIA` | A aritmética coincide, mas uma classificação, documento, vigência futura ou dado externo ainda precisa ser comprovado. |
+| `FORA_DO_ESCOPO` | O caso não pertence ao produto declarado, como pessoa jurídica ou BDR. |
+| `DIVERGENTE` | O independente, a fixture ou o motor não coincidem dentro da tolerância. |
 
-previdência privada;
+## Execução
 
-renda variável;
-
-produtos estruturados.
-
-O validador de criptoativos já existente continua separado porque cobrequatro casos críticos com uma estrutura de relatório anterior.
-
-Os módulos de cálculo independente não importam tributacao.regras. A camadacomum.py importa somente a fachada pública do motor para comparar trêsresultados: cálculo independente, saída do motor e caso dourado da fixture.
-
-Como executar
-
-Na raiz do repositório:
-
+```powershell
 python -m validacao.tributacao.validar_tudo `
   --saida .\validacao\tributacao\relatorios
+
+python -m validacao.tributacao.auditar_fontes `
+  --saida .\validacao\tributacao\relatorios\auditoria_fontes.json
+
+python -m validacao.tributacao.reconciliar_documentos `
+  .\modelos\casos_tributarios_reais_anonimizados.json `
+  --saida .\validacao\tributacao\relatorios\reconciliacao_exemplo.json
 
 python -m pytest -q `
   .\tests\unit\test_tributacao.py `
   .\tests\unit\test_tributacao_casos_dourados.py `
   .\tests\unit\test_validadores_tributarios_independentes.py `
+  .\tests\unit\test_governanca_tributaria.py `
   --tb=short
+```
 
-ruff check .
+Opcionalmente, `auditar_fontes --online` registra status HTTP, URL final,
+ETag, Last-Modified e SHA-256 do conteúdo consultado. Essa verificação ajuda a
+detectar mudança ou indisponibilidade, mas não interpreta a norma e não deve
+ser obrigatória no CI, pois depende de rede e de proteção antibot dos portais.
 
-O comando consolidado retorna código diferente de zero quando encontraDIVERGENTE. Pendências e casos fora do escopo são registrados, mas nãoderrubam o CI porque representam limitações declaradas, não regressões.
+## Reconciliação com documentos reais
 
-Significado dos estados
+Copie o modelo em `modelos/casos_tributarios_reais_anonimizados.json` e
+substitua apenas valores já anonimizados. O importador bloqueia chaves comuns
+de identificação pessoal. A reconciliação compara imposto e valor líquido do
+documento com o motor, registra a regra, fonte, vigência e diferenças.
 
-Estado
+Não envie CPF, CNPJ, nome, conta, agência, endereço ou documento integral ao
+repositório. Guarde a evidência original em ambiente restrito e registre no
+JSON somente um identificador anonimizado.
 
-Significado
+## Revisão profissional
 
-VALIDADO_PRIMEIRA_CAMADA
+Depois de revisar fontes e documentos, o profissional pode registrar sua
+decisão:
 
-Fórmula independente, fixture e motor coincidem e não há premissa pendente no caso simplificado.
+```powershell
+python -m validacao.tributacao.registrar_revisao `
+  .\validacao\tributacao\relatorios\relatorio_tributario_consolidado.json `
+  --saida .\validacao\tributacao\revisoes\revisao_2026.json `
+  --revisor "NOME DO REVISOR" `
+  --credencial "OAB ou CRC" `
+  --registro-profissional "UF 000000" `
+  --decisao aprovado_com_ressalvas `
+  --escopo "Pessoa física residente no Brasil; casos listados" `
+  --ressalva "Legislação futura deve ser revalidada" `
+  --declaro-responsabilidade
+```
 
-PENDENTE_PREMISSA
+O registro guarda o hash do relatório para detectar alteração posterior. O
+software não autentica identidade, habilitação ou situação do registro.
 
-A aritmética coincide, mas falta confirmar vigência, classificação, documento ou dado obrigatório. Resultados indeterminados por falta de entrada permanecem neste estado.
+## Limite jurídico
 
-FORA_DO_ESCOPO
-
-A pessoa, o produto ou o regime tributário não é suportado pelo escopo declarado do motor. Não deve ser usado apenas porque faltou um dado de entrada.
-
-DIVERGENTE
-
-Cálculo independente, fixture ou motor não coincidem dentro da tolerância.
-
-Resultado de referência do lote
-
-Os 55 casos dos cinco grupos produziram:
-
-17 validados na primeira camada;
-
-35 pendentes por premissa ou dado obrigatório;
-
-3 fora do escopo;
-
-0 divergências.
-
-Quatro casos anteriormente classificados como fora do escopo foramreclassificados como pendentes:
-
-cri_sem_confirmacao_de_elegibilidade;
-
-estruturado_generico_indeterminado;
-
-pgbl_progressivo_sem_renda;
-
-pgbl_regime_ausente.
-
-Esses números não significam validação fiscal universal. Eles demonstram que,para as entradas e simplificações declaradas, os cálculos independentes e omotor concordam.
-
-Limitações que permanecem
-
-Renda fixa: resgates posteriores a 2026 mantêm a legislação de 2026 comohipótese; pessoa jurídica não é calculada.
-
-Fundos: o valor de come-cotas é informado externamente, sem reconstrução dohistórico de cotas, eventos e classificação concreta do fundo.
-
-Previdência: o regressivo usa um lote único; o progressivo depende da baseanual e de deduções informadas.
-
-Renda variável: vendas, custos, IRRF e prejuízos por modalidade são dados deentrada; notas de corretagem e operações simultâneas não são reconstruídas.
-
-Estruturados: CRI, CRA e debênture incentivada só recebem isenção quando aelegibilidade do instrumento é confirmada explicitamente.
-
-Revisão humana
-
-A planilha matriz_validacao_tributaria.xlsx concentra resultados, fontes,pendências e campos para revisor/data. Marcar um caso como revisado exige:
-
-abrir a fonte oficial e confirmar a vigência;
-
-conferir o enquadramento do produto e da pessoa;
-
-refazer a memória de cálculo fora do motor;
-
-registrar o revisor, a data e a evidência;
-
-tratar qualquer divergência antes de aprovar.
-
-Esta validação é técnica e de primeira camada. Ela não substitui apuraçãooficial nem parecer contábil ou jurídico para uma operação real.
+Este pacote é evidência de engenharia e apoio à revisão. Ele não constitui
+certificação jurídica, parecer legal, apuração fiscal oficial ou garantia de
+tratamento para qualquer operação real. A conclusão jurídica exige documento
+da operação, legislação vigente na data relevante e profissional habilitado.

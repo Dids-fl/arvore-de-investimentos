@@ -1,0 +1,10 @@
+{
+  "_schema_version": 1,
+  "valido": true,
+  "problemas": [],
+  "resumo": {
+    "registradas": 16,
+    "utilizadas": 12,
+    "pendentes_revisao_profissional": 16
+  }
+}

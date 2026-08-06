@@ -281,6 +281,13 @@ def _validar_fiis(fiis: list[dict]) -> list[dict]:
     """Remove FIIs com dados suspeitos (DY > 30%, P/VP > 3.0, etc.)"""
     validos = []
     for f in fiis:
+        if f.get("tipo_ativo") != "fii":
+            logger.warning(
+                "Ativo %s rejeitado do universo de FIIs: classificação "
+                "ausente ou incompatível.",
+                f.get("ticker"),
+            )
+            continue
         dy = float(f.get("dy", 0) or 0)
         pvp = float(f.get("pvp", 0) or 0)
         # DY > 30% é quase sempre erro de dado (dividendo extraordinário)
@@ -440,6 +447,9 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
             si = StatusInvestClient()
             universo = si.search_fiis(limit=UNIVERSO_FIIS_N)
             if universo:
+                for fundo in universo:
+                    fundo["tipo_ativo"] = "fii"
+                    fundo["fonte_classificacao"] = "Status Invest/FIIs"
                 fiis_data = {f['ticker']: f for f in universo}
         except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError) as e:
             logger.error(f"Erro ao buscar FIIs do Status Invest: {e}")

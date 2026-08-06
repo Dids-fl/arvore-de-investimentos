@@ -90,3 +90,29 @@ def test_prazo_e_data_chegam_ao_ranker_de_fundos(monkeypatch) -> None:
         "data_referencia": "2026-07-29",
         "retorno_esperado_fundos": 0.11,
     }
+
+
+@pytest.mark.parametrize(
+    ("classe", "score_origem", "esperado"),
+    [
+        ("rf", 8.5, 85.0),
+        ("fundos", 7.2, 72.0),
+        ("estruturados", 6.0, 60.0),
+        ("fiis", 55.5, 55.5),
+        ("acoes", 81.0, 81.0),
+        ("etf", 74.0, 74.0),
+        ("cripto", 63.0, 63.0),
+    ],
+)
+def test_scores_publicos_sao_padronizados_em_cem(
+    classe,
+    score_origem,
+    esperado,
+) -> None:
+    resultado = recomendador_ativos._padronizar_scores(
+        classe,
+        [{"ticker": "TESTE", "score": score_origem}],
+    )
+
+    assert resultado[0]["score"] == pytest.approx(esperado)
+    assert resultado[0]["score_escala"] == 100

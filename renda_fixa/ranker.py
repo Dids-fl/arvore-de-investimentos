@@ -1,5 +1,7 @@
 # renda_fixa/ranker.py
 import logging
+import re
+import unicodedata
 from datetime import datetime, timezone
 
 from .coletor import coletar_tesouro
@@ -7,7 +9,50 @@ from .coletor import coletar_tesouro
 logger = logging.getLogger(__name__)
 
 
-def _calcular_prazo_dias(vencimento):
+def _ano_vencimento(vencimento) -> int | None:
+    if isinstance(vencimento, datetime):
+        return vencimento.year
+    if isinstance(vencimento, str):
+        for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(
+                    vencimento,
+                    formato,
+                ).replace(tzinfo=timezone.utc).year
+            except ValueError:
+                continue
+    return None
+
+
+def _codigo_tesouro(nome: str, tipo: str) -> str:
+    texto = unicodedata.normalize("NFKD", f"{tipo} {nome}")
+    texto = "".join(char for char in texto if not unicodedata.combining(char))
+    texto = re.sub(r"\s+", " ", texto.upper())
+    juros_semestrais = "JUROS SEMESTRAIS" in texto
+    if "SELIC" in texto:
+        return "SELIC"
+    if "IPCA" in texto:
+        return "IPCA-JS" if juros_semestrais else "IPCA"
+    if "PREFIX" in texto:
+        return "PREFIX-JS" if juros_semestrais else "PREFIX"
+    return "TESOURO"
+
+
+def _data_referencia(valor=None) -> datetime:
+    if valor is None:
+        return datetime.now(timezone.utc)
+    if isinstance(valor, datetime):
+        return (
+            valor.replace(tzinfo=timezone.utc)
+            if valor.tzinfo is None
+            else valor.astimezone(timezone.utc)
+        )
+    if isinstance(valor, str):
+        return datetime.fromisoformat(valor).replace(tzinfo=timezone.utc)
+    raise TypeError("data_referencia deve ser datetime, texto ISO ou None.")
+
+
+def _calcular_prazo_dias(vencimento, data_referencia=None):
     if not vencimento:
         return 9999
     try:
@@ -28,13 +73,21 @@ def _calcular_prazo_dias(vencimento):
         if isinstance(venc, datetime) and venc.tzinfo is None:
             venc = venc.replace(tzinfo=timezone.utc)
 
-        hoje = datetime.now(timezone.utc)
-        return max((venc - hoje).days, 1)
+        hoje = _data_referencia(data_referencia)
+        return (venc - hoje).days
     except (TypeError, ValueError, OverflowError):
         return 9999
 
 
-def _calcular_score(produto, perfil):
+def _compatibilidade_prazo(prazo_dias, prazo_anos) -> float:
+    if prazo_anos is None:
+        return 10.0
+    horizonte = max(float(prazo_anos) * 365.25, 365.25)
+    distancia_relativa = abs(float(prazo_dias) - horizonte) / horizonte
+    return max(0.0, min(10.0, 10.0 * (1.0 - distancia_relativa)))
+
+
+def _calcular_score(produto, perfil, prazo_anos=None):
     taxa = produto.get("taxa_bruta", 0.0)
     garantia = produto.get("garantia", "Sem garantia")
     liquidez = produto.get("liquidez", "Baixa")
@@ -59,11 +112,14 @@ def _calcular_score(produto, perfil):
         if prazo > 1095:
             taxa_ajustada -= 0.005
 
-    score = (taxa_ajustada * 100) * 0.5
-    return float(max(0, min(score, 10)))
+    score_retorno = float(max(0, min((taxa_ajustada * 100) * 0.5, 10)))
+    if prazo_anos is None:
+        return score_retorno
+    score_prazo = _compatibilidade_prazo(prazo, prazo_anos)
+    return round(score_retorno * 0.65 + score_prazo * 0.35, 2)
 
 
-def _processar_tesouro(titulos_brutos):
+def _processar_tesouro(titulos_brutos, data_referencia=None):
     if not titulos_brutos:
         return []
     produtos = []
@@ -72,24 +128,36 @@ def _processar_tesouro(titulos_brutos):
         taxa = t.get('taxa', 0)
         venc = t.get('vencimento')
         tipo = t.get('tipo', 'Tesouro')
+        ano = _ano_vencimento(venc)
+        codigo = _codigo_tesouro(nome, tipo)
+        ticker = f"TD-{codigo}-{ano}" if ano else f"TD-{codigo}"
+        nome_exibicao = (
+            nome if ano is None or str(ano) in nome else f"{nome} {ano}"
+        )
         produtos.append({
-            "ticker": f"TD-{nome.replace(' ', '')[:10]}",
-            "nome": nome,
+            "ticker": ticker,
+            "nome": nome_exibicao,
             "emissor": "Tesouro Nacional",
             "tipo": tipo,
             "taxa_bruta": taxa,
             "vencimento": venc,
             "garantia": "Governo Federal",
             "liquidez": "D+1",
-            "ir": "15% (>720d)",
+            "ir": "Regressivo: 22,5% a 15% conforme o prazo",
             "isento_ir": False,
-            "prazo_dias": _calcular_prazo_dias(venc),
+            "prazo_dias": _calcular_prazo_dias(venc, data_referencia),
             "fonte": "Tesouro API"
         })
     return produtos
 
 
-def rankear_rf(perfil: int = 2, limite: int = 5):
+def rankear_rf(
+    perfil: int = 2,
+    limite: int = 5,
+    *,
+    prazo_anos: float | None = None,
+    data_referencia=None,
+):
     """
     Retorna recomendações de Renda Fixa (apenas Tesouro Direto).
 
@@ -105,8 +173,12 @@ def rankear_rf(perfil: int = 2, limite: int = 5):
         logger.warning("Nenhum título do Tesouro obtido (fonte online sem dados no momento).")
         return []
 
-    produtos = _processar_tesouro(titulos)
+    produtos = _processar_tesouro(titulos, data_referencia)
+    produtos = [produto for produto in produtos if produto["prazo_dias"] > 0]
     for p in produtos:
-        p["prazo_dias"] = _calcular_prazo_dias(p.get("vencimento"))
-        p["score"] = _calcular_score(p, perfil)
+        p["score"] = _calcular_score(p, perfil, prazo_anos)
+        p["compatibilidade_prazo"] = round(
+            _compatibilidade_prazo(p["prazo_dias"], prazo_anos),
+            2,
+        )
     return sorted(produtos, key=lambda x: x.get("score", 0), reverse=True)[:limite]

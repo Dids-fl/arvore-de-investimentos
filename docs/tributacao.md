@@ -233,3 +233,25 @@ Os eventos futuros continuam sendo simulados sobre o estado importado. O
 calendário oficial da B3 de 2026 é incorporado; anos adicionais podem ser
 confirmados por `anos_calendario_mercado_confirmados` e complementados por
 `feriados_mercado`.
+
+## Governança da validação
+
+O consolidado em `validacao/tributacao/validar_tudo.py` cobre os seis grupos,
+incluindo criptoativos, e diferencia:
+
+- cálculo confirmado por implementação independente;
+- guardrail confirmado por ausência de dado essencial;
+- pendência de evidência externa;
+- produto realmente fora do escopo;
+- divergência numérica ou contratual.
+
+`fontes_oficiais.json` registra autoridade, URL, vigência, consulta e estado
+de revisão. `auditar_fontes.py` verifica o registro offline. Casos reais podem
+ser reconciliados somente após anonimização com
+`reconciliar_documentos.py`. A decisão humana pode ser vinculada ao hash do
+relatório por `registrar_revisao.py`.
+
+Esses controles aumentam rastreabilidade e resistência a regressões, mas não
+transformam o software em parecer ou certificação jurídica. A conclusão para
+uma operação real continua dependendo dos documentos, da lei vigente e de
+profissional habilitado.

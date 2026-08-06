@@ -28,7 +28,10 @@ from .filtros import filtrar_para_ranking
 from .indicadores import calcular_indicadores_df
 from .informe_diario_coletor import listar_historicos, listar_metricas_agregadas
 from .intersecao import carregar_interseccao_dataframe
-from .sharpe_sortino import calcular_indicadores_risco
+from .sharpe_sortino import (
+    calcular_indicadores_risco,
+    obter_taxa_livre_risco,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -360,6 +363,17 @@ class RankerFundos:
             return []
 
         ranking = []
+        taxa_livre_risco = None
+        incluir_risco_no_score = False
+        if self.incluir_sharpe_sortino:
+            taxa_livre_risco = obter_taxa_livre_risco(
+                df_hist["Data_Competencia"]
+            )
+            incluir_risco_no_score = taxa_livre_risco is not None
+            if not incluir_risco_no_score:
+                logger.warning(
+                    "CDI indisponível; ranking seguirá sem Sharpe/Sortino."
+                )
 
         for cnpj, group in df_hist.groupby("CNPJ_Classe"):
             cad_row = df_filtrado[df_filtrado["CNPJ_Classe"] == cnpj]
@@ -374,6 +388,7 @@ class RankerFundos:
                 risco = calcular_indicadores_risco(
                     group["Valor_Cota"],
                     pd.to_datetime(group["Data_Competencia"]),
+                    taxa_livre_risco=taxa_livre_risco,
                 )
                 indicadores["sharpe"] = risco.get("sharpe")
                 indicadores["sortino"] = risco.get("sortino")
@@ -381,7 +396,7 @@ class RankerFundos:
             score = calcular_score(
                 indicadores,
                 self.perfil,
-                incluir_sharpe_sortino=self.incluir_sharpe_sortino,
+                incluir_sharpe_sortino=incluir_risco_no_score,
                 prazo_anos=self.prazo_anos,
                 data_referencia=self.data_referencia,
                 retorno_esperado_anual=self.retorno_esperado_anual,

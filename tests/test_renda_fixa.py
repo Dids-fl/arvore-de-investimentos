@@ -202,6 +202,8 @@ def test_rankear_rf_retorna_contrato_ordenado(
     }.issubset(recomendacoes[0])
     assert recomendacoes[0]["emissor"] == "Tesouro Nacional"
     assert 0 <= recomendacoes[0]["score"] <= 10
+    assert len({item["ticker"] for item in recomendacoes}) == 2
+    assert all("Regressivo" in item["ir"] for item in recomendacoes)
 
 
 def test_rankear_rf_respeita_limite_e_perfis(
@@ -269,3 +271,51 @@ def test_calcular_score_varia_com_perfil() -> None:
 
     assert 0 <= score_conservador <= 10
     assert score_conservador <= score_moderado <= score_agressivo
+
+
+def test_ranker_prioriza_vencimento_compativel_com_horizonte(
+    monkeypatch,
+) -> None:
+    titulos = [
+        {
+            "nome": "Tesouro IPCA+",
+            "taxa": 0.07,
+            "vencimento": "15/08/2026",
+            "tipo": "IPCA",
+        },
+        {
+            "nome": "Tesouro IPCA+",
+            "taxa": 0.065,
+            "vencimento": "15/08/2035",
+            "tipo": "IPCA",
+        },
+    ]
+    monkeypatch.setattr(ranker, "coletar_tesouro", lambda: titulos)
+
+    resultado = ranker.rankear_rf(
+        perfil=2,
+        limite=2,
+        prazo_anos=10,
+        data_referencia="2026-08-06",
+    )
+
+    assert resultado[0]["ticker"] == "TD-IPCA-2035"
+    assert resultado[0]["compatibilidade_prazo"] > resultado[1][
+        "compatibilidade_prazo"
+    ]
+
+
+def test_ranker_remove_titulo_vencido(monkeypatch) -> None:
+    titulos = [
+        {
+            "nome": "Tesouro Prefixado",
+            "taxa": 0.13,
+            "vencimento": "01/01/2026",
+            "tipo": "PREFIXADO",
+        }
+    ]
+    monkeypatch.setattr(ranker, "coletar_tesouro", lambda: titulos)
+
+    assert ranker.rankear_rf(
+        data_referencia="2026-08-06",
+    ) == []

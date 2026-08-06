@@ -1,26 +1,29 @@
 {
-  "_schema_version": 1,
-  "escopo": "validacao_tributaria_independente_cinco_categorias",
+  "_schema_version": 2,
+  "escopo": "validacao_tributaria_independente_seis_categorias",
   "categorias": [
     "renda_fixa",
     "estruturados",
     "fundos",
     "previdencia",
-    "renda_variavel"
+    "renda_variavel",
+    "cripto"
   ],
   "resumo": {
-    "total": 55,
-    "VALIDADO_PRIMEIRA_CAMADA": 17,
-    "PENDENTE_PREMISSA": 35,
-    "DIVERGENTE": 0,
-    "FORA_DO_ESCOPO": 3
+    "total": 63,
+    "VALIDADO_CALCULO": 21,
+    "VALIDADO_GUARDRAIL": 5,
+    "PENDENTE_EVIDENCIA": 34,
+    "FORA_DO_ESCOPO": 3,
+    "DIVERGENTE": 0
   },
   "relatorios": {
     "renda_fixa": "validacao\\tributacao\\relatorios\\relatorio_renda_fixa_independente.json",
     "estruturados": "validacao\\tributacao\\relatorios\\relatorio_estruturados_independente.json",
     "fundos": "validacao\\tributacao\\relatorios\\relatorio_fundos_independente.json",
     "previdencia": "validacao\\tributacao\\relatorios\\relatorio_previdencia_independente.json",
-    "renda_variavel": "validacao\\tributacao\\relatorios\\relatorio_renda_variavel_independente.json"
+    "renda_variavel": "validacao\\tributacao\\relatorios\\relatorio_renda_variavel_independente.json",
+    "cripto": "validacao\\tributacao\\relatorios\\relatorio_cripto_independente.json"
   },
-  "criterio_ci": "falha somente quando DIVERGENTE > 0"
+  "criterio_ci": "falha quando DIVERGENTE > 0; fontes e governança são auditadas em etapa própria"
 }

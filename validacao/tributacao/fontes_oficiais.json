@@ -1,0 +1,152 @@
+{
+  "_schema_version": 1,
+  "data_referencia": "2026-08-05",
+  "escopo": "pessoa_fisica_residente_no_brasil",
+  "fontes": [
+    {
+      "id": "receita_tabelas_2026",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+      "vigencia_inicio": "2026-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_fixa", "fundos", "previdencia", "estruturados"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "decreto_iof_6306_2007",
+      "autoridade": "Presidência da República",
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/decreto/d6306.htm",
+      "vigencia_inicio": "2007-12-14",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_fixa", "fundos", "estruturados"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "lei_11033_2004",
+      "autoridade": "Presidência da República",
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/lei/l11033compilado.htm",
+      "vigencia_inicio": "2004-12-22",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_fixa", "estruturados"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "lei_12431_2011",
+      "autoridade": "Presidência da República",
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2011/lei/l12431.htm",
+      "vigencia_inicio": "2011-06-24",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["estruturados"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "lei_14754_2023",
+      "autoridade": "Presidência da República",
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14754.htm",
+      "vigencia_inicio": "2024-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["fundos", "cripto"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "receita_pgbl_vgbl",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf/declaracao/pgvl-vgbl",
+      "vigencia_inicio": "2022-03-03",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["previdencia"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "previdencia_faq",
+      "autoridade": "Ministério da Previdência Social",
+      "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+      "vigencia_inicio": "2021-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["previdencia"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "receita_renda_variavel",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/bolsa-de-valores-1",
+      "vigencia_inicio": "2024-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_variavel"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "servico_revar",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/pt-br/servicos/apurar-imposto-sobre-renda-variavel",
+      "vigencia_inicio": "2024-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_variavel"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "receita_aliquotas_ganho_capital",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/ganhos-de-capital/aliquotas",
+      "vigencia_inicio": "2017-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["cripto"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "lei_13259_2016",
+      "autoridade": "Presidência da República",
+      "url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2016/lei/l13259.htm",
+      "vigencia_inicio": "2017-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["cripto"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "in_rfb_2180_2024",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=136603",
+      "vigencia_inicio": "2024-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["cripto"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "receita_fundos",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/pagamento/renda-variavel/fundos-de-investimento-no-brasil",
+      "vigencia_inicio": "2024-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["fundos"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "susep_vgbl_iof",
+      "autoridade": "Superintendência de Seguros Privados",
+      "url": "https://www.gov.br/susep/pt-br/central-de-conteudos/noticias/2025/junho/novo-decreto-atualiza-regra-de-iof-para-planos-vgbl",
+      "vigencia_inicio": "2026-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["previdencia", "projecoes"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "b3_calendario_2026",
+      "autoridade": "B3 S.A. — Brasil, Bolsa, Balcão",
+      "url": "https://www.b3.com.br/pt_br/noticias/calendario-de-negociacao-da-b3-confira-o-funcionamento-da-bolsa-em-2026.htm",
+      "vigencia_inicio": "2026-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["fundos", "come_cotas", "calendarios"],
+      "revisao_humana": "pendente_revisao_profissional"
+    },
+    {
+      "id": "receita_dirpf",
+      "autoridade": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf",
+      "vigencia_inicio": "2026-01-01",
+      "consultada_em": "2026-08-05",
+      "escopo_regras": ["renda_variavel", "cripto"],
+      "revisao_humana": "pendente_revisao_profissional"
+    }
+  ],
+  "aviso": "Registro técnico de fontes; não equivale a parecer jurídico nem comprova vigência futura."
+}

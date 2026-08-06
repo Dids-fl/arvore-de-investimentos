@@ -122,7 +122,8 @@ def mock_coletor():
     with patch("fundos.ranker_fundos.carregar_interseccao_dataframe", return_value=df_cad), \
          patch("fundos.ranker_fundos.listar_metricas_agregadas", return_value=df_metricas), \
          patch("fundos.ranker_fundos.filtrar_para_ranking", return_value=df_cad), \
-         patch("fundos.ranker_fundos.listar_historicos", return_value=df_hist):
+         patch("fundos.ranker_fundos.listar_historicos", return_value=df_hist), \
+         patch("fundos.ranker_fundos.obter_taxa_livre_risco", return_value=0.105):
         yield
 
 
@@ -230,12 +231,45 @@ class TestSharpeSortino:
         assert sortino is not None
         assert -2.0 < sortino < 5.0
 
-    def test_calcular_indicadores_risco(self, sample_cotas):
-        from fundos.sharpe_sortino import calcular_indicadores_risco
+    def test_calcular_indicadores_risco(self, monkeypatch, sample_cotas):
+        from fundos import sharpe_sortino
+
+        monkeypatch.setattr(
+            sharpe_sortino,
+            "obter_taxa_livre_risco",
+            lambda datas: 0.105,
+        )
         cotas, datas = sample_cotas
-        risco = calcular_indicadores_risco(cotas, datas)
+        risco = sharpe_sortino.calcular_indicadores_risco(cotas, datas)
         assert "sharpe" in risco
         assert "sortino" in risco
+
+    def test_indicadores_consultam_cdi_uma_vez(
+        self,
+        monkeypatch,
+        sample_cotas,
+    ):
+        from fundos import sharpe_sortino
+
+        chamadas = 0
+
+        def obter(datas):
+            nonlocal chamadas
+            chamadas += 1
+            return 0.105
+
+        monkeypatch.setattr(
+            sharpe_sortino,
+            "obter_taxa_livre_risco",
+            obter,
+        )
+        cotas, datas = sample_cotas
+
+        risco = sharpe_sortino.calcular_indicadores_risco(cotas, datas)
+
+        assert risco["sharpe"] is not None
+        assert risco["sortino"] is not None
+        assert chamadas == 1
 
 
 # ---------------------------------------------------------------------

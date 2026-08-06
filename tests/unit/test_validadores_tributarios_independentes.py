@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from validacao.tributacao import (
+    validar_cripto_independente,
     validar_estruturados_independente,
     validar_fundos_independente,
     validar_previdencia_independente,
@@ -18,8 +19,10 @@ from validacao.tributacao import (
 from validacao.tributacao.comum import (
     DIVERGENTE,
     FORA_ESCOPO,
-    PENDENTE,
-    VALIDADO,
+    PENDENTE_EVIDENCIA,
+    STATUS_VALIDACAO,
+    VALIDADO_CALCULO,
+    VALIDADO_GUARDRAIL,
     codigo_saida,
 )
 from validacao.tributacao.validar_tudo import executar
@@ -30,6 +33,7 @@ MODULOS = (
     validar_previdencia_independente,
     validar_renda_variavel_independente,
     validar_estruturados_independente,
+    validar_cripto_independente,
 )
 
 
@@ -48,19 +52,16 @@ def test_validador_nao_encontra_divergencia(
     relatorio = modulo.validar(tmp_path)
     resumo = relatorio["resumo"]
     assert resumo[DIVERGENTE] == 0
-    assert resumo["total"] == sum(
-        resumo[status]
-        for status in (VALIDADO, PENDENTE, DIVERGENTE, FORA_ESCOPO)
-    )
+    assert resumo["total"] == sum(resumo[status] for status in STATUS_VALIDACAO)
     destino = Path(relatorio["arquivo"])
     assert destino.exists()
     carregado = json.loads(destino.read_text(encoding="utf-8"))
     assert carregado["categoria"] == relatorio["categoria"]
 
 
-def test_consolidado_cobre_cinco_categorias(tmp_path: Path) -> None:
+def test_consolidado_cobre_seis_categorias(tmp_path: Path) -> None:
     consolidado = executar(tmp_path)
-    assert consolidado["resumo"]["total"] == 55
+    assert consolidado["resumo"]["total"] == 63
     assert consolidado["resumo"][DIVERGENTE] == 0
     assert set(consolidado["categorias"]) == {
         "renda_fixa",
@@ -68,7 +69,18 @@ def test_consolidado_cobre_cinco_categorias(tmp_path: Path) -> None:
         "previdencia",
         "renda_variavel",
         "estruturados",
+        "cripto",
     }
+
+
+def test_consolidado_separa_guardrail_de_fora_do_escopo(
+    tmp_path: Path,
+) -> None:
+    resumo = executar(tmp_path)["resumo"]
+    assert resumo[VALIDADO_CALCULO] > 0
+    assert resumo[VALIDADO_GUARDRAIL] > 0
+    assert resumo[PENDENTE_EVIDENCIA] > 0
+    assert resumo[FORA_ESCOPO] == 3
 
 
 def test_codigo_saida_falha_quando_existe_divergencia() -> None:
@@ -146,18 +158,14 @@ def test_renda_variavel_respeita_limite_mensal_de_acoes() -> None:
     entrada["valor_vendas_mes"] = 20_000.0
     isento = validar_renda_variavel_independente.calcular_independente(entrada)
     entrada["valor_vendas_mes"] = 20_000.01
-    tributado = validar_renda_variavel_independente.calcular_independente(
-        entrada
-    )
+    tributado = validar_renda_variavel_independente.calcular_independente(entrada)
     assert isento["imposto_estimado"] == 0.0
     assert tributado["imposto_estimado"] == pytest.approx(150.0)
 
 
 def test_estruturado_exige_elegibilidade_para_isencao() -> None:
     entrada = _entrada_por_prazo(721, "cri")
-    indeterminado = (
-        validar_estruturados_independente.calcular_independente(entrada)
-    )
+    indeterminado = validar_estruturados_independente.calcular_independente(entrada)
     entrada["metadados"] = {"elegibilidade_isencao_confirmada": True}
     isento = validar_estruturados_independente.calcular_independente(entrada)
     assert indeterminado["precisao"] == "indeterminada"

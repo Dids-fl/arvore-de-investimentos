@@ -1,5 +1,5 @@
 {
-  "_schema_version": 1,
+  "_schema_version": 2,
   "categoria": "previdencia",
   "independente_do_motor": true,
   "fontes_oficiais": {
@@ -9,15 +9,16 @@
   },
   "resumo": {
     "total": 11,
-    "VALIDADO_PRIMEIRA_CAMADA": 0,
-    "PENDENTE_PREMISSA": 11,
-    "DIVERGENTE": 0,
-    "FORA_DO_ESCOPO": 0
+    "VALIDADO_CALCULO": 0,
+    "VALIDADO_GUARDRAIL": 2,
+    "PENDENTE_EVIDENCIA": 9,
+    "FORA_DO_ESCOPO": 0,
+    "DIVERGENTE": 0
   },
   "resultados": [
     {
       "caso_id": "pgbl_regressivo_ate_2_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 3849.9999999999995,
         "valor_liquido": 7150.0,
@@ -30,7 +31,9 @@
         "valor_liquido": 7150.0,
         "aliquota_efetiva": 0.35,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 3850.0,
@@ -53,7 +56,7 @@
     },
     {
       "caso_id": "pgbl_regressivo_acima_2_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 3300.0,
         "valor_liquido": 7700.0,
@@ -66,7 +69,9 @@
         "valor_liquido": 7700.0,
         "aliquota_efetiva": 0.3,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 3300.0,
@@ -89,7 +94,7 @@
     },
     {
       "caso_id": "pgbl_regressivo_acima_4_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 2750.0,
         "valor_liquido": 8250.0,
@@ -102,7 +107,9 @@
         "valor_liquido": 8250.0,
         "aliquota_efetiva": 0.25,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 2750.0,
@@ -125,7 +132,7 @@
     },
     {
       "caso_id": "pgbl_regressivo_acima_6_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 2200.0,
         "valor_liquido": 8800.0,
@@ -138,7 +145,9 @@
         "valor_liquido": 8800.0,
         "aliquota_efetiva": 0.2,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 2200.0,
@@ -161,7 +170,7 @@
     },
     {
       "caso_id": "pgbl_regressivo_acima_8_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 1650.0,
         "valor_liquido": 9350.0,
@@ -174,7 +183,9 @@
         "valor_liquido": 9350.0,
         "aliquota_efetiva": 0.15,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 1650.0,
@@ -197,7 +208,7 @@
     },
     {
       "caso_id": "pgbl_regressivo_acima_10_anos",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 1100.0,
         "valor_liquido": 9900.0,
@@ -210,7 +221,9 @@
         "valor_liquido": 9900.0,
         "aliquota_efetiva": 0.1,
         "precisao": "estimada",
-        "regra_id": "pgbl_regressivo_2026"
+        "regra_id": "pgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 1100.0,
@@ -233,7 +246,7 @@
     },
     {
       "caso_id": "vgbl_regressivo_tributa_so_ganho",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 300.0,
         "valor_liquido": 10700.0,
@@ -246,7 +259,9 @@
         "valor_liquido": 10700.0,
         "aliquota_efetiva": 0.3,
         "precisao": "estimada",
-        "regra_id": "vgbl_regressivo_2026"
+        "regra_id": "vgbl_regressivo_2026",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 300.0,
@@ -269,7 +284,7 @@
     },
     {
       "caso_id": "pgbl_progressivo_renda_30000",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 11000.0,
@@ -282,7 +297,9 @@
         "valor_liquido": 11000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "estimada",
-        "regra_id": "pgbl_progressivo_2026"
+        "regra_id": "pgbl_progressivo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf/declaracao/pgvl-vgbl",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,
@@ -305,7 +322,7 @@
     },
     {
       "caso_id": "vgbl_progressivo_renda_30000",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 11000.0,
@@ -318,7 +335,9 @@
         "valor_liquido": 11000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "estimada",
-        "regra_id": "vgbl_progressivo_2026"
+        "regra_id": "vgbl_progressivo_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/perguntas-frequentes/imposto-de-renda/dirpf/declaracao/pgvl-vgbl",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,
@@ -341,7 +360,7 @@
     },
     {
       "caso_id": "pgbl_progressivo_sem_renda",
-      "status": "PENDENTE_PREMISSA",
+      "status": "VALIDADO_GUARDRAIL",
       "independente": {
         "imposto_estimado": null,
         "valor_liquido": null,
@@ -354,7 +373,9 @@
         "valor_liquido": null,
         "aliquota_efetiva": null,
         "precisao": "indeterminada",
-        "regra_id": "pgbl_progressivo_sem_renda"
+        "regra_id": "pgbl_progressivo_sem_renda",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": null,
@@ -373,7 +394,7 @@
     },
     {
       "caso_id": "pgbl_regime_ausente",
-      "status": "PENDENTE_PREMISSA",
+      "status": "VALIDADO_GUARDRAIL",
       "independente": {
         "imposto_estimado": null,
         "valor_liquido": null,
@@ -386,7 +407,9 @@
         "valor_liquido": null,
         "aliquota_efetiva": null,
         "precisao": "indeterminada",
-        "regra_id": "previdencia_regime_indeterminado"
+        "regra_id": "previdencia_regime_indeterminado",
+        "fonte": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-complementar/mais-informacoes/perguntas-frequentes-de-previdencia-complementar",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": null,

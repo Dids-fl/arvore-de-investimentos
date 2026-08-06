@@ -1,5 +1,5 @@
 {
-  "_schema_version": 1,
+  "_schema_version": 2,
   "categoria": "renda_fixa",
   "independente_do_motor": true,
   "fontes_oficiais": {
@@ -9,15 +9,16 @@
   },
   "resumo": {
     "total": 13,
-    "VALIDADO_PRIMEIRA_CAMADA": 8,
-    "PENDENTE_PREMISSA": 4,
-    "DIVERGENTE": 0,
-    "FORA_DO_ESCOPO": 1
+    "VALIDADO_CALCULO": 8,
+    "VALIDADO_GUARDRAIL": 0,
+    "PENDENTE_EVIDENCIA": 4,
+    "FORA_DO_ESCOPO": 1,
+    "DIVERGENTE": 0
   },
   "resultados": [
     {
       "caso_id": "cdb_1_dia_com_iof",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 969.0,
         "valor_liquido": 10031.0,
@@ -30,7 +31,9 @@
         "valor_liquido": 10031.0,
         "aliquota_efetiva": 0.969,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 969.0,
@@ -50,7 +53,7 @@
     },
     {
       "caso_id": "cdb_29_dias_com_iof",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 248.25,
         "valor_liquido": 10751.75,
@@ -63,7 +66,9 @@
         "valor_liquido": 10751.75,
         "aliquota_efetiva": 0.24825,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 248.25,
@@ -83,7 +88,7 @@
     },
     {
       "caso_id": "cdb_30_dias_sem_iof",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 225.0,
         "valor_liquido": 10775.0,
@@ -96,7 +101,9 @@
         "valor_liquido": 10775.0,
         "aliquota_efetiva": 0.225,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 225.0,
@@ -116,7 +123,7 @@
     },
     {
       "caso_id": "cdb_180_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 225.0,
         "valor_liquido": 10775.0,
@@ -129,7 +136,9 @@
         "valor_liquido": 10775.0,
         "aliquota_efetiva": 0.225,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 225.0,
@@ -149,7 +158,7 @@
     },
     {
       "caso_id": "cdb_181_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 200.0,
         "valor_liquido": 10800.0,
@@ -162,7 +171,9 @@
         "valor_liquido": 10800.0,
         "aliquota_efetiva": 0.2,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 200.0,
@@ -182,7 +193,7 @@
     },
     {
       "caso_id": "cdb_360_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 200.0,
         "valor_liquido": 10800.0,
@@ -195,7 +206,9 @@
         "valor_liquido": 10800.0,
         "aliquota_efetiva": 0.2,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 200.0,
@@ -215,7 +228,7 @@
     },
     {
       "caso_id": "cdb_361_dias",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 175.0,
         "valor_liquido": 10825.0,
@@ -228,7 +241,9 @@
         "valor_liquido": 10825.0,
         "aliquota_efetiva": 0.175,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 175.0,
@@ -248,7 +263,7 @@
     },
     {
       "caso_id": "cdb_720_dias",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 175.0,
         "valor_liquido": 10825.0,
@@ -261,7 +276,9 @@
         "valor_liquido": 10825.0,
         "aliquota_efetiva": 0.175,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 175.0,
@@ -283,7 +300,7 @@
     },
     {
       "caso_id": "cdb_721_dias",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 150.0,
         "valor_liquido": 10850.0,
@@ -296,7 +313,9 @@
         "valor_liquido": 10850.0,
         "aliquota_efetiva": 0.15,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 150.0,
@@ -318,7 +337,7 @@
     },
     {
       "caso_id": "lci_pessoa_fisica_isenta",
-      "status": "VALIDADO_PRIMEIRA_CAMADA",
+      "status": "VALIDADO_CALCULO",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 11000.0,
@@ -331,7 +350,9 @@
         "valor_liquido": 11000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_isenta_pf_2026"
+        "regra_id": "rf_isenta_pf_2026",
+        "fonte": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/lei/l11033compilado.htm",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,
@@ -350,7 +371,7 @@
     },
     {
       "caso_id": "lca_pessoa_fisica_isenta",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 11000.0,
@@ -363,7 +384,9 @@
         "valor_liquido": 11000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_isenta_pf_2026"
+        "regra_id": "rf_isenta_pf_2026",
+        "fonte": "https://www.planalto.gov.br/ccivil_03/_ato2004-2006/2004/lei/l11033compilado.htm",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,
@@ -397,7 +420,9 @@
         "valor_liquido": null,
         "aliquota_efetiva": null,
         "precisao": "indeterminada",
-        "regra_id": "pessoa_juridica_fora_escopo"
+        "regra_id": "pessoa_juridica_fora_escopo",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": null,
@@ -418,7 +443,7 @@
     },
     {
       "caso_id": "cdb_sem_ganho",
-      "status": "PENDENTE_PREMISSA",
+      "status": "PENDENTE_EVIDENCIA",
       "independente": {
         "imposto_estimado": 0.0,
         "valor_liquido": 10000.0,
@@ -431,7 +456,9 @@
         "valor_liquido": 10000.0,
         "aliquota_efetiva": 0.0,
         "precisao": "exata_para_premissas",
-        "regra_id": "rf_regressiva_2026"
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
       },
       "fixture": {
         "imposto_estimado": 0.0,

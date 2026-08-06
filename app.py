@@ -169,6 +169,28 @@ def _render_questionario(market: dict) -> None:
                 "Obrigações fixas mensais",
                 ["nenhuma", "baixas", "altas"],
             )
+            despesas_essenciais_mensais = st.number_input(
+                "Despesas essenciais mensais (R$)",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+                format="%.2f",
+                help=(
+                    "Inclua moradia, alimentação, saúde, transporte e "
+                    "contas que continuariam existindo em uma emergência."
+                ),
+            )
+            reserva_atual = st.number_input(
+                "Reserva disponível hoje (R$)",
+                min_value=0.0,
+                value=0.0,
+                step=500.0,
+                format="%.2f",
+                help=(
+                    "Considere apenas dinheiro separado para emergências "
+                    "com liquidez imediata."
+                ),
+            )
             valor = st.selectbox(
                 "Valor disponível para investir",
                 ["baixo", "médio", "alto"],
@@ -420,6 +442,10 @@ def _render_questionario(market: dict) -> None:
         "reserva_emerg": reserva,
         "idade": idade,
         "despesas": despesas,
+        "despesas_essenciais_mensais": float(
+            despesas_essenciais_mensais
+        ),
+        "reserva_atual": float(reserva_atual),
         "faixa_valor": valor,
         "patrim_pct": patrimonio,
         "renda": renda,
@@ -510,7 +536,7 @@ def _render_metricas(analise: dict) -> None:
 
     if resultado["perfil_exibido"] != resultado["recomendacao_principal"]:
         st.caption(
-            "Categoria representativa da carteira: "
+            "Classe usada apenas para resumir o risco da carteira: "
             f"**{resultado['perfil_display']}**. A recomendação principal "
             "preserva a regra específica do questionário."
         )
@@ -559,6 +585,14 @@ def _render_alocacao(analise: dict) -> None:
     values = [item["percentual"] for item in itens]
 
     st.subheader("📊 Alocação sugerida")
+    plano_reserva = resultado.get("plano_reserva")
+    if isinstance(plano_reserva, dict):
+        st.caption(
+            "Reserva-alvo: "
+            f"R$ {plano_reserva['valor_alvo']:,.2f} · "
+            f"Reserva atual: R$ {plano_reserva['valor_atual']:,.2f} · "
+            f"Déficit: R$ {plano_reserva['deficit']:,.2f}"
+        )
     col_chart, col_table = st.columns([1.25, 1])
     with col_chart:
         figure = go.Figure(
@@ -897,6 +931,11 @@ def _render_ativos(analise: dict) -> None:
         st.warning("Algumas fontes não puderam ser consultadas:")
         for classe, motivo in indisponiveis.items():
             st.caption(f"• **{rotulo_classe_ativo(classe)}**: {motivo}")
+        st.warning(
+            "A carteira executável está incompleta. Nenhum percentual foi "
+            "redistribuído automaticamente; mantenha a parcela sem ativo "
+            "selecionado em liquidez e tente novamente mais tarde."
+        )
 
     if not ativos:
         return
@@ -932,7 +971,7 @@ def _render_ativos(analise: dict) -> None:
                 "ticker": "Ticker",
                 "nome": "Nome",
                 "preco": "Preço",
-                "score": "Score",
+                "score": "Score (/100)",
                 "motivos": "Destaques",
             }
             tabela = tabela.rename(
@@ -942,7 +981,13 @@ def _render_ativos(analise: dict) -> None:
                     if antiga in tabela.columns
                 }
             )
-            preferidas = ["Ticker", "Nome", "Preço", "Score", "Destaques"]
+            preferidas = [
+                "Ticker",
+                "Nome",
+                "Preço",
+                "Score (/100)",
+                "Destaques",
+            ]
             colunas = [
                 coluna
                 for coluna in preferidas

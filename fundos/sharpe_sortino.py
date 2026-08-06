@@ -24,6 +24,15 @@ def _obter_cdi_para_periodo(datas):
     return obter_cdi_periodo(data_inicio, data_fim)
 
 
+def obter_taxa_livre_risco(datas):
+    """Obtém uma única taxa CDI para o intervalo completo informado."""
+    datas_validas = pd.to_datetime(datas, errors="coerce").dropna()
+    if len(datas_validas) < 2:
+        return None
+    datas_ordenadas = datas_validas.sort_values()
+    return _obter_cdi_para_periodo(datas_ordenadas)
+
+
 def calcular_sharpe(cotas, datas, taxa_livre_risco=None):
     ret = cagr(cotas, datas)
     vol = volatilidade(cotas)
@@ -49,6 +58,8 @@ def calcular_sortino(cotas, datas, taxa_livre_risco=None):
 
 
 def calcular_indicadores_risco(cotas, datas, taxa_livre_risco=None):
+    if taxa_livre_risco is None:
+        taxa_livre_risco = obter_taxa_livre_risco(datas)
     return {
         "sharpe": calcular_sharpe(cotas, datas, taxa_livre_risco),
         "sortino": calcular_sortino(cotas, datas, taxa_livre_risco),

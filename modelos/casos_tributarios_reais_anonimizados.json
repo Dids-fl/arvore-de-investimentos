@@ -1,0 +1,27 @@
+{
+  "_schema_version": 1,
+  "tolerancia_monetaria": 0.01,
+  "casos": [
+    {
+      "id": "exemplo_cdb_anonimizado",
+      "entrada": {
+        "principal": 10000.0,
+        "valor_bruto": 11000.0,
+        "data_aplicacao": "2026-01-01",
+        "data_resgate": "2026-06-30",
+        "tipo_produto": "cdb",
+        "pessoa_fisica": true
+      },
+      "documento": {
+        "tipo_documento": "informe_de_rendimentos",
+        "emissor": "instituicao_anonimizada",
+        "data_documento": "2026-06-30",
+        "identificador_anonimizado": "exemplo-nao-real"
+      },
+      "observado": {
+        "imposto": 225.0,
+        "valor_liquido": 10775.0
+      }
+    }
+  ]
+}

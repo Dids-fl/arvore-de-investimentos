@@ -38,6 +38,8 @@ def respostas_padrao() -> dict:
         "liquidez": "sim",
         "liquidez_pct": 20,
         "reserva_emerg": "sim",
+        "despesas_essenciais_mensais": 1_000,
+        "reserva_atual": 6_000,
         "idade": "adulto",
         "despesas": "baixas",
         "faixa_valor": "médio",

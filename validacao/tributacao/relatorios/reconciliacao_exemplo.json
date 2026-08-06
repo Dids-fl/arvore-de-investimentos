@@ -1,0 +1,40 @@
+{
+  "_schema_version": 1,
+  "arquivo_entrada_sha256": "90787a90f85f4b177c22d690c6ab59ea2e8a7cbd3ed624fcdae5266aeab520d4",
+  "tolerancia_monetaria": 0.01,
+  "resumo": {
+    "total": 1,
+    "CONCILIADO": 1,
+    "DIVERGENTE": 0,
+    "DADOS_INSUFICIENTES": 0,
+    "MOTOR_INDETERMINADO": 0
+  },
+  "resultados": [
+    {
+      "caso_id": "exemplo_cdb_anonimizado",
+      "status": "CONCILIADO",
+      "documento": {
+        "tipo_documento": "informe_de_rendimentos",
+        "emissor": "instituicao_anonimizada",
+        "data_documento": "2026-06-30",
+        "identificador_anonimizado": "exemplo-nao-real"
+      },
+      "motor": {
+        "imposto_estimado": 225.0,
+        "valor_liquido": 10775.0,
+        "aliquota_efetiva": 0.225,
+        "precisao": "exata_para_premissas",
+        "regra_id": "rf_regressiva_2026",
+        "fonte": "https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026",
+        "vigencia": "2026-01-01"
+      },
+      "observado": {
+        "imposto": 225.0,
+        "valor_liquido": 10775.0
+      },
+      "diferenca_imposto": 0.0,
+      "diferenca_valor_liquido": 0.0
+    }
+  ],
+  "aviso": "Reconciliação técnica com dados anonimizados; não verifica a autenticidade do documento nem substitui revisão profissional."
+}

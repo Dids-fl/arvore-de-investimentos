@@ -578,6 +578,20 @@ def _validar_respostas(respostas: object) -> dict:
         preparadas.get("cap_inicial", 0),
         minimo=0,
     )
+    for campo_reserva in (
+        "despesas_essenciais_mensais",
+        "reserva_atual",
+    ):
+        valor_reserva = preparadas.get(campo_reserva)
+        preparadas[campo_reserva] = (
+            None
+            if valor_reserva is None
+            else _numero_finito(
+                campo_reserva,
+                valor_reserva,
+                minimo=0,
+            )
+        )
     aporte_mensal = _numero_finito(
         "aporte_mensal",
         preparadas.get("aporte_mensal", 0),
@@ -1024,6 +1038,37 @@ def aporte_necessario_para_meta(
     return superior
 
 
+def _descricao_reserva(
+    respostas: Mapping[str, Any],
+    resultado: Mapping[str, Any],
+) -> str:
+    plano = resultado.get("plano_reserva")
+    if not isinstance(plano, Mapping):
+        return {
+            1: "Sem reserva",
+            2: "Parcial",
+            3: "Completa",
+        }[respostas["reserva_emerg"]]
+    alvo = float(plano["valor_alvo"])
+    deficit = float(plano["deficit"])
+    atual = float(plano["valor_atual"])
+    meses = int(plano["meses"])
+    if alvo == 0:
+        return (
+            "Reserva-alvo calculada: R$ 0,00 "
+            "(despesas essenciais mensais informadas como zero)"
+        )
+    if deficit == 0:
+        return (
+            f"Reserva-alvo de R$ {alvo:,.2f} coberta; "
+            f"valor atual R$ {atual:,.2f}"
+        )
+    return (
+        f"Déficit de R$ {deficit:,.2f} para a reserva-alvo de "
+        f"R$ {alvo:,.2f} ({meses} meses)"
+    )
+
+
 def _perfil_resumo(
     respostas: Mapping[str, Any],
     resultado: Mapping[str, Any],
@@ -1060,13 +1105,9 @@ def _perfil_resumo(
             if respostas["liquidez"] == 1
             else "Não"
         ),
-        "Reserva de emergência": (
-            {
-                1: "Sem reserva",
-                2: "Parcial",
-                3: "Completa",
-            }[respostas["reserva_emerg"]]
-            + f" (referência: {resultado['meses_res']} meses)"
+        "Reserva de emergência": _descricao_reserva(
+            respostas,
+            resultado,
         ),
         "Idade": {
             1: "Jovem (até 35)",
@@ -1078,6 +1119,16 @@ def _perfil_resumo(
             2: "Baixas",
             3: "Altas",
         }[respostas["despesas"]],
+        "Despesas essenciais mensais": (
+            "Não informado"
+            if respostas.get("despesas_essenciais_mensais") is None
+            else f"R$ {respostas['despesas_essenciais_mensais']:,.2f}"
+        ),
+        "Reserva disponível hoje": (
+            "Não informado"
+            if respostas.get("reserva_atual") is None
+            else f"R$ {respostas['reserva_atual']:,.2f}"
+        ),
         "Valor disponível": {
             1: "Até R$ 1 mil",
             2: "R$ 1–10 mil",
@@ -1145,6 +1196,88 @@ def _perfil_resumo(
 _PREVIDENCIA_PGBL = {RK.PREV_PGBL, RK.PREV_PGBL_RF}
 _PREVIDENCIA_VGBL = {RK.PREV_VGBL, RK.PREV_VGBL_RF}
 _PREVIDENCIA_TODAS = _PREVIDENCIA_PGBL | _PREVIDENCIA_VGBL
+
+
+def _alocar_deficit_reserva(
+    rec_key: str,
+    portfolio_base: dict[str, float],
+    respostas: Mapping[str, Any],
+    meses_reserva: int,
+    avisos: list[str],
+) -> tuple[str, dict[str, float], dict[str, Any]]:
+    """Separa somente o déficit mensurável da reserva de emergência."""
+    despesas = respostas.get("despesas_essenciais_mensais")
+    reserva_atual = respostas.get("reserva_atual")
+    capital = float(respostas["cap_inicial"])
+
+    if despesas is None or reserva_atual is None:
+        plano = {
+            "valor_alvo": 0.0,
+            "valor_atual": 0.0,
+            "deficit": capital,
+            "percentual_capital": 100.0,
+            "meses": meses_reserva,
+            "precisao": "indeterminada",
+        }
+        if rec_key == RK.RF_RESERVA:
+            return rec_key, {RK.RF_RESERVA: 100.0}, plano
+        return rec_key, portfolio_base, plano
+
+    valor_alvo = float(despesas) * meses_reserva
+    deficit = max(0.0, valor_alvo - float(reserva_atual))
+    plano = {
+        "valor_alvo": valor_alvo,
+        "valor_atual": float(reserva_atual),
+        "deficit": deficit,
+        "percentual_capital": 0.0,
+        "meses": meses_reserva,
+        "precisao": "calculada",
+    }
+    if rec_key != RK.RF_RESERVA:
+        return rec_key, portfolio_base, plano
+
+    if deficit <= 0:
+        avisos[:] = [
+            aviso
+            for aviso in avisos
+            if "Priorize uma reserva" not in aviso
+        ]
+        avisos.append(
+            "ℹ️ Reserva-alvo calculada: R$ 0,00; nenhuma parcela do novo "
+            "capital foi direcionada compulsoriamente à reserva."
+            if valor_alvo == 0
+            else "ℹ️ A reserva-alvo calculada já está coberta; o capital "
+            "novo pode seguir a alocação compatível com o perfil."
+        )
+        categoria_base, _ = _classificar_portfolio_final(portfolio_base)
+        return categoria_base, portfolio_base, plano
+
+    if capital <= 0 or deficit >= capital:
+        plano["percentual_capital"] = 100.0
+        avisos.append(
+            "⚠️ Todo o capital inicial é necessário para reduzir o déficit "
+            "da reserva antes da diversificação."
+        )
+        return rec_key, {RK.RF_RESERVA: 100.0}, plano
+
+    percentual_reserva = 100.0 * deficit / capital
+    percentual_excedente = 100.0 - percentual_reserva
+    portfolio = {
+        categoria: float(percentual) * percentual_excedente / 100.0
+        for categoria, percentual in portfolio_base.items()
+        if percentual > 0
+    }
+    portfolio[RK.RF_RESERVA] = (
+        portfolio.get(RK.RF_RESERVA, 0.0) + percentual_reserva
+    )
+    diferenca = 100.0 - sum(portfolio.values())
+    portfolio[RK.RF_RESERVA] += diferenca
+    plano["percentual_capital"] = percentual_reserva
+    avisos.append(
+        "ℹ️ Somente o déficit calculado da reserva foi separado; o capital "
+        "excedente permaneceu diversificado conforme o perfil."
+    )
+    return rec_key, portfolio, plano
 
 
 def _categoria_previdencia_equivalente(
@@ -1393,6 +1526,13 @@ def gerar_recomendacao_completa(
         respostas_validas["idade"],
         avisos,
     )
+    rec_key, portfolio, plano_reserva = _alocar_deficit_reserva(
+        rec_key,
+        portfolio,
+        respostas_validas,
+        meses_res,
+        avisos,
+    )
     rec_key, portfolio, ranking_previdencia = (
         _ajustar_previdencia_por_eficiencia(
             rec_key,
@@ -1453,6 +1593,7 @@ def gerar_recomendacao_completa(
         ),
         "contexto_fiscal": contexto_fiscal,
         "ranking_previdencia_liquida": ranking_previdencia,
+        "plano_reserva": plano_reserva,
         "taxa_base": projecao_selic_base.taxa_anual_equivalente,
         "metodo_taxa_base": "curva_selic_focus_composta",
         "prazo_taxa_meses": prazo_taxa_meses,

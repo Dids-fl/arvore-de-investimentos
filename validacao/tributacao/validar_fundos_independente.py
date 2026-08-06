@@ -23,12 +23,10 @@ FONTES = {
         "meu-imposto-de-renda/tabelas/2026"
     ),
     "lei_14754_2023": (
-        "https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/"
-        "lei/l14754.htm"
+        "https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2023/lei/l14754.htm"
     ),
     "decreto_iof_6306_2007": (
-        "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/"
-        "decreto/d6306.htm"
+        "https://www.planalto.gov.br/ccivil_03/_ato2007-2010/2007/decreto/d6306.htm"
     ),
 }
 
@@ -119,9 +117,7 @@ def calcular_independente(entrada: Mapping[str, Any]) -> dict[str, Any]:
         )
 
     if tipo == "fundo_rf":
-        pendencias.append(
-            "Fundo RF genérico foi tratado como fundo de longo prazo."
-        )
+        pendencias.append("Fundo RF genérico foi tratado como fundo de longo prazo.")
     prazo = _prazo(entrada)
     aliquota_ir = (
         0.225

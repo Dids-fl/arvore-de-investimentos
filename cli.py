@@ -120,6 +120,8 @@ DEMO_PADRAO = {
     "liquidez":     2,
     "liquidez_pct": 0.0,
     "reserva_emerg":1,
+    "despesas_essenciais_mensais": 0.0,
+    "reserva_atual": 0.0,
     "idade":        1,
     "despesas":     1,
     "faixa_valor":  2,
