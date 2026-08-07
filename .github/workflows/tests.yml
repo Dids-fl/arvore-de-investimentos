@@ -64,9 +64,6 @@ jobs:
 
       - name: Run independent tax validation
         run: |
-          python validacao/tributacao/validar_cripto_independente.py \
-            --fixtures tests/fixtures/tributacao/cripto.json \
-            --saida relatorios_tributarios/relatorio_cripto_independente.json
           python -m validacao.tributacao.validar_tudo \
             --saida relatorios_tributarios
 
