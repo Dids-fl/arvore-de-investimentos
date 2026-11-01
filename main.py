@@ -600,6 +600,10 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
         ),
         "etf": "~5s — cotações de ETFs",
         "estruturados": "~15s — dados cadastrais e de balcão",
+        "previdencia": (
+            "usa os mesmos dados da CVM dos fundos; "
+            "a primeira execução pode levar vários minutos"
+        ),
     }
     _sep()
     print("\n📈 Classes que serão consultadas:")

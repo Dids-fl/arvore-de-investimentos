@@ -6,15 +6,16 @@ projeta o patrimônio (bruto, líquido de impostos e em poder de compra), compar
 o resultado com a poupança e, opcionalmente, ranqueia ativos específicos de
 cada classe.
 
-Tudo roda com **dados públicos e gratuitos**, sem cadastro obrigatório:
+Tudo roda com **dados públicos e gratuitos**, sem cadastro obrigatório, e os
+dados são atualizados automaticamente ao rodar o app (com cache local):
 
 | Dado | Fonte gratuita |
 |---|---|
 | Selic, IPCA 12 meses, CDI, poupança | Banco Central (SGS) |
 | Expectativas de Selic e IPCA | Banco Central (Focus/Olinda) |
 | Ibovespa e históricos | Yahoo Finance (`yfinance`) |
-| Títulos públicos | Tesouro Transparente |
-| Fundos | Dados abertos da CVM |
+| Títulos públicos (inclui Renda+ e Educa+) | Tesouro Transparente |
+| Fundos e previdência (PGBL/VGBL) | Dados abertos da CVM |
 | Ações e FIIs | BRAPI (plano gratuito), Fundamentus, Status Invest |
 | CRA, CRI e debêntures | B3 (biblioteca `mercados`) |
 | Criptoativos | CoinGecko (API gratuita) |
@@ -73,7 +74,12 @@ python -m backtest.run_backtest --help
   dados (nunca com alíquota genérica inventada);
 - comparativo com a poupança, quando a série do BCB está disponível;
 - análise de meta (quanto aportar por mês para chegar a um valor);
-- ranking de ativos específicos e exportação em JSON.
+- ranking de ativos específicos (Tesouro, fundos, previdência, CRA/CRI/
+  debêntures, ações, FIIs, ETFs e cripto) e exportação em JSON.
+
+CDB, LCI, LCA e COE não têm ranking de ativos: não existe fonte pública e
+gratuita com as ofertas e taxas dos bancos. Eles continuam cobertos nas
+regras de recomendação e no motor tributário.
 
 ## Desenvolvimento
 

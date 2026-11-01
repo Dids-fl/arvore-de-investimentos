@@ -30,7 +30,11 @@ estão:
 - BRAPI para listagem e dados de mercado;
 - Yahoo Finance para históricos;
 - Fundamentus e Status Invest nos módulos de ações e FIIs;
-- dados públicos da CVM para fundos;
+- dados públicos da CVM para fundos e para fundos previdenciários (FIEs
+  de PGBL/VGBL), filtrados pela interseção cadastro ∩ informe diário;
+- Tesouro Transparente para títulos públicos, incluindo Renda+ e Educa+
+  (classificados como indexados ao IPCA);
+- B3, via biblioteca `mercados`, para CRA, CRI e debêntures;
 - CoinGecko para criptoativos.
 
 Cada ranker deve registrar sua fonte e degradar de forma independente. A
@@ -124,3 +128,10 @@ Use `.env` apenas localmente e mantenha `.env.example` sem segredos.
 - diferenças de calendário, timezone e ajustes de preço.
 
 Consulte também [Limitações e riscos](limitacoes.md).
+
+## Produtos sem fonte gratuita
+
+CDB, LCI, LCA, LCD e COE não possuem base pública e gratuita com ofertas e
+taxas atualizadas: cada emissor e cada plataforma publica as suas. Por isso
+não há ranker automático para eles; o projeto prefere não exibir um ativo a
+inventar uma taxa.

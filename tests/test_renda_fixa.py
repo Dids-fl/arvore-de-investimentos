@@ -165,6 +165,40 @@ def test_coletar_tesouro_interpreta_package_show(monkeypatch) -> None:
     assert titulos[0]["data_base"] == "2026-07-30"
 
 
+def test_renda_mais_e_educa_mais_sao_indexados_ao_ipca(monkeypatch) -> None:
+    metadados = RespostaFalsa(
+        json_data={
+            "success": True,
+            "result": {
+                "resources": [
+                    {
+                        "format": "CSV",
+                        "url": "https://exemplo.test/PrecoTaxaTesouroDireto.csv",
+                    }
+                ]
+            },
+        }
+    )
+    csv = RespostaFalsa(
+        text=(
+            "Data Base;Tipo Titulo;Taxa Compra Manha;Data Vencimento\n"
+            "30/07/2026;Tesouro Renda+ Aposentadoria Extra;7,10;15/12/2049\n"
+            "30/07/2026;Tesouro Educa+;7,05;15/12/2035\n"
+        )
+    )
+    respostas = iter([metadados, csv])
+    monkeypatch.setattr(coletor.requests, "get", lambda *a, **k: next(respostas))
+
+    titulos = coletor.coletar_tesouro()
+
+    assert {titulo["tipo"] for titulo in titulos} == {"IPCA"}
+    produtos = ranker._processar_tesouro(titulos)
+    assert {produto["ticker"] for produto in produtos} == {
+        "TD-RENDA+-2049",
+        "TD-EDUCA+-2035",
+    }
+
+
 @pytest.mark.parametrize(
     "metadados",
     [

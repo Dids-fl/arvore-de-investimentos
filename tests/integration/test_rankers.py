@@ -116,3 +116,64 @@ def test_scores_publicos_sao_padronizados_em_cem(
 
     assert resultado[0]["score"] == pytest.approx(esperado)
     assert resultado[0]["score_escala"] == 100
+
+
+def test_previdencia_consulta_ranker_de_fundos_previdenciarios(
+    monkeypatch,
+) -> None:
+    ranker_prev = pytest.importorskip("fundos.ranker_previdenciarios")
+    chamadas = []
+
+    def rankear(perfil, limite):
+        chamadas.append((perfil, limite))
+        return [{"cnpj": "00000000000191", "nome": "FIE Teste", "score": 7.5}]
+
+    monkeypatch.setattr(ranker_prev, "rankear_fundos_previdenciarios", rankear)
+    resultado = recomendador_ativos.recomendar_por_portfolio(
+        {RK.PREV_VGBL: 50, RK.RF: 50},
+        perfil_risco=2,
+        n=3,
+    )
+
+    assert chamadas == [(2, 3)]
+    assert resultado["previdencia"][0]["score"] == pytest.approx(75.0)
+
+
+@pytest.mark.parametrize(
+    "categoria",
+    ["PREV_PGBL", "PREV_VGBL", "PREV_PGBL_RF", "PREV_VGBL_RF"],
+)
+def test_categorias_de_previdencia_tem_ranker(categoria) -> None:
+    assert recomendador_ativos._CLASSE[getattr(RK, categoria)] == "previdencia"
+
+
+def test_intersecao_previdenciaria_mantem_so_fundos_com_informe(
+    monkeypatch,
+) -> None:
+    pd = pytest.importorskip("pandas")
+    modulo = pytest.importorskip("fundos.intersecao_previdenciaria")
+    monkeypatch.setattr(
+        modulo,
+        "listar_fundos_ativos_previdenciario",
+        lambda: pd.DataFrame({"CNPJ_Classe": ["A", "B", "C"]}),
+    )
+    monkeypatch.setattr(
+        modulo,
+        "listar_cnpjs_distintos",
+        lambda: pd.DataFrame({"CNPJ_Classe": ["B", "C", "D"]}),
+    )
+
+    resultado = modulo.carregar_interseccao_previdenciaria_dataframe()
+
+    assert sorted(resultado["CNPJ_Classe"]) == ["B", "C"]
+
+
+def test_intersecao_previdenciaria_vazia_sem_cadastro(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    modulo = pytest.importorskip("fundos.intersecao_previdenciaria")
+    monkeypatch.setattr(
+        modulo,
+        "listar_fundos_ativos_previdenciario",
+        pd.DataFrame,
+    )
+    assert modulo.carregar_interseccao_previdenciaria_dataframe().empty

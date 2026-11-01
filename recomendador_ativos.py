@@ -41,6 +41,10 @@ _CLASSE: dict[str, str] = {
     RK.FUNDOS_DIVERSIF: "fundos",
     RK.FUNDOS_MULTI: "fundos",
     RK.ESTRUTURADOS: "estruturados",
+    RK.PREV_PGBL: "previdencia",
+    RK.PREV_VGBL: "previdencia",
+    RK.PREV_PGBL_RF: "previdencia",
+    RK.PREV_VGBL_RF: "previdencia",
 }
 
 _LABEL: dict[str, str] = {
@@ -51,11 +55,13 @@ _LABEL: dict[str, str] = {
     "rf": "RENDA FIXA",
     "fundos": "FUNDOS",
     "estruturados": "PRODUTOS ESTRUTURADOS (CRA/CRI/Debêntures)",
+    "previdencia": "PREVIDÊNCIA (fundos de PGBL/VGBL)",
 }
 
 MIN_PCT = 5
 _ORDEM = (
     "rf",
+    "previdencia",
     "fundos",
     "estruturados",
     "fiis",
@@ -71,6 +77,7 @@ _ESCALA_SCORE_ORIGEM = {
     "rf": 10.0,
     "fundos": 10.0,
     "estruturados": 10.0,
+    "previdencia": 10.0,
 }
 
 
@@ -175,6 +182,11 @@ def _executar_classe(
         funcao = _modulo(
             "produtos_estruturados.ranker"
         ).rankear_estruturados
+        ativos = funcao(perfil=perfil_risco, limite=n)
+    elif classe == "previdencia":
+        funcao = _modulo(
+            "fundos.ranker_previdenciarios"
+        ).rankear_fundos_previdenciarios
         ativos = funcao(perfil=perfil_risco, limite=n)
     else:
         raise ValueError(f"Classe de ativos desconhecida: {classe!r}.")

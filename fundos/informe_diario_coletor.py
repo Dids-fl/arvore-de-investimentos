@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -103,7 +104,12 @@ class InformeDiarioColetorCVM:
         self.db_path = Path(db_path or DB_PATH)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path, timeout=BUSY_TIMEOUT_MS / 1000)
+        # Singleton compartilhado entre threads (ver get_informe_coletor).
+        self.conn = sqlite3.connect(
+            self.db_path,
+            timeout=BUSY_TIMEOUT_MS / 1000,
+            check_same_thread=False,
+        )
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
@@ -677,12 +683,16 @@ class InformeDiarioColetorCVM:
 # ---------------------------------------------------------------------
 
 _instance = None
+_lock = threading.Lock()
 
 
 def get_informe_coletor():
     global _instance
     if _instance is None:
-        _instance = InformeDiarioColetorCVM()
+        # Evita que duas threads baixem e gravem o informe ao mesmo tempo.
+        with _lock:
+            if _instance is None:
+                _instance = InformeDiarioColetorCVM()
     return _instance
 
 

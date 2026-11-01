@@ -121,7 +121,8 @@ def coletar_tesouro_via_package_show():
         for _, row in df_atual.iterrows():
             tipo = row['Tipo Titulo']
             # Define o indexador
-            if 'IPCA' in tipo:
+            # Renda+ e Educa+ pagam IPCA + taxa real, mas o nome não diz "IPCA".
+            if 'IPCA' in tipo or 'Renda+' in tipo or 'Educa+' in tipo:
                 indexador = 'IPCA'
             elif 'Selic' in tipo:
                 indexador = 'SELIC'
