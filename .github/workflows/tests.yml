@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -35,13 +35,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Validate syntax
         run: |
           python -m compileall -q \
-            backtest core macroeconomia tributacao validacao tests \
-            app.py calculos.py config.py engine.py main.py mercado.py \
+            backtest core macroeconomia tributacao validacao tests utils \
+            app.py calculos.py cli.py config.py engine.py main.py mercado.py \
             portfolio.py recomendador.py recomendador_ativos.py
 
       - name: Check critical lint errors
@@ -57,10 +57,18 @@ jobs:
           python -m pytest -q tests -m "not slow" \
             --cov=backtest \
             --cov=tributacao \
+            --cov=core \
+            --cov=macroeconomia \
+            --cov=utils \
+            --cov=calculos \
+            --cov=engine \
+            --cov=mercado \
+            --cov=portfolio \
+            --cov=recomendador \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-report=html \
-            --cov-fail-under=65
+            --cov-fail-under=75
 
       - name: Run independent tax validation
         run: |

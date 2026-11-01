@@ -12,7 +12,7 @@ from tributacao import ContextoTributario, calcular_tributacao
 
 RAIZ_PROJETO = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = RAIZ_PROJETO / "tests" / "fixtures" / "tributacao"
-RELATORIOS_DIR = Path(__file__).resolve().parent
+RELATORIOS_DIR = Path(__file__).resolve().parent / "relatorios"
 
 VALIDADO_CALCULO = "VALIDADO_CALCULO"
 VALIDADO_GUARDRAIL = "VALIDADO_GUARDRAIL"

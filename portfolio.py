@@ -339,6 +339,18 @@ def _build_portfolio(
     p = _base_portfolio(nr)
     _adequar_ao_conhecimento(p, conhec)
 
+    if obj == 1:
+        # Objetivo "reserva": o dinheiro precisa estar disponível e sem
+        # oscilação relevante, independentemente da tolerância declarada.
+        _aviso(
+            avisos,
+            (
+                "ℹ️ Objetivo de reserva: a alocação ficou 100% em renda fixa "
+                "com liquidez diária, mesmo com tolerância a risco maior."
+            ),
+        )
+        return {RK.RF_LIQUIDEZ: 100}
+
     if obj == 3:
         p = _portfolio_aposentadoria(nr, conhec, ir_t)
     elif fv == 1:
@@ -387,6 +399,13 @@ def _build_portfolio(
     if desp == 3:
         mover_rv_para_rf(p, 10, avisos)
     if id_ == 3:
+        cripto = float(p.pop(RK.RV_CRIPTO, 0))
+        if cripto > 0:
+            p[RK.RF] = float(p.get(RK.RF, 0)) + cripto
+            _aviso(
+                avisos,
+                "⚠️ A exposição direta a cripto foi removida da carteira.",
+            )
         mover_rv_para_rf(p, 15, avisos)
 
     _garantir_liquidez(p, lp, avisos)

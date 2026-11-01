@@ -49,6 +49,10 @@ CACHE_SCHEMA_VERSION = 4
 
 SGS_SELIC = 432
 SGS_IPCA_12M = 13522
+# Séries opcionais (gratuitas, BCB/SGS). A ausência delas gera aviso, nunca
+# um número inventado.
+SGS_CDI_ANUAL = 4389     # CDI anualizado base 252, % a.a.
+SGS_POUPANCA = 195       # Rentabilidade da poupança (regra de 2012), % no mês
 
 _SGS_URL = (
     "https://api.bcb.gov.br/dados/serie/"
@@ -374,7 +378,28 @@ def _fetch_focus_selic() -> float | None:
 def _fetch_focus_selic_por_ano(
     quantidade_anos: int = 4,
 ) -> dict[int, float]:
-    """Obtém as medianas Focus para o ano atual e os anos seguintes."""
+    """Obtém as medianas Focus da SELIC para o ano atual e os seguintes."""
+    return _fetch_focus_por_ano("Selic", quantidade_anos)
+
+
+def _fetch_focus_ipca_por_ano(
+    quantidade_anos: int = 4,
+) -> dict[int, float]:
+    """Obtém as medianas Focus do IPCA para o ano atual e os seguintes."""
+    return _fetch_focus_por_ano("IPCA", quantidade_anos)
+
+
+def _fetch_poupanca_anual() -> tuple[float, str]:
+    """Rentabilidade mensal mais recente da poupança, anualizada."""
+    mensal, referencia = _fetch_sgs_value(SGS_POUPANCA)
+    return (1.0 + mensal) ** 12 - 1.0, referencia
+
+
+def _fetch_focus_por_ano(
+    indicador: str,
+    quantidade_anos: int = 4,
+) -> dict[int, float]:
+    """Obtém as medianas Focus de ``indicador`` por ano de referência."""
     if Expectativas is None:
         return {}
     if quantidade_anos <= 0:
@@ -399,7 +424,7 @@ def _fetch_focus_selic_por_ano(
             tabela = (
                 endpoint.query()
                 .filter(
-                    endpoint.Indicador == "Selic",
+                    endpoint.Indicador == indicador,
                     endpoint.DataReferencia == ano_referencia,
                     endpoint.Data >= data_inicial,
                     endpoint.baseCalculo == 0,
@@ -418,13 +443,14 @@ def _fetch_focus_selic_por_ano(
 
             mediana = _validar_taxa(
                 float(tabela.iloc[0]["Mediana"]) / 100.0,
-                f"Focus SELIC {ano_referencia}",
-                minimo=0.0,
+                f"Focus {indicador} {ano_referencia}",
+                minimo=-0.20,
                 maximo=1.0,
             )
             resultado[ano_referencia] = mediana
             logger.info(
-                "Focus SELIC carregado: %.2f%% para %d.",
+                "Focus %s carregado: %.2f%% para %d.",
+                indicador,
                 mediana * 100,
                 ano_referencia,
             )
@@ -437,7 +463,8 @@ def _fetch_focus_selic_por_ano(
             KeyError,
         ) as exc:
             logger.warning(
-                "Erro ao buscar Focus SELIC para %s: %s",
+                "Erro ao buscar Focus %s para %s: %s",
+                indicador,
                 ano_referencia,
                 exc,
             )
@@ -501,6 +528,70 @@ def _fetch_ibov_cagr_10a() -> float | None:
         return None
 
 
+def _extras_opcionais(results: Mapping[str, Any]) -> dict[str, Any]:
+    """Valida CDI, poupança e Focus IPCA sem tornar nenhum deles obrigatório."""
+    fontes: list[str] = []
+    avisos: list[str] = []
+    extras: dict[str, Any] = {
+        "cdi": None,
+        "cdi_ref": None,
+        "poupanca": None,
+        "poupanca_ref": None,
+        "focus_ipca_por_ano": {},
+    }
+
+    for chave, rotulo, serie in (
+        ("cdi", "CDI", SGS_CDI_ANUAL),
+        ("poupanca", "Poupança (anualizada)", SGS_POUPANCA),
+    ):
+        bruto = results.get(chave)
+        try:
+            if bruto is None:
+                raise ValueError("fonte sem valor válido")
+            valor, referencia = bruto
+            valor = _validar_taxa(valor, rotulo, minimo=0.0, maximo=1.0)
+            if not isinstance(referencia, str) or not referencia.strip():
+                raise ValueError("data de referência ausente")
+        except (TypeError, ValueError) as exc:
+            logger.warning("%s indisponível: %s", rotulo, exc)
+            avisos.append(
+                f"⚠️  {rotulo} indisponível; o comparativo correspondente "
+                "foi omitido."
+            )
+            continue
+        extras[chave] = valor
+        extras[f"{chave}_ref"] = referencia
+        fontes.append(
+            f"{rotulo} {valor * 100:.2f}% a.a. — BCB/SGS série {serie} "
+            f"(ref. {referencia})"
+        )
+
+    focus_ipca = results.get("focus_ipca_por_ano")
+    if isinstance(focus_ipca, Mapping):
+        for ano_bruto, taxa_bruta in focus_ipca.items():
+            try:
+                ano = int(ano_bruto)
+                extras["focus_ipca_por_ano"][ano] = _validar_taxa(
+                    taxa_bruta,
+                    f"Focus IPCA {ano}",
+                    minimo=-0.20,
+                    maximo=1.0,
+                )
+            except (TypeError, ValueError) as exc:
+                logger.warning(f"Ponto do Focus IPCA ignorado: {exc}")
+    extras["focus_ipca_por_ano"] = dict(
+        sorted(extras["focus_ipca_por_ano"].items())
+    )
+    for ano, taxa in extras["focus_ipca_por_ano"].items():
+        fontes.append(
+            f"Previsão IPCA Focus {ano}: {taxa * 100:.2f}% a.a. — BCB/Olinda"
+        )
+
+    extras["_fontes"] = fontes
+    extras["_avisos"] = avisos
+    return extras
+
+
 # ── API pública ───────────────────────────────────────────────────────────────
 
 def load_market_data(
@@ -542,7 +633,12 @@ def load_market_data(
         "ipca": lambda: _fetch_sgs_value(SGS_IPCA_12M),
         "focus_selic_por_ano": _fetch_focus_selic_por_ano,
         "ibov_cagr": _fetch_ibov_cagr_10a,
+        # Opcionais: enriquecem a análise, mas não bloqueiam o carregamento.
+        "cdi": lambda: _fetch_sgs_value(SGS_CDI_ANUAL),
+        "poupanca": _fetch_poupanca_anual,
+        "focus_ipca_por_ano": _fetch_focus_ipca_por_ano,
     }
+    opcionais = {"focus_selic_por_ano", "cdi", "poupanca", "focus_ipca_por_ano"}
 
     results: dict[str, Any] = {}
     failures: dict[str, str] = {}
@@ -557,7 +653,7 @@ def load_market_data(
             try:
                 value = future.result()
                 results[key] = value
-                if value is None and key != "focus_selic_por_ano":
+                if value is None and key not in opcionais:
                     failures[key] = "fonte sem valor válido"
             except (
                 requests.exceptions.RequestException,
@@ -570,7 +666,7 @@ def load_market_data(
             ) as exc:
                 logger.warning(f"Falha ao obter {key}: {exc}")
                 results[key] = None
-                if key != "focus_selic_por_ano":
+                if key not in opcionais:
                     failures[key] = str(exc)
 
     selic_raw = results.get("selic")
@@ -650,6 +746,8 @@ def load_market_data(
     focus_por_ano = dict(sorted(focus_por_ano.items()))
     focus_value = next(iter(focus_por_ano.values()), None)
 
+    extras = _extras_opcionais(results)
+
     if failures:
         cache_stale_aceitavel = (
             allow_stale_cache
@@ -709,6 +807,9 @@ def load_market_data(
             "⚠️  Focus SELIC indisponível; esse dado opcional não foi usado."
         )
 
+    fontes.extend(extras.pop("_fontes"))
+    avisos.extend(extras.pop("_avisos"))
+
     payload = {
         "_schema_version": CACHE_SCHEMA_VERSION,
         "selic": selic_value,
@@ -722,6 +823,7 @@ def load_market_data(
         "avisos": avisos,
         "fetched_at": _utc_now_iso(),
         "cache_status": "fresh",
+        **extras,
     }
 
     _save_market_cache(payload)
@@ -729,7 +831,9 @@ def load_market_data(
 
 
 __all__ = [
+    "SGS_CDI_ANUAL",
     "SGS_IPCA_12M",
+    "SGS_POUPANCA",
     "SGS_SELIC",
     "load_market_data",
 ]

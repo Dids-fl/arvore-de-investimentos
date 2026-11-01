@@ -2,7 +2,10 @@
 # validação das respostas, os dicionários de opções 
 # (curto→1, médio→2...) e o perfil de demonstração (d na primeira pergunta).
 
+import math
 import unicodedata
+
+from utils.formatacao import interpretar_numero
 
 # ── Normalização de texto ─────────────────────────────────────────────────────
 
@@ -43,11 +46,14 @@ def _n(q: str, mn: float = 0, mx: float | None = None,
         print("\n" + q)
         if opt:
             print("   (Enter para pular)")
-        e = input("   → ").strip().replace(",", ".")
+        e = input("   → ").strip()
         if opt and e == "":
             return None
         try:
-            v = float(e)
+            v = interpretar_numero(e)
+            if not math.isfinite(v):
+                print("   ❌ Número inválido.")
+                continue
             if v < mn:
                 print(f"   ❌ Mínimo: {mn}")
                 continue

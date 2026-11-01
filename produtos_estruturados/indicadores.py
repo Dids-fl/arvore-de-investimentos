@@ -22,6 +22,7 @@ import re
 from datetime import date, datetime, timezone
 
 from renda_fixa.coletor import coletar_indicadores
+from utils.exceptions import DadosIndisponiveisError
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def _obter_cdi_atual() -> float | None:
         _CDI_CACHE["cdi"] = cdi
         return cdi
     except (
+        DadosIndisponiveisError,
         RuntimeError,
         ValueError,
         TypeError,

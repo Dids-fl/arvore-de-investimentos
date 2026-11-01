@@ -66,9 +66,30 @@ def fontes_ranker_mockadas(
     )
 
 
-def test_coletar_indicadores_converte_percentual(monkeypatch) -> None:
-    resposta = RespostaFalsa(json_data=[{"valor": "14.25"}])
-    monkeypatch.setattr(coletor.requests, "get", lambda *a, **k: resposta)
+def test_coletar_indicadores_usa_cdi_oficial(monkeypatch) -> None:
+    respostas = {
+        "bcdata.sgs.432/": RespostaFalsa(json_data=[{"valor": "14.25"}]),
+        "bcdata.sgs.4389/": RespostaFalsa(json_data=[{"valor": "14.15"}]),
+    }
+
+    def falso_get(url, *a, **k):
+        return next(r for chave, r in respostas.items() if chave in url)
+
+    monkeypatch.setattr(coletor.requests, "get", falso_get)
+
+    selic, cdi = coletor.coletar_indicadores()
+
+    assert selic == pytest.approx(0.1425)
+    assert cdi == pytest.approx(0.1415)
+
+
+def test_coletar_indicadores_estima_cdi_se_serie_falhar(monkeypatch) -> None:
+    def falso_get(url, *a, **k):
+        if "bcdata.sgs.432/" in url:
+            return RespostaFalsa(json_data=[{"valor": "14.25"}])
+        return RespostaFalsa(erro=requests.RequestException("fora do ar"))
+
+    monkeypatch.setattr(coletor.requests, "get", falso_get)
 
     selic, cdi = coletor.coletar_indicadores()
 

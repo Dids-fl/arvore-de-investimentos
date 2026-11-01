@@ -10,6 +10,10 @@ tem nível de risco 2, mas exige conhecimento >= 2 e ticket alto — ver
 recomendador.py). Os filtros abaixo refletem isso.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 PRAZO_MIN_DIAS = 180        # evita ativos prestes a vencer/ilíquidos por natureza
 
 # Ajustado com base em dados reais de produção (jul/2026): debêntures
@@ -33,11 +37,6 @@ SCORE_LIQUIDEZ_MINIMO = {
     2: 1.0,
     3: 0.0,   # agressivo aceita ativos sem negociação recente
 }
-
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def motivo_inelegibilidade(ativo: dict, perfil: int) -> str | None:

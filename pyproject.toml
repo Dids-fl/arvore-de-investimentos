@@ -1,0 +1,22 @@
+[project]
+name = "arvore-de-investimentos"
+version = "0.1.0"
+description = "Recomendador educacional de investimentos com dados públicos e gratuitos."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+
+# As dependências continuam em requirements.txt (execução) e
+# requirements-dev.txt (testes e lint) para manter a instalação simples.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv", "venv", "build", "dist"]
+
+[tool.ruff.lint]
+# Regras escolhidas explicitamente: novas versões do ruff mudam o conjunto
+# padrão, e o CI não deve quebrar só por atualizar a ferramenta.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.coverage.run]
+omit = ["tests/*"]

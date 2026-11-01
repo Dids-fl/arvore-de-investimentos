@@ -8,12 +8,19 @@
 | IPCA em 12 meses | Banco Central do Brasil, SGS | Série 13522 | Retorno real e cenário |
 | Expectativas da Selic | Banco Central, Olinda/Focus | `ExpectativasMercadoAnuais` | Nós anuais da curva |
 | Ibovespa | Yahoo Finance via `yfinance` | `^BVSP` | CAGR histórico de 10 anos |
+| CDI anualizado (opcional) | Banco Central do Brasil, SGS | Série 4389 | Exibição e normalização de taxas em % do CDI |
+| Poupança (opcional) | Banco Central do Brasil, SGS | Série 195 | Comparativo da projeção com a poupança |
+| Expectativas do IPCA (opcional) | Banco Central, Olinda/Focus | `ExpectativasMercadoAnuais` | Exibição da inflação esperada |
 
 As séries do SGS são consultadas em janela recente. Registros vazios,
 malformados, não finitos ou com data futura são descartados.
 
 O Focus é obtido pela biblioteca `python-bcb`. A ausência do Focus é tolerada;
-Selic, IPCA e Ibovespa são obrigatórios na implementação atual.
+Selic, IPCA e Ibovespa são obrigatórios na implementação atual. CDI, poupança e
+Focus IPCA são opcionais: quando faltam, o campo fica `None`, um aviso é
+registrado e o comparativo correspondente é omitido.
+
+Todas as fontes macroeconômicas são públicas e gratuitas, sem cadastro.
 
 ## Fontes de ativos
 

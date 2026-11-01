@@ -1,6 +1,7 @@
 # tests/test_estruturados.py
 from datetime import datetime, timedelta, timezone
 
+import produtos_estruturados.indicadores as indicadores_estruturados
 from produtos_estruturados.filtros import elegivel
 from produtos_estruturados.indicadores import (
     _isento_ir,
@@ -81,7 +82,13 @@ def test_taxa_suspeita_descartada_no_moderado_mas_visivel_no_agressivo():
     assert elegivel(ativo, perfil=3)
 
 
-def test_montar_indicadores_gera_um_registro_por_ativo():
+def test_montar_indicadores_gera_um_registro_por_ativo(monkeypatch):
+    monkeypatch.setattr(indicadores_estruturados, "_CDI_CACHE", {})
+    monkeypatch.setattr(
+        indicadores_estruturados,
+        "coletar_indicadores",
+        lambda: (0.15, 0.149),
+    )
     cadastro = {
         "cras": [{"razaoSocial": "CRA Teste", "isin": "BRCRA01", "dataVencimento": "2027-01-01"}],
         "cris": [],
@@ -94,6 +101,17 @@ def test_montar_indicadores_gera_um_registro_por_ativo():
     assert len(ativos) == 2
     tipos = {a["tipo"] for a in ativos}
     assert tipos == {"CRA", "DEBENTURE"}
+
+
+def test_montar_indicadores_segue_sem_cdi_quando_bcb_falha(monkeypatch):
+    from utils.exceptions import DadosIndisponiveisError
+
+    def _falha():
+        raise DadosIndisponiveisError("SELIC (BCB/SGS)", "fora do ar")
+
+    monkeypatch.setattr(indicadores_estruturados, "_CDI_CACHE", {})
+    monkeypatch.setattr(indicadores_estruturados, "coletar_indicadores", _falha)
+    assert indicadores_estruturados._obter_cdi_atual() is None
 
 
 def test_score_penaliza_ativo_sem_negociacao_recente():

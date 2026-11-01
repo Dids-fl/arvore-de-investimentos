@@ -8,7 +8,9 @@ from datetime import date
 import pytest
 
 engine = pytest.importorskip("engine")
-RK = pytest.importorskip("core.categorias").RK
+_categorias = pytest.importorskip("core.categorias")
+RK = _categorias.RK
+_risco = _categorias._risco
 
 
 def test_taxas_por_risco_usam_curva_selic_focus_e_ibov(
@@ -366,3 +368,82 @@ def test_busca_de_fundos_recebe_taxa_cenario_do_engine(monkeypatch) -> None:
 
     assert recebidos["retorno_esperado_fundos"] == pytest.approx(0.11)
     assert recebidos["prazo_anos"] == pytest.approx(5)
+
+
+def test_comparativo_poupanca_usa_taxa_oficial_quando_disponivel(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    analise = engine.criar_analise(
+        respostas_padrao,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    comparativo = analise["comparativo_poupanca"]
+
+    assert comparativo is not None
+    assert len(comparativo) == len(analise["projecoes"])
+    primeira = comparativo[0]
+    assert primeira["valor_poupanca"] > respostas_padrao["cap_inicial"]
+    if primeira["vf_liquido_carteira"] is not None:
+        assert primeira["diferenca"] == pytest.approx(
+            primeira["vf_liquido_carteira"] - primeira["valor_poupanca"]
+        )
+
+
+def test_comparativo_poupanca_ausente_sem_taxa_inventada(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    mercado = {**mercado_valido, "poupanca": None}
+    analise = engine.criar_analise(
+        respostas_padrao,
+        mercado,
+        data_referencia=date(2026, 7, 29),
+    )
+    assert analise["comparativo_poupanca"] is None
+
+
+def test_objetivo_reserva_nao_recebe_renda_variavel(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "objetivo": "reserva",
+        "risco": "alto",
+        "conhecimento": "experiente",
+        "emocional": "compraria mais",
+        "liquidez": "não",
+        "modo_meta": "rendendo",
+    }
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    portfolio = analise["resultado"]["portfolio"]
+    assert all(_risco(chave) == 1 for chave in portfolio)
+
+
+def test_despesas_zero_contraditorias_nao_liberam_risco(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "reserva_emerg": "não tenho",
+        "despesas": "altas",
+        "despesas_essenciais_mensais": 0,
+        "reserva_atual": 0,
+        "risco": "alto",
+        "modo_meta": "rendendo",
+    }
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    resultado = analise["resultado"]
+    assert resultado["portfolio"] == {RK.RF_RESERVA: 100.0}
+    assert any("R$ 0,00" in aviso for aviso in resultado["avisos"])
