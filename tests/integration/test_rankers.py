@@ -177,3 +177,32 @@ def test_intersecao_previdenciaria_vazia_sem_cadastro(monkeypatch) -> None:
         pd.DataFrame,
     )
     assert modulo.carregar_interseccao_previdenciaria_dataframe().empty
+
+
+def test_importacoes_paralelas_de_rankers_sao_serializadas(monkeypatch) -> None:
+    """Fundos e previdência em paralelo não podem importar ao mesmo tempo."""
+    import threading
+    import time
+
+    ativos = {"n": 0, "max": 0}
+    trava = threading.Lock()
+
+    def importar(nome):
+        with trava:
+            ativos["n"] += 1
+            ativos["max"] = max(ativos["max"], ativos["n"])
+        time.sleep(0.05)
+        with trava:
+            ativos["n"] -= 1
+
+    monkeypatch.setattr(recomendador_ativos.importlib, "import_module", importar)
+    threads = [
+        threading.Thread(target=recomendador_ativos._modulo, args=(nome,))
+        for nome in ("fundos.ranker_fundos", "fundos.ranker_previdenciarios")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert ativos["max"] == 1

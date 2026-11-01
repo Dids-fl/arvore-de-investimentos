@@ -329,7 +329,10 @@ class InformeDiarioColetorCVM:
             try:
                 self.atualizar_informe(ano=ano, mes=mes, force=False)
                 meses_carregados += 1
-            except Exception:
+            except Exception as exc:
+                if _mes_ainda_nao_publicado(exc):
+                    logger.info(f"Informe de {ano}-{mes:02d} ainda não publicado pela CVM.")
+                    continue
                 logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
         logger.info(f"Carregados {meses_carregados} meses de Informe Diário.")
@@ -409,7 +412,10 @@ class InformeDiarioColetorCVM:
             try:
                 self.atualizar_informe(ano=ano, mes=mes, force=force)
                 carregados += 1
-            except Exception:
+            except Exception as exc:
+                if _mes_ainda_nao_publicado(exc):
+                    logger.info(f"Informe de {ano}-{mes:02d} ainda não publicado pela CVM.")
+                    continue
                 com_erro += 1
                 logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
@@ -676,6 +682,12 @@ class InformeDiarioColetorCVM:
                 self.conn.close()
         except Exception:
             logger.debug("Erro ao fechar conexão.", exc_info=True)
+
+
+def _mes_ainda_nao_publicado(exc: BaseException) -> bool:
+    """O arquivo do mês corrente só aparece na CVM após os primeiros dias úteis."""
+    resposta = getattr(exc, "response", None)
+    return getattr(resposta, "status_code", None) == 404
 
 
 # ---------------------------------------------------------------------

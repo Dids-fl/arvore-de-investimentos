@@ -7,6 +7,11 @@ Cobre: market cap, volume, retorno histórico, preço atual.
 """
 
 
+import json
+import threading
+import time
+from pathlib import Path
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -14,17 +19,73 @@ from urllib3.util.retry import Retry
 BASE_URL = "https://api.coingecko.com/api/v3"
 
 _http = requests.Session()
-_retry = Retry(total=2, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+# A API gratuita responde 429 com Retry-After de até ~60 s. Esperar por isso
+# trava a interface; uma nova tentativa curta basta e o resto vem do cache.
+_retry = Retry(
+    total=1,
+    backoff_factor=1.0,
+    status_forcelist=[429, 500, 502, 503, 504],
+    respect_retry_after_header=False,
+)
 _http.mount("https://", HTTPAdapter(max_retries=_retry))
+
+# Dados opcionais (volatilidade): sem nova tentativa, para não gastar a cota.
+_http_opcional = requests.Session()
+_http_opcional.mount("https://", HTTPAdapter(max_retries=Retry(total=0)))
+
+_CACHE_DIR = Path.home() / ".cache" / "arvore_investimentos"
+_TTL_MERCADO_S = 10 * 60
+_TTL_CATEGORIA_S = 7 * 24 * 60 * 60
+_cache_memoria: dict[str, tuple[float, object]] = {}
+_cache_lock = threading.Lock()
+
+
+def _ler_cache(chave: str, ttl: float) -> object | None:
+    with _cache_lock:
+        item = _cache_memoria.get(chave)
+    if item and time.time() - item[0] <= ttl:
+        return item[1]
+    arquivo = _CACHE_DIR / f"coingecko_{chave}.json"
+    try:
+        salvo = json.loads(arquivo.read_text(encoding="utf-8"))
+        if time.time() - float(salvo["ts"]) <= ttl:
+            with _cache_lock:
+                _cache_memoria[chave] = (float(salvo["ts"]), salvo["dados"])
+            return salvo["dados"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _gravar_cache(chave: str, dados: object) -> None:
+    agora = time.time()
+    with _cache_lock:
+        _cache_memoria[chave] = (agora, dados)
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        destino = _CACHE_DIR / f"coingecko_{chave}.json"
+        temporario = destino.with_suffix(".tmp")
+        temporario.write_text(json.dumps({"ts": agora, "dados": dados}), encoding="utf-8")
+        temporario.replace(destino)
+    except OSError:
+        pass
 
 _HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
 
 class CoinGeckoClient:
 
-    def _get(self, endpoint: str, params: dict | None = None, timeout=(4, 12)) -> dict | list:
+    def _get(
+        self,
+        endpoint: str,
+        params: dict | None = None,
+        timeout=(4, 12),
+        *,
+        opcional: bool = False,
+    ) -> dict | list:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"
-        r = _http.get(url, params=params, headers=_HEADERS, timeout=timeout)
+        sessao = _http_opcional if opcional else _http
+        r = sessao.get(url, params=params, headers=_HEADERS, timeout=timeout)
         r.raise_for_status()
         return r.json()
 
@@ -37,7 +98,11 @@ class CoinGeckoClient:
             for c in top20:
                 print(f"{c['name']}: R${c['current_price']:,.2f}")
         """
-        return self._get(
+        chave = f"mercado_{vs_currency}_{top_n}"
+        em_cache = _ler_cache(chave, _TTL_MERCADO_S)
+        if isinstance(em_cache, list):
+            return em_cache
+        dados = self._get(
             "coins/markets",
             params={
                 "vs_currency":             vs_currency,
@@ -45,9 +110,38 @@ class CoinGeckoClient:
                 "per_page":                top_n,
                 "page":                    1,
                 "sparkline":               "false",
-                "price_change_percentage": "24h,7d,30d",
+                "price_change_percentage": "24h,7d,30d,1y",
             },
         )
+        if isinstance(dados, list) and dados:
+            _gravar_cache(chave, dados)
+        return dados
+
+    def get_ids_categoria(self, categoria: str, vs_currency: str = "brl") -> set[str]:
+        """IDs das moedas de uma categoria da CoinGecko (ex.: "stablecoins").
+
+        Uma chamada por categoria; usado para excluir do ranking ativos que
+        não são investimento em cripto propriamente dito.
+        """
+        chave = f"categoria_{categoria}"
+        em_cache = _ler_cache(chave, _TTL_CATEGORIA_S)
+        if isinstance(em_cache, list):
+            return set(em_cache)
+        dados = self._get(
+            "coins/markets",
+            params={
+                "vs_currency": vs_currency,
+                "category": categoria,
+                "order": "market_cap_desc",
+                "per_page": 250,
+                "page": 1,
+                "sparkline": "false",
+            },
+        )
+        ids = {item["id"] for item in dados if isinstance(item, dict) and "id" in item}
+        if ids:
+            _gravar_cache(chave, sorted(ids))
+        return ids
 
     def get_markets(self, ids: list[str], vs_currency: str = "brl") -> list[dict]:
         """
@@ -97,6 +191,7 @@ class CoinGeckoClient:
         return self._get(
             f"coins/{coin_id}/market_chart",
             params={"vs_currency": vs_currency, "days": days, "interval": "daily"},
+            opcional=True,
         )
 
     def get_retorno_e_volatilidade(self, coin_id: str) -> dict:

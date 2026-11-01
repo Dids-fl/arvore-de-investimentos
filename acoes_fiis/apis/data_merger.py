@@ -44,6 +44,7 @@ def _get_yfinance_complement(ticker: str) -> dict:
         tk = yf.Ticker(ticker_yf)
         info = tk.info
         return {
+            "nome": info.get("longName") or info.get("shortName"),
             "market_cap": info.get("marketCap"),
             "preco": info.get("regularMarketPrice"),
             "pl": info.get("priceEarnings"),
@@ -106,6 +107,8 @@ def merge_ticker_data(ticker: str) -> dict:
             resultado['pl'] = yf_data['pl']
         if yf_data.get('pvp') and (not resultado.get('pvp') or resultado.get('pvp') == 0):
             resultado['pvp'] = yf_data['pvp']
+        if yf_data.get('nome'):
+            resultado['nome'] = yf_data['nome']
         # Dividendos consistentes
         resultado['dividendos_consistentes'] = yf_data.get('dividendos_consistentes', False)
 

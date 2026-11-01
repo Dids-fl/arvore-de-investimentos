@@ -7,11 +7,13 @@ Complementos: Yahoo Finance (via data_merger) para market cap, P/L, P/VP, divide
 
 import math
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
 from utils.logging_config import get_logger
 
+from .apis.brapi_tickers import listar_tickers, nome_do_ativo
 from .apis.data_merger import merge_ticker_data
 from .apis.fundamentus_scraper import get_all_bulk, get_fiis_bulk
 from .apis.status_invest import StatusInvestClient
@@ -45,6 +47,9 @@ except ImportError:
     LIMITE_MKTCAP = {1: 2_000_000_000, 2: 1_000_000_000, 3: 500_000_000}
 
 logger = get_logger(__name__)
+
+# Paralelismo moderado: o Yahoo limita requisições por IP.
+_WORKERS_YAHOO = 6
 
 # ── Normalização ──────────────────────────────────────────────────────────────
 
@@ -328,13 +333,26 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
     if not liquidos:
         liquidos = universo
 
-    # Enriquecimento com Yahoo Finance
+    # Enriquecimento com Yahoo Finance, em paralelo (uma consulta por ticker)
+    def _consultar(ticker):
+        try:
+            return merge_ticker_data(ticker)
+        except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as e:
+            logger.debug(f"Erro ao enriquecer {ticker}: {e}")
+            return None
+
+    tickers = [ind.get('ticker') for ind in liquidos if ind.get('ticker')]
+    with ThreadPoolExecutor(max_workers=_WORKERS_YAHOO) as executor:
+        consultas = dict(zip(tickers, executor.map(_consultar, tickers)))
+
     enriquecidos = []
     for ind in liquidos:
         ticker = ind.get('ticker')
-        if ticker:
+        dados_yf = consultas.get(ticker)
+        if dados_yf is not None:
             try:
-                dados_yf = merge_ticker_data(ticker)
+                if dados_yf.get('nome') and not ind.get('nome'):
+                    ind['nome'] = dados_yf['nome']
                 ind['mktcap_proxy'] = dados_yf.get('market_cap', 0)
                 ind['dividendos_consistentes'] = dados_yf.get('dividendos_consistentes', False)
                 if not ind.get('pl'):
@@ -344,8 +362,8 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
                 if not ind.get('divida_patrimonio'):
                     ind['divida_patrimonio'] = dados_yf.get('divida_patrimonio', 0)
                 if not ind.get('crescimento_receita'):
-                    ind['crescimento_receita'] = dados_yf.get('receita_cagr_5a', 0) / 100.0
-            except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as e:
+                    ind['crescimento_receita'] = (dados_yf.get('receita_cagr_5a') or 0) / 100.0
+            except (ValueError, TypeError, KeyError, AttributeError) as e:
                 logger.debug(f"Erro ao enriquecer {ticker}: {e}")
         enriquecidos.append(ind)
 
@@ -493,4 +511,14 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
             "pvp":     pvp,
         })
 
-    return sorted(resultados, key=lambda x: -x["score"])[:n]
+    melhores = sorted(resultados, key=lambda x: -x["score"])[:n]
+    if any(not item.get("nome") for item in melhores):
+        try:
+            ativos = listar_tickers()
+        except Exception as exc:  # noqa: BLE001 — nome é só cosmético
+            logger.debug("Lista de nomes da BRAPI indisponível: %s", exc)
+            ativos = {}
+        for item in melhores:
+            if not item.get("nome"):
+                item["nome"] = nome_do_ativo(item.get("ticker", ""), ativos)
+    return melhores

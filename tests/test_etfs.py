@@ -304,3 +304,55 @@ def test_top_etfs_retorna_quantidade_e_contrato(
 
 def test_top_etfs_respeita_n_zero(ranking_mock):
     assert screener.top_etfs(2, n=0) == []
+
+@pytest.mark.parametrize(
+    ("nome", "classe"),
+    [
+        ("INVESTO TEVA TESOURO SELIC ETF CLASSE DE ÍNDICE", "renda_fixa"),
+        ("INVESTO ETF MARKETVECTOR BRAZIL TREASURY 760 DAY", "renda_fixa"),
+        ("IT NOW IMA-B5 P2 FUNDO DE ÍNDICE", "renda_fixa"),
+        ("BB ETF ÍNDICE FUTURO DE BOI GORDO B3", "commodity"),
+        ("HASHDEX NASDAQ BITCOIN REFERENCE PRICE FUNDO DE ÍNDICE", "cripto"),
+        ("ISHARES BOVA FUNDO DE ÍNDICE", "acoes"),
+        ("BTG PACTUAL TEVA AÇÕES COMMODITIES BRASIL FUNDO DE ÍNDICE", "acoes"),
+        ("Btg Pactual Teva Itbr Ipca 95-5 Fundo De Indice", "renda_fixa"),
+        ("BB ETF ÍNDICE DAP5 B3 FUNDO DE ÍNDICE", "renda_fixa"),
+        (None, "acoes"),
+    ],
+)
+def test_classe_etf(nome, classe):
+    from etfs.screener_etf import classe_etf
+
+    assert classe_etf(nome) == classe
+
+
+@pytest.mark.parametrize(
+    ("volatilidade", "classe"),
+    [(0.6, "renda_fixa"), (5.5, "renda_fixa"), (16.0, "acoes"), (None, "acoes")],
+)
+def test_classe_etf_usa_volatilidade_quando_nome_e_generico(volatilidade, classe):
+    from etfs.screener_etf import classe_etf
+
+    assert classe_etf("BL03 Fundo Invest Financeiro", volatilidade) == classe
+
+
+def test_top_etfs_de_acoes_ignora_renda_fixa_e_ativos_sem_preco(monkeypatch):
+    universo = {
+        "BOVA11": {"nome": "ISHARES IBOVESPA", "volatilidade": 18.0},
+        "LFTS11": {"nome": "TESOURO SELIC ETF", "volatilidade": 0.5},
+        "XXXX11": {"nome": "BL03 Fundo Invest Financeiro", "volatilidade": 2.0},
+        "FNAM11": {"nome": "Fundo de Investimento Amazônia", "volatilidade": 30.0, "preco": 0.0},
+    }
+    monkeypatch.setattr(screener, "get_all_etf_tickers", lambda: list(universo))
+
+    def fake_get_etf_data(ticker):
+        dados = dados_etf_ficticios(10.0, 15.0, 0.5, None, 1_000_000)
+        dados.update(universo[ticker])
+        return dados
+
+    monkeypatch.setattr(screener, "get_etf_data", fake_get_etf_data)
+
+    resultado = screener.top_etfs(2, n=5)
+
+    assert [item["ticker"] for item in resultado] == ["BOVA11"]
+    assert resultado[0]["classe"] == "acoes"

@@ -135,3 +135,37 @@ CDB, LCI, LCA, LCD e COE não possuem base pública e gratuita com ofertas e
 taxas atualizadas: cada emissor e cada plataforma publica as suas. Por isso
 não há ranker automático para eles; o projeto prefere não exibir um ativo a
 inventar uma taxa.
+
+## Comportamento observado com dados reais (novembro de 2026)
+
+- **Banco Central, Tesouro, CVM, CoinGecko, Fundamentus e Yahoo** responderam
+  normalmente.
+- **Status Invest e os sistemas da B3** (balcão, CRA/CRI/debêntures) usam
+  proteção do Cloudflare que bloqueia IPs de servidores em nuvem. Em conexões
+  residenciais costumam funcionar. Quando bloqueados, o app mostra a classe
+  como indisponível em vez de inventar dados; a coleta de negociação de
+  balcão para após alguns dias seguidos de falha.
+- **CoinGecko (plano gratuito)** limita requisições por minuto. A listagem de
+  mercado fica em cache por 10 minutos e as categorias usadas para excluir
+  stablecoins, tokens embrulhados e de staking ficam em cache por 7 dias, em
+  `~/.cache/arvore_investimentos/`.
+- **Yahoo Finance** também limita consultas em sequência. O enriquecimento das
+  ações é feito em paralelo moderado (6 consultas simultâneas).
+- **CVM:** a primeira execução baixa cerca de 3 anos de informes diários
+  (vários GB em `fundos/data/`) e leva alguns minutos; as seguintes usam o
+  banco local. O arquivo do mês corrente só é publicado após os primeiros dias
+  úteis, e a ausência dele não é tratada como erro.
+
+## Filtros de investibilidade dos fundos
+
+O ranking de fundos comuns exclui fundos para investidor profissional ou
+qualificado, fundos fechados e fundos "master". No ranking de previdência, o
+filtro de público-alvo não se aplica: o cotista de um FIE é a seguradora, e a
+pessoa física compra o plano PGBL/VGBL.
+
+## ETFs
+
+A fatia "Fundos de Ações/ETF" da carteira só recebe ETFs de ações. A
+classificação usa o nome oficial do fundo (Tesouro, IPCA, DAP, boi gordo,
+ouro, bitcoin etc.) e, quando o nome é genérico, a volatilidade anual
+observada: abaixo de 8% o ETF é tratado como renda fixa.

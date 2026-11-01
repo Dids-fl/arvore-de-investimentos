@@ -478,3 +478,49 @@ def test_mostrar_recomendacoes(mock_coletor):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "not slow", "--tb=short"])
+
+
+@pytest.mark.parametrize(
+    ("publico", "mantido"),
+    [
+        ("Público Geral", True),
+        (None, True),
+        ("Profissional", False),
+        ("Qualificado", False),
+        ("Profissionais", False),
+        ("QUALIFICADOS", False),
+        ("Exclusivo", False),
+    ],
+)
+def test_filtro_publico_alvo_usa_valores_reais_da_cvm(publico, mantido):
+    from fundos.filtros import FiltroFundos
+
+    df = pd.DataFrame({"CNPJ_Classe": ["1"], "Publico_Alvo": [publico]})
+    resultado = FiltroFundos().filtrar_publico_alvo(df)
+    assert (len(resultado) == 1) is mantido
+
+
+def test_previdencia_aceita_fie_de_publico_profissional():
+    import fundos.ranker_previdenciarios as prev
+
+    ranker = prev.RankerPrevidenciarios(perfil=2)
+    assert ranker.filtro_kwargs["permitir_restrito"] is True
+
+
+def test_filtro_remove_fundos_fechados_e_master():
+    from fundos.filtros import FiltroFundos
+
+    df = pd.DataFrame(
+        {
+            "CNPJ_Classe": ["1", "2", "3", "4"],
+            "Denominacao_Social": [
+                "FUNDO ABERTO RF",
+                "FUNDO FECHADO RF",
+                "XP MASTER PREVIDENCIA FIF",
+                "MASTERCLASS RF",
+            ],
+            "Forma_Condominio": ["Aberto", "Fechado", "Aberto", None],
+        }
+    )
+    resultado = FiltroFundos().filtrar_nao_investiveis(df)
+    assert list(resultado["CNPJ_Classe"]) == ["1", "4"]

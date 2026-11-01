@@ -120,3 +120,27 @@ def test_score_penaliza_ativo_sem_negociacao_recente():
     score_com, _ = _calcular_score(com_negociacao, perfil=2)
     score_sem, _ = _calcular_score(sem_negociacao, perfil=2)
     assert score_sem < score_com
+
+def test_dias_uteis_pula_fim_de_semana():
+    from datetime import date
+
+    from produtos_estruturados.negociacao_coletor import _dias_uteis
+
+    dias = list(_dias_uteis(7, referencia=date(2026, 11, 2)))  # segunda-feira
+    assert all(dia.weekday() < 5 for dia in dias)
+    assert len(dias) == 5
+
+
+def test_negociacao_balcao_para_apos_falhas_seguidas(monkeypatch):
+    import produtos_estruturados.negociacao_coletor as coletor
+
+    chamadas = []
+
+    class B3Bloqueada:
+        def negociacao_balcao(self, dia):
+            chamadas.append(dia)
+            raise ValueError("Invalid base64-encoded string")
+
+    monkeypatch.setattr(coletor, "B3", B3Bloqueada)
+    assert coletor.coletar_negociacao_balcao(dias=60) == []
+    assert len(chamadas) == coletor.MAX_FALHAS_SEGUIDAS

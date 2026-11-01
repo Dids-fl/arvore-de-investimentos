@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import threading
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -135,9 +136,19 @@ def _percentual(chave: str, valor: object) -> float:
     return numero
 
 
+_IMPORT_LOCK = threading.Lock()
+
+
 def _modulo(nome: str):
-    """Importa uma integração somente quando sua classe for solicitada."""
-    return importlib.import_module(nome)
+    """Importa uma integração somente quando sua classe for solicitada.
+
+    As classes são buscadas em threads paralelas, e algumas compartilham
+    módulos (previdência importa o ranker de fundos). Importar o mesmo
+    pacote em duas threads ao mesmo tempo pode causar deadlock de importação,
+    então as importações são serializadas.
+    """
+    with _IMPORT_LOCK:
+        return importlib.import_module(nome)
 
 
 def _executar_classe(

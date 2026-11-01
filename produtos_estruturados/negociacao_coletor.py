@@ -36,7 +36,14 @@ def _dias_uteis(dias: int, referencia: date | None = None,):
     404 para dias sem pregão e o coletor apenas ignora)."""
     referencia = referencia or datetime.now(timezone.utc).date()
     for i in range(1, dias + 1):
-        yield referencia - timedelta(days=i)
+        dia = referencia - timedelta(days=i)
+        if dia.weekday() < 5:  # sábado e domingo nunca têm pregão
+            yield dia
+
+
+# Feriados encadeados não passam de ~4 dias úteis seguidos sem pregão; mais
+# falhas consecutivas que isso indicam fonte indisponível ou bloqueada.
+MAX_FALHAS_SEGUIDAS = 6
 
 
 def coletar_negociacao_balcao(dias: int = 20,referencia: date | None = None,):
@@ -47,6 +54,7 @@ def coletar_negociacao_balcao(dias: int = 20,referencia: date | None = None,):
     """
     b3 = B3()
     negociacoes = []
+    falhas_seguidas = 0
 
     for dia in _dias_uteis(dias, referencia):
         try:
@@ -54,12 +62,19 @@ def coletar_negociacao_balcao(dias: int = 20,referencia: date | None = None,):
                 instrumento = (neg.instrumento or "").strip().upper()
                 if instrumento in INSTRUMENTOS_ALVO:
                     negociacoes.append(neg)
+            falhas_seguidas = 0
         except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "Falha ao coletar negociação balcão de %s: %s",
-                dia,
-                e,
-            )
+            falhas_seguidas += 1
+            logger.debug("Falha ao coletar negociação balcão de %s: %s", dia, e)
+            if falhas_seguidas >= MAX_FALHAS_SEGUIDAS:
+                logger.warning(
+                    "Negociação balcão da B3 indisponível (%d dias úteis seguidos "
+                    "com falha; a B3 pode estar bloqueando o acesso). "
+                    "Último erro: %s",
+                    falhas_seguidas,
+                    e,
+                )
+                break
             continue
 
     logger.info(
