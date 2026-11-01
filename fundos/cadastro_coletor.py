@@ -36,15 +36,13 @@ class ColetorFundosCVM:
         atualizar=True,
     ):
         self.db_path = Path(db_path or DB_PATH)
-
-        # DEBUG
-        print("=" * 100)
-        print(f"Banco SQLite: {self.db_path.resolve()}")
-        print("=" * 100)
+        logger.debug("Banco SQLite do cadastro: %s", self.db_path.resolve())
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path)
+        # O coletor é um singleton compartilhado pelas threads que buscam
+        # ativos (fundos e previdência em paralelo, novas buscas no app).
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
         # Melhor desempenho do SQLite
@@ -343,7 +341,7 @@ class ColetorFundosCVM:
             df_nao_previdenciario = df
 
         with self.conn:
-            print(df_nao_previdenciario.columns.tolist())
+            logger.debug("Colunas do cadastro: %s", df_nao_previdenciario.columns.tolist())
             self.conn.execute("DELETE FROM cad_fi")
             df_nao_previdenciario.to_sql(
                 "cad_fi",

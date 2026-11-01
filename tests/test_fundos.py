@@ -372,6 +372,43 @@ class TestRanker:
         assert len(resultado) <= 2
 
 
+def test_ranker_previdenciario_pipeline_completo(mock_coletor):
+    """O ranker de previdência roda o mesmo pipeline dos fundos comuns."""
+    import fundos.ranker_previdenciarios as prev
+    from fundos.ranker_fundos import listar_historicos
+
+    df_cad = pd.DataFrame({
+        "CNPJ_Classe": ["00.000.000/0001-00", "00.000.000/0001-01"],
+        "Denominacao_Social": ["FIE Prev RF", "FIE Prev Multi"],
+        "Situacao": ["EM FUNCIONAMENTO NORMAL"] * 2,
+        "Classificacao_Anbima": ["Previdência Renda Fixa", "Previdência Multimercado"],
+        "Patrimonio_Liquido": [500000000, 200000000],
+    })
+    df_hist = listar_historicos(None)
+    df_metricas = pd.DataFrame({"CNPJ_Classe": df_cad["CNPJ_Classe"]})
+
+    with patch.object(prev, "carregar_interseccao_previdenciaria_dataframe", return_value=df_cad), \
+         patch.object(prev, "listar_metricas_agregadas", return_value=df_metricas), \
+         patch.object(prev, "filtrar_para_ranking", return_value=df_cad), \
+         patch.object(prev, "listar_historicos", return_value=df_hist):
+        resultado = prev.rankear_fundos_previdenciarios(
+            perfil=2, limite=5, incluir_sharpe_sortino=False
+        )
+
+    assert [f["cnpj"] for f in resultado] and len(resultado) == 2
+    assert resultado[0]["score"] >= resultado[1]["score"]
+    assert all(0 <= f["score"] <= 10 for f in resultado)
+
+
+def test_ranker_previdenciario_sem_dados_retorna_vazio():
+    import fundos.ranker_previdenciarios as prev
+
+    with patch.object(
+        prev, "carregar_interseccao_previdenciaria_dataframe", return_value=pd.DataFrame()
+    ):
+        assert prev.rankear_fundos_previdenciarios(perfil=1) == []
+
+
 # ---------------------------------------------------------------------
 # Testes de Integração (marcados como slow)
 # ---------------------------------------------------------------------
@@ -441,3 +478,49 @@ def test_mostrar_recomendacoes(mock_coletor):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "not slow", "--tb=short"])
+
+
+@pytest.mark.parametrize(
+    ("publico", "mantido"),
+    [
+        ("Público Geral", True),
+        (None, True),
+        ("Profissional", False),
+        ("Qualificado", False),
+        ("Profissionais", False),
+        ("QUALIFICADOS", False),
+        ("Exclusivo", False),
+    ],
+)
+def test_filtro_publico_alvo_usa_valores_reais_da_cvm(publico, mantido):
+    from fundos.filtros import FiltroFundos
+
+    df = pd.DataFrame({"CNPJ_Classe": ["1"], "Publico_Alvo": [publico]})
+    resultado = FiltroFundos().filtrar_publico_alvo(df)
+    assert (len(resultado) == 1) is mantido
+
+
+def test_previdencia_aceita_fie_de_publico_profissional():
+    import fundos.ranker_previdenciarios as prev
+
+    ranker = prev.RankerPrevidenciarios(perfil=2)
+    assert ranker.filtro_kwargs["permitir_restrito"] is True
+
+
+def test_filtro_remove_fundos_fechados_e_master():
+    from fundos.filtros import FiltroFundos
+
+    df = pd.DataFrame(
+        {
+            "CNPJ_Classe": ["1", "2", "3", "4"],
+            "Denominacao_Social": [
+                "FUNDO ABERTO RF",
+                "FUNDO FECHADO RF",
+                "XP MASTER PREVIDENCIA FIF",
+                "MASTERCLASS RF",
+            ],
+            "Forma_Condominio": ["Aberto", "Fechado", "Aberto", None],
+        }
+    )
+    resultado = FiltroFundos().filtrar_nao_investiveis(df)
+    assert list(resultado["CNPJ_Classe"]) == ["1", "4"]

@@ -44,10 +44,10 @@ def _pascoa(ano: int) -> date:
     g = (b - f + 1) // 3
     h = (19 * a + b - d - g + 15) % 30
     i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    mes = (h + l - 7 * m + 114) // 31
-    dia = (h + l - 7 * m + 114) % 31 + 1
+    dia_semana = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * dia_semana) // 451
+    mes = (h + dia_semana - 7 * m + 114) // 31
+    dia = (h + dia_semana - 7 * m + 114) % 31 + 1
     return date(ano, mes, dia)
 
 

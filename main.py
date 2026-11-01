@@ -50,6 +50,7 @@ from engine import (
 from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
+from utils.formatacao import formatar_brl, interpretar_numero
 
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
@@ -104,12 +105,7 @@ def _numero_opcional(mensagem: str) -> float | None:
         if not valor:
             return None
         try:
-            normalizado = (
-                valor.replace(".", "").replace(",", ".")
-                if "," in valor
-                else valor
-            )
-            numero = float(normalizado)
+            numero = interpretar_numero(valor)
         except ValueError:
             print("   Informe um número válido ou pressione Enter.")
             continue
@@ -120,9 +116,7 @@ def _numero_opcional(mensagem: str) -> float | None:
 
 
 def _formatar_moeda(valor: object, casas: int = 0) -> str:
-    if not isinstance(valor, (int, float)):
-        return "indeterminado"
-    return f"R$ {valor:,.{casas}f}"
+    return formatar_brl(valor, casas)  # type: ignore[arg-type]
 
 
 def _coletar_respostas(primeira: object) -> dict:
@@ -199,21 +193,17 @@ def _coletar_respostas(primeira: object) -> dict:
         "   (nenhuma | baixas | altas)",
         _DD,
     )
-    despesas_essenciais_mensais = (
-        _n(
-            "   9a. Qual é o valor mensal das despesas essenciais? (R$)\n"
-            "       Inclua moradia, alimentação, saúde, transporte e contas.",
-            mn=0,
-        )
-        or 0.0
+    despesas_essenciais_mensais = _n(
+        "   9a. Qual é o valor mensal das despesas essenciais? (R$)\n"
+        "       Inclua moradia, alimentação, saúde, transporte e contas.",
+        mn=0,
+        opt=True,
     )
-    reserva_atual = (
-        _n(
-            "   9b. Quanto já possui separado para emergências? (R$)\n"
-            "       Considere somente valores de liquidez imediata.",
-            mn=0,
-        )
-        or 0.0
+    reserva_atual = _n(
+        "   9b. Quanto já possui separado para emergências? (R$)\n"
+        "       Considere somente valores de liquidez imediata.",
+        mn=0,
+        opt=True,
     )
     faixa_valor = _p(
         "10. Quanto possui para investir agora?\n"
@@ -493,17 +483,17 @@ def _imprimir_recomendacao(analise: dict) -> None:
     if isinstance(reserva, dict):
         print(
             "   Reserva-alvo: "
-            f"R$ {reserva['valor_alvo']:,.2f} | "
-            f"Atual: R$ {reserva['valor_atual']:,.2f} | "
-            f"Déficit: R$ {reserva['deficit']:,.2f}"
+            f"{formatar_brl(reserva['valor_alvo'])} | "
+            f"Atual: {formatar_brl(reserva['valor_atual'])} | "
+            f"Déficit: {formatar_brl(reserva['deficit'])}"
         )
 
 
 def _imprimir_projecoes(analise: dict) -> None:
     respostas = analise["respostas"]
     print("\n📅 Projeção de crescimento:")
-    print(f"   Capital inicial: R$ {respostas['cap_inicial']:,.2f}")
-    print(f"   Aporte mensal:   R$ {respostas['aporte_mensal']:,.2f}")
+    print(f"   Capital inicial: {formatar_brl(respostas['cap_inicial'])}")
+    print(f"   Aporte mensal:   {formatar_brl(respostas['aporte_mensal'])}")
     print()
     print(
         "   Prazo       VF Bruto        Imposto      VF Líquido   "
@@ -518,6 +508,18 @@ def _imprimir_projecoes(analise: dict) -> None:
             f"{_formatar_moeda(linha['vf_liquido']):>15} "
             f"{linha['precisao_tributaria']}"
         )
+    comparativo = analise.get("comparativo_poupanca")
+    if comparativo:
+        taxa = analise["market"]["poupanca"]
+        print(f"\n   Comparativo com a poupança ({taxa * 100:.2f}% a.a., isenta de IR):")
+        for linha in comparativo:
+            diferenca = linha["diferenca"]
+            sinal = "" if diferenca is None or diferenca < 0 else "+"
+            print(
+                f"   {linha['anos']:>4g} ano(s) "
+                f"poupança {_formatar_moeda(linha['valor_poupanca']):>15} "
+                f"diferença {sinal}{_formatar_moeda(diferenca)}"
+            )
     indeterminadas = [
         linha
         for linha in analise["projecoes"]
@@ -539,7 +541,7 @@ def _imprimir_meta(analise: dict) -> None:
 
     print("\n🎯 Análise da meta financeira:")
     print(
-        f"   Meta:            R$ {meta['valor_alvo']:,.2f} "
+        f"   Meta:            {formatar_brl(meta['valor_alvo'])} "
         f"em {meta['prazo_anos']:g} ano(s)"
     )
     if meta["valor_liquido_projetado"] is None:
@@ -550,22 +552,22 @@ def _imprimir_meta(analise: dict) -> None:
         return
     print(
         "   Valor projetado: "
-        f"R$ {meta['valor_liquido_projetado']:,.2f} líquido"
+        f"{formatar_brl(meta['valor_liquido_projetado'])} líquido"
     )
     if meta["atingida"]:
         print(
             "   ✅ Meta atingível, com margem de "
-            f"R$ {meta['diferenca']:,.2f}."
+            f"{formatar_brl(meta['diferenca'])}."
         )
     else:
         print(
             "   ⚠️  Déficit projetado: "
-            f"R$ {abs(meta['diferenca']):,.2f}."
+            f"{formatar_brl(abs(meta['diferenca']))}."
         )
         if meta["aporte_mensal_estimado"] is not None:
             print(
                 "   Aporte mensal total estimado: "
-                f"R$ {meta['aporte_mensal_estimado']:,.2f}"
+                f"{formatar_brl(meta['aporte_mensal_estimado'])}"
             )
 
 
@@ -598,6 +600,10 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
         ),
         "etf": "~5s — cotações de ETFs",
         "estruturados": "~15s — dados cadastrais e de balcão",
+        "previdencia": (
+            "usa os mesmos dados da CVM dos fundos; "
+            "a primeira execução pode levar vários minutos"
+        ),
     }
     _sep()
     print("\n📈 Classes que serão consultadas:")
@@ -638,7 +644,7 @@ def _consultar_e_imprimir_ativos(analise: dict) -> None:
             if isinstance(score, (int, float)):
                 print(f"      Score: {score:.2f}/100", end="")
             if isinstance(preco, (int, float)) and preco:
-                print(f"   Preço: R$ {preco:,.2f}", end="")
+                print(f"   Preço: {formatar_brl(preco)}", end="")
             print()
             for motivo in ativo.get("motivos", []):
                 print(f"      {motivo}")

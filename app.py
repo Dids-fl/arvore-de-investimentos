@@ -36,6 +36,7 @@ from importacao.lotes_tributarios import (
 from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
+from utils.formatacao import formatar_brl
 
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
@@ -85,6 +86,17 @@ def _render_sidebar(market: dict) -> None:
                 "Focus SELIC",
                 f"{market['focus_selic'] * 100:.2f}%",
             )
+        if market.get("cdi") is not None:
+            st.metric("CDI", f"{market['cdi'] * 100:.2f}%")
+        if market.get("poupanca") is not None:
+            st.metric(
+                "Poupança (anualizada)",
+                f"{market['poupanca'] * 100:.2f}%",
+            )
+        focus_ipca = market.get("focus_ipca_por_ano") or {}
+        if focus_ipca:
+            ano, taxa = next(iter(sorted(focus_ipca.items(), key=lambda i: int(i[0]))))
+            st.metric(f"Focus IPCA {ano}", f"{float(taxa) * 100:.2f}%")
 
         st.divider()
         if market.get("cache_status") == "stale":
@@ -172,7 +184,8 @@ def _render_questionario(market: dict) -> None:
             despesas_essenciais_mensais = st.number_input(
                 "Despesas essenciais mensais (R$)",
                 min_value=0.0,
-                value=0.0,
+                value=None,
+                placeholder="Não informado",
                 step=100.0,
                 format="%.2f",
                 help=(
@@ -183,7 +196,8 @@ def _render_questionario(market: dict) -> None:
             reserva_atual = st.number_input(
                 "Reserva disponível hoje (R$)",
                 min_value=0.0,
-                value=0.0,
+                value=None,
+                placeholder="Não informado",
                 step=500.0,
                 format="%.2f",
                 help=(
@@ -390,7 +404,7 @@ def _render_questionario(market: dict) -> None:
         submitted = st.form_submit_button(
             "Gerar recomendação",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if not submitted:
@@ -421,12 +435,12 @@ def _render_questionario(market: dict) -> None:
             return
         st.success(
             f"{importacao.quantidade_lotes} lote(s) importado(s), com saldo "
-            f"total de R$ {importacao.saldo_total:,.2f}."
+            f"total de {formatar_brl(importacao.saldo_total)}."
         )
         st.dataframe(
             pd.DataFrame(importacao.resumo),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         for aviso_importacao in importacao.avisos:
             st.warning(aviso_importacao)
@@ -442,10 +456,14 @@ def _render_questionario(market: dict) -> None:
         "reserva_emerg": reserva,
         "idade": idade,
         "despesas": despesas,
-        "despesas_essenciais_mensais": float(
-            despesas_essenciais_mensais
+        "despesas_essenciais_mensais": (
+            None
+            if despesas_essenciais_mensais is None
+            else float(despesas_essenciais_mensais)
         ),
-        "reserva_atual": float(reserva_atual),
+        "reserva_atual": (
+            None if reserva_atual is None else float(reserva_atual)
+        ),
         "faixa_valor": valor,
         "patrim_pct": patrimonio,
         "renda": renda,
@@ -589,9 +607,9 @@ def _render_alocacao(analise: dict) -> None:
     if isinstance(plano_reserva, dict):
         st.caption(
             "Reserva-alvo: "
-            f"R$ {plano_reserva['valor_alvo']:,.2f} · "
-            f"Reserva atual: R$ {plano_reserva['valor_atual']:,.2f} · "
-            f"Déficit: R$ {plano_reserva['deficit']:,.2f}"
+            f"{formatar_brl(plano_reserva['valor_alvo'])} · "
+            f"Reserva atual: {formatar_brl(plano_reserva['valor_atual'])} · "
+            f"Déficit: {formatar_brl(plano_reserva['deficit'])}"
         )
     col_chart, col_table = st.columns([1.25, 1])
     with col_chart:
@@ -615,7 +633,7 @@ def _render_alocacao(analise: dict) -> None:
             margin={"t": 20, "b": 20, "l": 20, "r": 20},
             showlegend=False,
         )
-        st.plotly_chart(figure, use_container_width=True)
+        st.plotly_chart(figure, width="stretch")
 
     with col_table:
         tabela = pd.DataFrame(
@@ -624,7 +642,7 @@ def _render_alocacao(analise: dict) -> None:
         st.dataframe(
             tabela,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "Alocação (%)": st.column_config.ProgressColumn(
                     "Alocação (%)",
@@ -666,8 +684,8 @@ def _render_projecoes(analise: dict) -> None:
 
     st.subheader("📈 Projeção de crescimento")
     st.caption(
-        f"Capital inicial: **R$ {respostas['cap_inicial']:,.2f}** · "
-        f"Aporte mensal: **R$ {respostas['aporte_mensal']:,.2f}** · "
+        f"Capital inicial: **{formatar_brl(respostas['cap_inicial'])}** · "
+        f"Aporte mensal: **{formatar_brl(respostas['aporte_mensal'])}** · "
         f"Taxa ponderada bruta: "
         f"**{resultado['taxa_perfil'] * 100:.2f}% a.a.** · "
         f"IPCA: **{market['ipca'] * 100:.2f}% a.a.**"
@@ -676,7 +694,7 @@ def _render_projecoes(analise: dict) -> None:
     st.dataframe(
         _projecoes_dataframe(analise["projecoes"]),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Anos": st.column_config.NumberColumn("Anos", format="%d"),
             "VF Bruto": st.column_config.NumberColumn(
@@ -701,6 +719,41 @@ def _render_projecoes(analise: dict) -> None:
             ),
         },
     )
+
+    comparativo = analise.get("comparativo_poupanca")
+    if comparativo:
+        taxa_poupanca = market.get("poupanca")
+        st.markdown(
+            f"**Comparativo com a poupança** "
+            f"({taxa_poupanca * 100:.2f}% a.a., isenta de IR — BCB/SGS 195)"
+        )
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Anos": linha["anos"],
+                        "Carteira (líquido)": linha["vf_liquido_carteira"],
+                        "Poupança": linha["valor_poupanca"],
+                        "Diferença": linha["diferenca"],
+                    }
+                    for linha in comparativo
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Anos": st.column_config.NumberColumn("Anos", format="%d"),
+                "Carteira (líquido)": st.column_config.NumberColumn(
+                    format="R$ %.2f"
+                ),
+                "Poupança": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Diferença": st.column_config.NumberColumn(format="R$ %.2f"),
+            },
+        )
+        st.caption(
+            "A taxa da poupança muda com a Selic; o comparativo a mantém "
+            "constante como hipótese, assim como as demais projeções."
+        )
 
     if any(
         linha["vf_liquido"] is None
@@ -751,7 +804,7 @@ def _render_projecoes(analise: dict) -> None:
             "x": 1,
         },
     )
-    st.plotly_chart(figure, use_container_width=True)
+    st.plotly_chart(figure, width="stretch")
 
 
 def _render_tributacao(analise: dict) -> None:
@@ -779,7 +832,7 @@ def _render_tributacao(analise: dict) -> None:
     st.dataframe(
         resumo,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Anos": st.column_config.NumberColumn("Anos", format="%d"),
             "Imposto estimado": st.column_config.NumberColumn(
@@ -804,7 +857,7 @@ def _render_tributacao(analise: dict) -> None:
         for detalhe in horizonte["tributacao_por_classe"].values():
             imposto = detalhe["imposto_estimado"]
             imposto_texto = (
-                f"R$ {imposto:,.2f}"
+                f"{formatar_brl(imposto)}"
                 if isinstance(imposto, (int, float))
                 else "indeterminado"
             )
@@ -818,7 +871,7 @@ def _render_tributacao(analise: dict) -> None:
                 st.caption(
                     "Come-cotas futuro: "
                     f"{detalhe['eventos_come_cotas']} evento(s), "
-                    f"R$ {detalhe['come_cotas_estimado']:,.2f} antecipados e "
+                    f"{formatar_brl(detalhe['come_cotas_estimado'])} antecipados e "
                     "sem reconstrução de histórico anterior."
                 )
             elif (
@@ -855,33 +908,33 @@ def _render_meta(analise: dict) -> None:
     cols = st.columns(3)
     cols[0].metric(
         "Valor-alvo nominal",
-        f"R$ {meta['valor_alvo']:,.2f}",
+        f"{formatar_brl(meta['valor_alvo'])}",
     )
     cols[1].metric(
         f"Projeção em {meta['prazo_anos']:g} ano(s)",
-        f"R$ {meta['valor_liquido_projetado']:,.2f}",
+        f"{formatar_brl(meta['valor_liquido_projetado'])}",
     )
     cols[2].metric(
         "Diferença",
-        f"R$ {meta['diferenca']:,.2f}",
-        delta=f"R$ {meta['diferenca']:,.2f}",
+        f"{formatar_brl(meta['diferenca'])}",
+        delta=f"{formatar_brl(meta['diferenca'])}",
         delta_color="normal",
     )
 
     if meta["atingida"]:
         st.success(
             "A meta é atingível no cenário central, com margem nominal de "
-            f"R$ {meta['diferenca']:,.2f}."
+            f"{formatar_brl(meta['diferenca'])}."
         )
     else:
         mensagem = (
             "Faltariam aproximadamente "
-            f"R$ {abs(meta['diferenca']):,.2f} no cenário central."
+            f"{formatar_brl(abs(meta['diferenca']))} no cenário central."
         )
         if meta["aporte_mensal_estimado"] is not None:
             mensagem += (
                 " O aporte mensal total estimado para atingir a meta é "
-                f"R$ {meta['aporte_mensal_estimado']:,.2f}."
+                f"{formatar_brl(meta['aporte_mensal_estimado'])}."
             )
         st.warning(mensagem)
 
@@ -911,7 +964,7 @@ def _render_ativos(analise: dict) -> None:
     if st.button(
         "Buscar e rankear ativos agora",
         type="secondary",
-        use_container_width=True,
+        width="stretch",
     ):
         try:
             with st.spinner(
@@ -1001,7 +1054,7 @@ def _render_ativos(analise: dict) -> None:
             st.dataframe(
                 tabela[colunas],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 column_config={
                     "Preço": st.column_config.NumberColumn(
                         "Preço",
@@ -1032,7 +1085,7 @@ def _render_avisos_e_perfil(analise: dict) -> None:
                 columns=["Critério", "Resultado"],
             ),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -1049,7 +1102,7 @@ def _render_exportacao(analise: dict) -> None:
         ),
         file_name=f"recomendacao_{timestamp}.json",
         mime="application/json",
-        use_container_width=True,
+        width="stretch",
     )
 
 

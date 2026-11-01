@@ -465,6 +465,16 @@ def calcular_recomendacao(
             rec_key = RK.FUNDOS
         if rec_key == RK.FUNDOS and prazo == 3:
             rec_key = RK.RV
+    elif rec_key == RK.RF_RESERVA:
+        # Sem reserva, previdência (resgate lento e com custo) não pode
+        # passar na frente da reserva de emergência.
+        _adicionar(
+            avisos,
+            (
+                "ℹ️ A previdência fica para depois: primeiro forme a reserva "
+                "de emergência."
+            ),
+        )
     else:
         if prazo == 1:
             rec_key = RK.RF_REAVALIE
@@ -565,7 +575,7 @@ def calcular_recomendacao(
             rec_key = RK.RV
             _adicionar(
                 avisos,
-                "⚠️ A exposição direta a cripto foi removida.",
+                "⚠️ A exposição direta a cripto foi removida da recomendação principal.",
             )
         elif _risco(rec_key) >= 3:
             _adicionar(

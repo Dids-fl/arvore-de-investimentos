@@ -79,8 +79,9 @@ pytest -q --tb=short
 Cobertura
 
 pytest -q tests/unit tests/integration -m "not slow" \
-  --cov=backtest \
-  --cov=tributacao \
+  --cov=backtest --cov=tributacao --cov=core --cov=macroeconomia \
+  --cov=utils --cov=calculos --cov=engine --cov=mercado \
+  --cov=portfolio --cov=recomendador \
   --cov-report=term-missing \
   --cov-report=html
 
@@ -98,6 +99,8 @@ Python 3.11;
 
 Python 3.12;
 
+Python 3.13;
+
 push;
 
 pull_request;
@@ -112,13 +115,13 @@ instalação das dependências;
 
 compilação dos pacotes e módulos centrais;
 
-Ruff em todo o repositório, limitado a erros críticos;
+Ruff em todo o repositório, com as regras fixadas em pyproject.toml;
 
 testes unitários, de integração e score determinístico de cripto semmarcador slow;
 
-cobertura de backtest e tributacao;
+cobertura do núcleo (engine, recomendador, portfolio, calculos, mercado, core, macroeconomia, utils), de backtest e de tributacao;
 
-mínimo de 65% para esses dois pacotes;
+mínimo de 75% para esse conjunto;
 
 relatório XML e HTML publicado pelo job Python 3.12 por 14 dias.
 
@@ -141,6 +144,14 @@ os cinco warnings conhecidos foram corrigidos;
 os arquivos recentes passaram no Ruff;
 
 o repositório possuía dívida técnica histórica fora do conjunto alterado.
+
+Em 1º de novembro de 2026, após a revisão: 409 testes determinísticos
+aprovados e cobertura combinada do núcleo, backtest e tributação de cerca de 82%.
+
+Testes sem o marcador slow não acessam a internet: uma fixture automática em
+tests/conftest.py bloqueia conexões de rede. Os testes de
+tests/unit/test_invariantes_perfil.py verificam regras de segurança da
+recomendação em centenas de perfis aleatórios com semente fixa.
 
 Esse número é um snapshot, não um requisito fixo. Ao adicionar funcionalidade,o total deve aumentar e os testes existentes devem permanecer verdes.
 
@@ -178,7 +189,7 @@ Evitar afirmar retorno financeiro em teste unitário.
 
 Pendências
 
-ampliar cobertura para engine e rankers;
+ampliar cobertura para os rankers;
 
 confirmar o workflow verde no GitHub Actions;
 

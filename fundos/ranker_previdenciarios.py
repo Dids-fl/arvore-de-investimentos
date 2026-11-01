@@ -35,7 +35,7 @@ from .ranker_fundos import (
     PERFIL_MODERADO,
     calcular_score,
 )
-from .sharpe_sortino import calcular_indicadores_risco
+from .sharpe_sortino import calcular_indicadores_risco, obter_taxa_livre_risco
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,10 @@ class RankerPrevidenciarios:
         filtro_kwargs.setdefault(
             "cotistas_minimos_por_categoria", COTISTAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA
         )
+        # O cotista de um FIE é a seguradora (investidora profissional); a
+        # pessoa física compra o plano PGBL/VGBL. Por isso quase todo FIE é
+        # "Profissional" na CVM e o filtro de público-alvo não se aplica.
+        filtro_kwargs.setdefault("permitir_restrito", True)
         self.filtro_kwargs = filtro_kwargs
         self._ranking = None  # Cache do ranking
 
@@ -136,6 +140,15 @@ class RankerPrevidenciarios:
             return []
 
         ranking = []
+        # CDI do período buscado uma única vez (como em ranker_fundos), em vez
+        # de uma consulta ao BCB por fundo.
+        taxa_livre_risco = None
+        incluir_risco_no_score = False
+        if self.incluir_sharpe_sortino:
+            taxa_livre_risco = obter_taxa_livre_risco(df_hist["Data_Competencia"])
+            incluir_risco_no_score = taxa_livre_risco is not None
+            if not incluir_risco_no_score:
+                logger.warning("CDI indisponível; ranking previdenciário seguirá sem Sharpe/Sortino.")
 
         for cnpj, group in df_hist.groupby("CNPJ_Classe"):
             cad_row = df_filtrado[df_filtrado["CNPJ_Classe"] == cnpj]
@@ -146,10 +159,11 @@ class RankerPrevidenciarios:
             if indicadores is None or indicadores.get("cagr") is None:
                 continue
 
-            if self.incluir_sharpe_sortino:
+            if incluir_risco_no_score:
                 risco = calcular_indicadores_risco(
                     group["Valor_Cota"],
                     pd.to_datetime(group["Data_Competencia"]),
+                    taxa_livre_risco=taxa_livre_risco,
                 )
                 indicadores["sharpe"] = risco.get("sharpe")
                 indicadores["sortino"] = risco.get("sortino")
@@ -157,7 +171,7 @@ class RankerPrevidenciarios:
             score = calcular_score(
                 indicadores,
                 self.perfil,
-                incluir_sharpe_sortino=self.incluir_sharpe_sortino,
+                incluir_sharpe_sortino=incluir_risco_no_score,
             )
 
             ranking.append({

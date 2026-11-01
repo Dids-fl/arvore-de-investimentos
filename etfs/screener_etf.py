@@ -12,14 +12,16 @@ de administração não está disponível, ela permanece como ``None`` e seu pes
 
 from __future__ import annotations
 
+import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
 import numpy as np
-import requests
 import yfinance as yf
 
+from acoes_fiis.apis.brapi_tickers import listar_tickers
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger
 
@@ -78,62 +80,17 @@ def norm(valor: float, bom: float, ruim: float) -> float:
 
 def _get_etfs_from_brapi() -> list[str]:
     """
-    Obtém a lista de ETFs da BRAPI.
+    Obtém a lista de ETFs da BRAPI (lista pública compartilhada com os FIIs).
 
-    A função consulta todas as páginas públicas e mantém somente registros
-    identificados pela API como ETF.
+    Mantém somente registros identificados pela API como ETF.
     """
-    base_url = "https://brapi.dev/api/v2/tickers"
-    etfs: list[str] = []
-    page = 1
-    limit = 200
-    total_pages = None
-
-    while True:
-        try:
-            response = requests.get(
-                base_url,
-                params={"limit": limit, "page": page},
-                timeout=10,
-                headers={"User-Agent": "arvore-de-investimentos/1.0"},
-            )
-            response.raise_for_status()
-            data = response.json()
-        except (requests.RequestException, TypeError, ValueError) as exc:
-            logger.warning(
-                "BRAPI /api/v2/tickers falhou na página %s: %s",
-                page,
-                exc,
-            )
-            break
-
-        pagination = data.get("pagination", {})
-
-        if total_pages is None:
-            total_pages = pagination.get("totalPages", 0)
-            logger.info("BRAPI tickers: %s páginas.", total_pages)
-
-        for item in data.get("results", []):
-            if str(item.get("subType", "")).lower() != "etf":
-                continue
-
-            symbol = str(item.get("symbol", "")).strip().upper()
-            if symbol:
-                etfs.append(symbol.replace(".SA", ""))
-
-        if not pagination.get("hasNextPage", False):
-            break
-
-        page += 1
-        time.sleep(0.3)
-
-    # Remove duplicatas sem perder a ordem fornecida pela fonte.
-    etfs_unicos = list(dict.fromkeys(etfs))
-    logger.info(
-        "BRAPI retornou %s ETFs públicos.",
-        len(etfs_unicos),
-    )
-    return etfs_unicos
+    etfs = [
+        simbolo
+        for simbolo, item in listar_tickers().items()
+        if str(item.get("subType", "")).lower() == "etf"
+    ]
+    logger.info("BRAPI retornou %s ETFs públicos.", len(etfs))
+    return etfs
 
 
 def get_all_etf_tickers() -> list[str]:
@@ -408,8 +365,47 @@ def _score_etf(
     return round(score * 100, 1), motivos[:5]
 
 
-def top_etfs(perfil: int, n: int = 5) -> list[dict]:
-    """Calcula e retorna os ETFs com maior score para o perfil."""
+# Classificação pelo nome oficial do fundo (vem do Yahoo/B3). A classe
+# "etf" da carteira é a fatia de AÇÕES via ETF; ETFs de Tesouro, commodities
+# ou cripto têm risco e tributação diferentes e não devem ocupar esse espaço.
+_PADROES_CLASSE_ETF = (
+    ("cripto", re.compile(
+        r"BITCOIN|ETHEREUM|CRIPTO|CRYPTO|SOLANA|\bXRP\b|\bHASH\b|BLOCKCHAIN|WEB3|DEFI\b",
+    )),
+    ("renda_fixa", re.compile(
+        r"TESOURO|SELIC|TREASURY|IMA[\s-]?B|IRF[\s-]?M|IDKA|RENDA FIXA|DEB[EÊ]NTURE|"
+        r"\bCDI\b|\bDI\b|PREFIXAD|\bNTN|INFLA[CÇ]|\bBONDS?\b|JUROS|\bIPCA\b|\bDAP\d*\b",
+    )),
+    ("commodity", re.compile(r"BOI GORDO|\bOURO\b|\bGOLD\b|PETR[OÓ]LEO BRENT|\bMILHO\b|\bSOJA\b")),
+)
+
+
+# Abaixo disso (volatilidade anual em %), o comportamento é de renda fixa:
+# ETFs de ações brasileiros e globais oscilam bem acima de 12% ao ano.
+VOLATILIDADE_MAXIMA_RENDA_FIXA = 8.0
+
+
+def classe_etf(nome: str | None, volatilidade: float | None = None) -> str:
+    """Classifica um ETF em "acoes", "renda_fixa", "commodity" ou "cripto".
+
+    O nome resolve os casos claros; a volatilidade observada pega ETFs de
+    renda fixa cujo nome não diz isso (ex.: "IPCA 95-5", "DAP5", nomes
+    genéricos de gestora).
+    """
+    texto = unicodedata.normalize("NFC", str(nome or "")).upper()
+    for classe, padrao in _PADROES_CLASSE_ETF:
+        if padrao.search(texto):
+            return classe
+    if volatilidade is not None and 0 < float(volatilidade) < VOLATILIDADE_MAXIMA_RENDA_FIXA:
+        return "renda_fixa"
+    return "acoes"
+
+
+def top_etfs(perfil: int, n: int = 5, classe: str | None = "acoes") -> list[dict]:
+    """Calcula e retorna os ETFs com maior score para o perfil.
+
+    ``classe`` restringe o universo (padrão: ETFs de ações); ``None`` não filtra.
+    """
     if n <= 0:
         return []
 
@@ -446,6 +442,13 @@ def top_etfs(perfil: int, n: int = 5) -> list[dict]:
     for ticker, dados_originais in dados_por_ticker.items():
         dados = dict(dados_originais)
         ticker_limpo = ticker.replace(".SA", "")
+        # Sem preço ou sem negociação não há como comprar (ex.: fundos
+        # regionais antigos que algumas listas rotulam como ETF).
+        if not (dados.get("preco") or 0) > 0 or not (dados.get("volume") or 0) > 0:
+            continue
+        classe_ativo = classe_etf(dados.get("nome"), dados.get("volatilidade"))
+        if classe is not None and classe_ativo != classe:
+            continue
         score, motivos = _score_etf(dados, perfil)
 
         resultados.append(
@@ -460,6 +463,7 @@ def top_etfs(perfil: int, n: int = 5) -> list[dict]:
                 "sharpe": dados.get("sharpe"),
                 "taxa": dados.get("taxa"),
                 "volume": dados.get("volume"),
+                "classe": classe_ativo,
             }
         )
 

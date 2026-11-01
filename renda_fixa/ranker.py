@@ -29,6 +29,10 @@ def _codigo_tesouro(nome: str, tipo: str) -> str:
     texto = "".join(char for char in texto if not unicodedata.combining(char))
     texto = re.sub(r"\s+", " ", texto.upper())
     juros_semestrais = "JUROS SEMESTRAIS" in texto
+    if "RENDA+" in texto:
+        return "RENDA+"
+    if "EDUCA+" in texto:
+        return "EDUCA+"
     if "SELIC" in texto:
         return "SELIC"
     if "IPCA" in texto:

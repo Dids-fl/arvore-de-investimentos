@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -103,7 +104,12 @@ class InformeDiarioColetorCVM:
         self.db_path = Path(db_path or DB_PATH)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path, timeout=BUSY_TIMEOUT_MS / 1000)
+        # Singleton compartilhado entre threads (ver get_informe_coletor).
+        self.conn = sqlite3.connect(
+            self.db_path,
+            timeout=BUSY_TIMEOUT_MS / 1000,
+            check_same_thread=False,
+        )
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
@@ -323,7 +329,10 @@ class InformeDiarioColetorCVM:
             try:
                 self.atualizar_informe(ano=ano, mes=mes, force=False)
                 meses_carregados += 1
-            except Exception:
+            except Exception as exc:
+                if _mes_ainda_nao_publicado(exc):
+                    logger.info(f"Informe de {ano}-{mes:02d} ainda não publicado pela CVM.")
+                    continue
                 logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
         logger.info(f"Carregados {meses_carregados} meses de Informe Diário.")
@@ -403,7 +412,10 @@ class InformeDiarioColetorCVM:
             try:
                 self.atualizar_informe(ano=ano, mes=mes, force=force)
                 carregados += 1
-            except Exception:
+            except Exception as exc:
+                if _mes_ainda_nao_publicado(exc):
+                    logger.info(f"Informe de {ano}-{mes:02d} ainda não publicado pela CVM.")
+                    continue
                 com_erro += 1
                 logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
@@ -672,17 +684,27 @@ class InformeDiarioColetorCVM:
             logger.debug("Erro ao fechar conexão.", exc_info=True)
 
 
+def _mes_ainda_nao_publicado(exc: BaseException) -> bool:
+    """O arquivo do mês corrente só aparece na CVM após os primeiros dias úteis."""
+    resposta = getattr(exc, "response", None)
+    return getattr(resposta, "status_code", None) == 404
+
+
 # ---------------------------------------------------------------------
 # Singleton
 # ---------------------------------------------------------------------
 
 _instance = None
+_lock = threading.Lock()
 
 
 def get_informe_coletor():
     global _instance
     if _instance is None:
-        _instance = InformeDiarioColetorCVM()
+        # Evita que duas threads baixem e gravem o informe ao mesmo tempo.
+        with _lock:
+            if _instance is None:
+                _instance = InformeDiarioColetorCVM()
     return _instance
 
 

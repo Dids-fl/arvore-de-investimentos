@@ -59,3 +59,28 @@ def respostas_padrao() -> dict:
         "cap_inicial": 10_000,
         "aporte_mensal": 500,
     }
+
+
+class _RedeBloqueadaError(OSError):
+    """Levantada quando um teste comum tenta acessar a internet."""
+
+
+@pytest.fixture(autouse=True)
+def _bloquear_rede(request, monkeypatch):
+    """Testes sem a marca `slow` não podem depender de internet.
+
+    Sem isso, um teste "determinístico" passa ou falha conforme a API
+    externa esteja no ar. A exceção herda de OSError, então os coletores a
+    tratam como uma falha de rede comum.
+    """
+    if request.node.get_closest_marker("slow"):
+        return
+    import socket
+
+    def _negar(*args, **kwargs):
+        raise _RedeBloqueadaError(
+            "Acesso à rede bloqueado em testes sem @pytest.mark.slow."
+        )
+
+    monkeypatch.setattr(socket.socket, "connect", _negar)
+    monkeypatch.setattr(socket, "create_connection", _negar)

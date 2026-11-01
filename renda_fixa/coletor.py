@@ -13,41 +13,54 @@ logger = logging.getLogger(__name__)
 # 1. INDICADORES (Selic e CDI) via SGS
 # ──────────────────────────────────────────────────────────────
 
-def coletar_indicadores():
-    """
-    Obtém Selic (Série 432) e calcula CDI (Selic - 0,1%).
-    Retorna (selic_decimal, cdi_decimal).
+_URL_SGS_ULTIMO = (
+    "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/1"
+    "?formato=json"
+)
+SGS_SELIC_META = 432
+SGS_CDI_ANUAL = 4389  # CDI anualizado base 252 (% a.a.)
 
-    Sem fallback fixo: se a API do BCB/SGS falhar ou não retornar dado
-    válido, levanta DadosIndisponiveisError.
-    """
+
+def _ultimo_valor_sgs(serie: int, rotulo: str) -> float:
+    """Último valor de uma série SGS, convertido de % para decimal."""
     try:
-        url_selic = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
-        resp = requests.get(url_selic, timeout=5)
+        resp = requests.get(_URL_SGS_ULTIMO.format(serie=serie), timeout=5)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        raise DadosIndisponiveisError("SELIC (BCB/SGS série 432)", str(e)) from e
+        raise DadosIndisponiveisError(f"{rotulo} (BCB/SGS série {serie})", str(e)) from e
 
     if not data:
         raise DadosIndisponiveisError(
-            "SELIC (BCB/SGS série 432)", "resposta vazia da API"
+            f"{rotulo} (BCB/SGS série {serie})", "resposta vazia da API"
         )
-
     try:
-        selic_raw = float(data[0]['valor'])
-    except (KeyError, ValueError, TypeError) as e:
+        return float(str(data[0]["valor"]).replace(",", ".")) / 100
+    except (KeyError, ValueError, TypeError, IndexError) as e:
         raise DadosIndisponiveisError(
-            "SELIC (BCB/SGS série 432)", f"valor inválido na resposta: {e}"
+            f"{rotulo} (BCB/SGS série {serie})", f"valor inválido na resposta: {e}"
         ) from e
 
-    # Se vier em percentual (ex: 14.25), converte para decimal
-    selic = selic_raw / 100 if selic_raw > 1 else selic_raw
+
+def coletar_indicadores():
+    """
+    Obtém a meta Selic (SGS 432) e o CDI anualizado (SGS 4389).
+    Retorna (selic_decimal, cdi_decimal).
+
+    Se apenas a série do CDI falhar, o CDI é estimado como Selic − 0,10 p.p.
+    (diferença histórica típica entre a meta e a taxa DI), com aviso no log.
+    Se a Selic falhar, levanta DadosIndisponiveisError: não há número fixo
+    de reserva.
+    """
+    selic = _ultimo_valor_sgs(SGS_SELIC_META, "SELIC")
     logger.info(f"Selic obtida via SGS: {selic:.2%}")
 
-    # CDI = Selic - 0,1% (spread típico)
-    cdi = max(selic - 0.001, 0.01)
-    logger.info(f"CDI definido como {cdi:.2%}")
+    try:
+        cdi = _ultimo_valor_sgs(SGS_CDI_ANUAL, "CDI")
+        logger.info(f"CDI obtido via SGS: {cdi:.2%}")
+    except DadosIndisponiveisError as e:
+        cdi = max(selic - 0.001, 0.0)
+        logger.warning(f"CDI indisponível ({e}); estimado como Selic − 0,10 p.p.: {cdi:.2%}")
     return selic, cdi
 
 
@@ -108,7 +121,8 @@ def coletar_tesouro_via_package_show():
         for _, row in df_atual.iterrows():
             tipo = row['Tipo Titulo']
             # Define o indexador
-            if 'IPCA' in tipo:
+            # Renda+ e Educa+ pagam IPCA + taxa real, mas o nome não diz "IPCA".
+            if 'IPCA' in tipo or 'Renda+' in tipo or 'Educa+' in tipo:
                 indexador = 'IPCA'
             elif 'Selic' in tipo:
                 indexador = 'SELIC'

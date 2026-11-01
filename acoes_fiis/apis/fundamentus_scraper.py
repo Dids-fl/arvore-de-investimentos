@@ -3,6 +3,10 @@ Módulo para extrair dados fundamentalistas do Fundamentus.com.br
 e lista de tickers da B3, sem salvar arquivos intermediários.
 """
 
+import copy
+import threading
+import time
+from functools import wraps
 from io import StringIO
 
 import pandas as pd
@@ -14,7 +18,48 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
 }
 
-BASE_URL = 'http://www.fundamentus.com.br'
+BASE_URL = 'https://www.fundamentus.com.br'
+
+# A página de resultados traz todas as ações de uma vez; ela é lida uma vez
+# e reaproveitada, em vez de baixada de novo para cada ticker.
+_TTL_BULK_S = 30 * 60
+
+
+def _cache_bulk(funcao):
+    estado: dict = {"ts": 0.0, "dados": None}
+    trava = threading.Lock()
+
+    @wraps(funcao)
+    def envoltorio():
+        with trava:
+            if estado["dados"] and time.time() - estado["ts"] <= _TTL_BULK_S:
+                return copy.deepcopy(estado["dados"])
+            dados = funcao()
+            if dados:  # não guarda falhas: a próxima chamada tenta de novo
+                estado.update(ts=time.time(), dados=dados)
+            return copy.deepcopy(dados)
+
+    def limpar_cache():
+        with trava:
+            estado.update(ts=0.0, dados=None)
+
+    envoltorio.limpar_cache = limpar_cache
+    return envoltorio
+
+
+def _tabela_resultado(soup):
+    """Tabela principal das páginas de resultado.
+
+    A página de ações usa id="resultado"; a de FIIs, id="tabelaResultado"
+    (com a classe "resultado"). Aceitar as duas evita que uma mudança de
+    layout zere o universo silenciosamente.
+    """
+    return (
+        soup.find("table", {"id": "resultado"})
+        or soup.find("table", {"id": "tabelaResultado"})
+        or soup.find("table", class_="resultado")
+    )
+
 
 # ── Funções auxiliares ──────────────────────────────────────────────────────
 
@@ -37,7 +82,7 @@ def _to_float(val) -> float:
 
 def get_raw_data(url: str) -> bytes:
     """Faz requisição HTTP e retorna o conteúdo."""
-    r = requests.get(url, headers=HEADERS)
+    r = requests.get(url, headers=HEADERS, timeout=(5, 30))
     r.encoding = 'utf-8'
     if r.status_code != 200:
         raise RuntimeError(f"Falha ao acessar {url}, status: {r.status_code}")
@@ -45,6 +90,7 @@ def get_raw_data(url: str) -> bytes:
 
 # ── 1. Bulk: todas as ações em UMA requisição ──────────────────────────────
 
+@_cache_bulk
 def get_all_bulk() -> dict[str, dict]:
     """
     Scraping de resultado.php — retorna TODAS as ações em UMA requisição.
@@ -55,7 +101,7 @@ def get_all_bulk() -> dict[str, dict]:
         html = get_raw_data(url)
         soup = BeautifulSoup(html, features="html.parser")  # html.parser é mais seguro
 
-        table = soup.find("table", {"id": "resultado"})
+        table = _tabela_resultado(soup)
         if not table:
             return {}
 
@@ -153,12 +199,13 @@ def get_ticker_list() -> list[str]:
 
 # ── 4. FIIs (universo dedicado; nunca inferido apenas pelo ticker) ─────────
 
+@_cache_bulk
 def get_fiis_bulk() -> dict[str, dict]:
     """Carrega exclusivamente a tabela dedicada de fundos imobiliários."""
     try:
         html = get_raw_data(f"{BASE_URL}/fii_resultado.php")
         soup = BeautifulSoup(html, features="html.parser")
-        tabela = soup.find("table", {"id": "resultado"})
+        tabela = _tabela_resultado(soup)
         if not tabela:
             return {}
         dataframe = pd.read_html(

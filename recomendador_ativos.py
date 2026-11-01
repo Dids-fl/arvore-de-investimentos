@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import threading
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -41,6 +42,10 @@ _CLASSE: dict[str, str] = {
     RK.FUNDOS_DIVERSIF: "fundos",
     RK.FUNDOS_MULTI: "fundos",
     RK.ESTRUTURADOS: "estruturados",
+    RK.PREV_PGBL: "previdencia",
+    RK.PREV_VGBL: "previdencia",
+    RK.PREV_PGBL_RF: "previdencia",
+    RK.PREV_VGBL_RF: "previdencia",
 }
 
 _LABEL: dict[str, str] = {
@@ -51,11 +56,13 @@ _LABEL: dict[str, str] = {
     "rf": "RENDA FIXA",
     "fundos": "FUNDOS",
     "estruturados": "PRODUTOS ESTRUTURADOS (CRA/CRI/Debêntures)",
+    "previdencia": "PREVIDÊNCIA (fundos de PGBL/VGBL)",
 }
 
 MIN_PCT = 5
 _ORDEM = (
     "rf",
+    "previdencia",
     "fundos",
     "estruturados",
     "fiis",
@@ -71,6 +78,7 @@ _ESCALA_SCORE_ORIGEM = {
     "rf": 10.0,
     "fundos": 10.0,
     "estruturados": 10.0,
+    "previdencia": 10.0,
 }
 
 
@@ -128,9 +136,19 @@ def _percentual(chave: str, valor: object) -> float:
     return numero
 
 
+_IMPORT_LOCK = threading.Lock()
+
+
 def _modulo(nome: str):
-    """Importa uma integração somente quando sua classe for solicitada."""
-    return importlib.import_module(nome)
+    """Importa uma integração somente quando sua classe for solicitada.
+
+    As classes são buscadas em threads paralelas, e algumas compartilham
+    módulos (previdência importa o ranker de fundos). Importar o mesmo
+    pacote em duas threads ao mesmo tempo pode causar deadlock de importação,
+    então as importações são serializadas.
+    """
+    with _IMPORT_LOCK:
+        return importlib.import_module(nome)
 
 
 def _executar_classe(
@@ -175,6 +193,11 @@ def _executar_classe(
         funcao = _modulo(
             "produtos_estruturados.ranker"
         ).rankear_estruturados
+        ativos = funcao(perfil=perfil_risco, limite=n)
+    elif classe == "previdencia":
+        funcao = _modulo(
+            "fundos.ranker_previdenciarios"
+        ).rankear_fundos_previdenciarios
         ativos = funcao(perfil=perfil_risco, limite=n)
     else:
         raise ValueError(f"Classe de ativos desconhecida: {classe!r}.")

@@ -1,17 +1,17 @@
-# â”€â”€ Ambientes virtuais â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Ambientes virtuais ──────────────────────────────────────
 .venv/
 venv/
 env/
 ENV/
 
-# â”€â”€ Python â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Python ──────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyd
 *.so
 
-# â”€â”€ DistribuiÃ§Ã£o e empacotamento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Distribuição e empacotamento ────────────────────────────
 build/
 dist/
 downloads/
@@ -21,7 +21,7 @@ wheels/
 pip-wheel-metadata/
 MANIFEST
 
-# â”€â”€ Testes e cobertura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Testes e cobertura ──────────────────────────────────────
 .pytest_cache/
 .coverage
 .coverage.*
@@ -31,19 +31,19 @@ htmlcov/
 .nox/
 hypothesis/
 
-# â”€â”€ Ferramentas de anÃ¡lise â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Ferramentas de análise ──────────────────────────────────
 .ruff_cache/
 .mypy_cache/
 .pyright/
 .pytype/
 
-# â”€â”€ VariÃ¡veis de ambiente e segredos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Variáveis de ambiente e segredos ────────────────────────
 .env
 .env.*
 !.env.example
 .streamlit/secrets.toml
 
-# â”€â”€ Logs e arquivos temporÃ¡rios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Logs e arquivos temporários ─────────────────────────────
 *.log
 *.tmp
 *.temp
@@ -53,18 +53,18 @@ hypothesis/
 ~$*
 logs/
 
-# â”€â”€ Dados baixados e caches do projeto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Dados baixados e caches do projeto ──────────────────────
 /fundos/data/
 
-# â”€â”€ Jupyter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Jupyter ─────────────────────────────────────────────────
 .ipynb_checkpoints/
 
-# â”€â”€ IDEs e editores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── IDEs e editores ─────────────────────────────────────────
 .vscode/
 .idea/
 *.code-workspace
 
-# â”€â”€ Sistemas operacionais â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Sistemas operacionais ───────────────────────────────────
 .DS_Store
 .AppleDouble
 .LSOverride
@@ -72,6 +72,6 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# â”€â”€ RelatÃ³rios temporÃ¡rios criados durante diagnÃ³stico â”€â”€â”€â”€â”€â”€
+# ── Relatórios temporários criados durante diagnóstico ──────
 git_status.txt
 ruff_check.txt

@@ -34,6 +34,7 @@ from recomendador_ativos import (
     recomendar_por_portfolio,
 )
 from tributacao import PrecisaoTributaria
+from utils.formatacao import formatar_brl
 
 __all__ = [
     "ANOS_GRAFICO_PADRAO",
@@ -47,6 +48,7 @@ __all__ = [
     "aporte_necessario_para_meta",
     "buscar_ativos_da_analise",
     "buscar_ativos_sugeridos",
+    "comparativo_poupanca",
     "criar_analise",
     "gerar_recomendacao_completa",
     "mapear_respostas_formulario",
@@ -1060,12 +1062,12 @@ def _descricao_reserva(
         )
     if deficit == 0:
         return (
-            f"Reserva-alvo de R$ {alvo:,.2f} coberta; "
-            f"valor atual R$ {atual:,.2f}"
+            f"Reserva-alvo de {formatar_brl(alvo)} coberta; "
+            f"valor atual {formatar_brl(atual)}"
         )
     return (
-        f"Déficit de R$ {deficit:,.2f} para a reserva-alvo de "
-        f"R$ {alvo:,.2f} ({meses} meses)"
+        f"Déficit de {formatar_brl(deficit)} para a reserva-alvo de "
+        f"{formatar_brl(alvo)} ({meses} meses)"
     )
 
 
@@ -1122,12 +1124,12 @@ def _perfil_resumo(
         "Despesas essenciais mensais": (
             "Não informado"
             if respostas.get("despesas_essenciais_mensais") is None
-            else f"R$ {respostas['despesas_essenciais_mensais']:,.2f}"
+            else f"{formatar_brl(respostas['despesas_essenciais_mensais'])}"
         ),
         "Reserva disponível hoje": (
             "Não informado"
             if respostas.get("reserva_atual") is None
-            else f"R$ {respostas['reserva_atual']:,.2f}"
+            else f"{formatar_brl(respostas['reserva_atual'])}"
         ),
         "Valor disponível": {
             1: "Até R$ 1 mil",
@@ -1181,13 +1183,13 @@ def _perfil_resumo(
             3: "Moderada",
             4: "Arrojada",
         }[respostas["carteira_atual"]],
-        "Capital inicial": f"R$ {respostas['cap_inicial']:,.2f}",
-        "Aporte mensal": f"R$ {respostas['aporte_mensal']:,.2f}",
+        "Capital inicial": f"{formatar_brl(respostas['cap_inicial'])}",
+        "Aporte mensal": f"{formatar_brl(respostas['aporte_mensal'])}",
         "Recomendação principal": resultado["recomendacao_display"],
     }
     if meta is not None:
         resumo["Meta financeira"] = (
-            f"R$ {meta['valor_alvo']:,.2f} "
+            f"{formatar_brl(meta['valor_alvo'])} "
             f"em {meta['prazo_anos']:g} ano(s)"
         )
     return resumo
@@ -1209,6 +1211,22 @@ def _alocar_deficit_reserva(
     despesas = respostas.get("despesas_essenciais_mensais")
     reserva_atual = respostas.get("reserva_atual")
     capital = float(respostas["cap_inicial"])
+
+    if (
+        rec_key == RK.RF_RESERVA
+        and despesas is not None
+        and float(despesas) <= 0
+        and respostas.get("despesas", 1) >= 2
+    ):
+        # Obrigações fixas declaradas como baixas/altas contradizem despesas
+        # essenciais de R$ 0; o zero quase sempre é um campo não preenchido.
+        # Usá-lo zeraria a reserva-alvo e liberaria a carteira de risco.
+        despesas = None
+        avisos.append(
+            "⚠️ Despesas essenciais de R$ 0,00 contradizem as obrigações "
+            "fixas informadas e foram tratadas como não informadas. "
+            "Preencha o valor real para calcular a reserva-alvo."
+        )
 
     if despesas is None or reserva_atual is None:
         plano = {
@@ -1844,6 +1862,41 @@ def analisar_meta(
     }
 
 
+def comparativo_poupanca(
+    market: Mapping[str, Any],
+    cap_inicial: float,
+    aporte_mensal: float,
+    projecoes: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """Compara o líquido projetado com a poupança (isenta de IR para PF).
+
+    Usa a última rentabilidade da poupança (BCB/SGS 195) anualizada como
+    hipótese constante. Devolve ``None`` quando o dado não está disponível,
+    sem substituir por uma taxa fixa.
+    """
+    taxa = market.get("poupanca")
+    if isinstance(taxa, bool) or not isinstance(taxa, (int, float)):
+        return None
+    if not math.isfinite(taxa) or not 0 <= taxa < 1:
+        return None
+    linhas: list[dict[str, Any]] = []
+    for linha in projecoes:
+        anos = float(linha["anos"])
+        valor_poupanca = _vf_bruto(cap_inicial, aporte_mensal, float(taxa), anos)
+        liquido = linha.get("vf_liquido")
+        linhas.append(
+            {
+                "anos": anos,
+                "valor_poupanca": valor_poupanca,
+                "vf_liquido_carteira": liquido,
+                "diferenca": (
+                    None if liquido is None else float(liquido) - valor_poupanca
+                ),
+            }
+        )
+    return linhas
+
+
 def criar_analise(
     respostas: dict,
     market: dict,
@@ -1927,6 +1980,12 @@ def criar_analise(
         resultado,
         meta,
     )
+    comparativo = comparativo_poupanca(
+        market,
+        respostas_validas["cap_inicial"],
+        respostas_validas["aporte_mensal"],
+        projecoes,
+    )
     return {
         "respostas": respostas_validas,
         "market": dict(market),
@@ -1938,6 +1997,7 @@ def criar_analise(
         "classes_indisponiveis": {},
         "data_referencia": data_base.isoformat(),
         "contexto_fiscal": contexto_fiscal,
+        "comparativo_poupanca": comparativo,
     }
 
 
@@ -2093,6 +2153,12 @@ def _tributacao_exportacao(
     }
 
 
+def _pct_opcional(valor: object) -> float | None:
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    return round(float(valor) * 100, 2)
+
+
 def montar_payload_exportacao(
     analise: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2139,6 +2205,12 @@ def montar_payload_exportacao(
                 "meses_extrapolados_selic"
             ),
             "ipca_12m_pct": round(float(market["ipca"]) * 100, 2),
+            "cdi_pct": _pct_opcional(market.get("cdi")),
+            "poupanca_anualizada_pct": _pct_opcional(market.get("poupanca")),
+            "focus_ipca_por_ano_pct": {
+                str(ano): round(float(taxa) * 100, 2)
+                for ano, taxa in (market.get("focus_ipca_por_ano") or {}).items()
+            },
             "ibov_cagr_10a_pct": round(
                 float(market["ibov_cagr"]) * 100,
                 2,
@@ -2163,6 +2235,7 @@ def montar_payload_exportacao(
         "respostas_normalizadas": dict(respostas),
         "meta": analise.get("meta"),
         "projecoes": list(analise.get("projecoes", [])),
+        "comparativo_poupanca": analise.get("comparativo_poupanca"),
         "avisos": list(resultado["avisos"]),
         "ativos_sugeridos": dict(analise.get("ativos_sugeridos", {})),
         "classes_indisponiveis": dict(

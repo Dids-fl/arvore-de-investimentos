@@ -10,6 +10,7 @@ NOTA: O mapeamento de classes ANBIMA depende das nomenclaturas atuais.
 """
 
 import logging
+import unicodedata
 
 import pandas as pd
 
@@ -175,8 +176,18 @@ COTISTAS_MINIMOS_POR_CATEGORIA_PREVIDENCIA = {
     "CRIPTO": 1,
 }
 
-# Público-alvo restrito
-PUBLICO_RESTRITO = {"Exclusivo", "Restrito", "Profissionais", "Qualificados"}
+# Público-alvo restrito. A CVM grava no singular ("Profissional",
+# "Qualificado"); a comparação normaliza acento, caixa e plural.
+PUBLICO_RESTRITO = {"exclusivo", "restrito", "profissional", "qualificado"}
+
+
+def _publico_normalizado(valor: object) -> str:
+    texto = unicodedata.normalize("NFKD", str(valor or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.strip().casefold()
+    if texto.endswith("ais"):  # profissionais -> profissional
+        return texto[:-3] + "al"
+    return texto[:-1] if texto.endswith("s") else texto
 
 
 # ---------------------------------------------------------------------
@@ -443,11 +454,29 @@ class FiltroFundos:
         if "Publico_Alvo" not in df.columns:
             return df
 
-        df["Publico_Alvo"] = df["Publico_Alvo"].astype(str).str.strip()
-        mascara = ~df["Publico_Alvo"].isin(PUBLICO_RESTRITO)
+        mascara = ~df["Publico_Alvo"].map(_publico_normalizado).isin(PUBLICO_RESTRITO)
         removidos = len(df) - mascara.sum()
         if removidos:
             logger.info(f"Filtro público-alvo: removidos {removidos} fundos restritos.")
+        return df[mascara].copy()
+
+    def filtrar_nao_investiveis(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove fundos fechados e fundos "master".
+
+        Fundo fechado não aceita aplicação nem resgate livre; fundo master só
+        recebe dinheiro de outros fundos (os "feeders"). Nenhum dos dois pode
+        ser comprado por uma pessoa física numa plataforma.
+        """
+        mascara = pd.Series(True, index=df.index)
+        if "Forma_Condominio" in df.columns:
+            forma = df["Forma_Condominio"].map(_publico_normalizado)
+            mascara &= forma != "fechado"
+        if "Denominacao_Social" in df.columns:
+            nome = df["Denominacao_Social"].astype(str).str.upper()
+            mascara &= ~nome.str.contains(r"\bMASTER\b", regex=True, na=False)
+        removidos = int(len(df) - mascara.sum())
+        if removidos:
+            logger.info(f"Filtro investível: removidos {removidos} fundos fechados ou master.")
         return df[mascara].copy()
 
     def filtrar_esg(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -514,6 +543,9 @@ class FiltroFundos:
 
         # 7. Público-alvo
         df_filtrado = self.filtrar_publico_alvo(df_filtrado)
+
+        # 7b. Investível pela pessoa física (aberto e não master)
+        df_filtrado = self.filtrar_nao_investiveis(df_filtrado)
 
         # 8. ESG
         df_filtrado = self.filtrar_esg(df_filtrado)

@@ -1,6 +1,7 @@
 # tests/test_estruturados.py
 from datetime import datetime, timedelta, timezone
 
+import produtos_estruturados.indicadores as indicadores_estruturados
 from produtos_estruturados.filtros import elegivel
 from produtos_estruturados.indicadores import (
     _isento_ir,
@@ -81,7 +82,13 @@ def test_taxa_suspeita_descartada_no_moderado_mas_visivel_no_agressivo():
     assert elegivel(ativo, perfil=3)
 
 
-def test_montar_indicadores_gera_um_registro_por_ativo():
+def test_montar_indicadores_gera_um_registro_por_ativo(monkeypatch):
+    monkeypatch.setattr(indicadores_estruturados, "_CDI_CACHE", {})
+    monkeypatch.setattr(
+        indicadores_estruturados,
+        "coletar_indicadores",
+        lambda: (0.15, 0.149),
+    )
     cadastro = {
         "cras": [{"razaoSocial": "CRA Teste", "isin": "BRCRA01", "dataVencimento": "2027-01-01"}],
         "cris": [],
@@ -96,9 +103,44 @@ def test_montar_indicadores_gera_um_registro_por_ativo():
     assert tipos == {"CRA", "DEBENTURE"}
 
 
+def test_montar_indicadores_segue_sem_cdi_quando_bcb_falha(monkeypatch):
+    from utils.exceptions import DadosIndisponiveisError
+
+    def _falha():
+        raise DadosIndisponiveisError("SELIC (BCB/SGS)", "fora do ar")
+
+    monkeypatch.setattr(indicadores_estruturados, "_CDI_CACHE", {})
+    monkeypatch.setattr(indicadores_estruturados, "coletar_indicadores", _falha)
+    assert indicadores_estruturados._obter_cdi_atual() is None
+
+
 def test_score_penaliza_ativo_sem_negociacao_recente():
     com_negociacao = _ativo_exemplo(tem_negociacao_recente=True)
     sem_negociacao = _ativo_exemplo(tem_negociacao_recente=False)
     score_com, _ = _calcular_score(com_negociacao, perfil=2)
     score_sem, _ = _calcular_score(sem_negociacao, perfil=2)
     assert score_sem < score_com
+
+def test_dias_uteis_pula_fim_de_semana():
+    from datetime import date
+
+    from produtos_estruturados.negociacao_coletor import _dias_uteis
+
+    dias = list(_dias_uteis(7, referencia=date(2026, 11, 2)))  # segunda-feira
+    assert all(dia.weekday() < 5 for dia in dias)
+    assert len(dias) == 5
+
+
+def test_negociacao_balcao_para_apos_falhas_seguidas(monkeypatch):
+    import produtos_estruturados.negociacao_coletor as coletor
+
+    chamadas = []
+
+    class B3Bloqueada:
+        def negociacao_balcao(self, dia):
+            chamadas.append(dia)
+            raise ValueError("Invalid base64-encoded string")
+
+    monkeypatch.setattr(coletor, "B3", B3Bloqueada)
+    assert coletor.coletar_negociacao_balcao(dias=60) == []
+    assert len(chamadas) == coletor.MAX_FALHAS_SEGUIDAS
