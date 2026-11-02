@@ -43,3 +43,14 @@ def test_mercado_em_nao_olha_o_futuro(series_falsas) -> None:
 
 def test_anualizar() -> None:
     assert vh._anualizar(1.21, 2) == pytest.approx(0.10)
+
+
+def test_serie_com_desdobramento_nao_ajustado_e_descartada() -> None:
+    dias = pd.bdate_range("2024-01-01", "2024-12-31")
+    normal = pd.Series(100.0, index=dias) * (1.001 ** pd.Series(range(len(dias)), index=dias))
+    com_salto = normal.copy()
+    com_salto.loc["2024-06-03":] *= 10  # desdobramento 1:10 não ajustado
+    inicio, fim = pd.Timestamp("2024-02-01"), pd.Timestamp("2024-11-29")
+
+    assert vh._serie_confiavel(normal, inicio, fim)
+    assert not vh._serie_confiavel(com_salto, inicio, fim)

@@ -245,9 +245,17 @@ def top_fundos_previdenciarios(quantidade=20, perfil=PERFIL_MODERADO, incluir_sh
 
 def rankear_fundos_previdenciarios(perfil=PERFIL_MODERADO, limite=10, incluir_sharpe_sortino=True, **filtro_kwargs):
     """
-    Função principal para o recomendador previdenciário.
+    Função principal para o recomendador previdenciário (com cache, ver
+    fundos/cache_ranking.py).
     """
-    ranking = RankerPrevidenciarios(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking()
+    from .cache_ranking import com_cache
+
+    parametros = {"perfil": perfil, "sharpe_sortino": incluir_sharpe_sortino, "filtros": filtro_kwargs}
+    ranking = com_cache(
+        "previdencia",
+        parametros,
+        lambda: RankerPrevidenciarios(perfil, incluir_sharpe_sortino, **filtro_kwargs).gerar_ranking(),
+    )
     return ranking[:limite]
 
 

@@ -113,8 +113,40 @@ de IR levava ao topo um fundo de debêntures incentivadas que rendeu 6,9%
 contra 14,5% do CDI. Nos perfis moderado e agressivo esses fundos continuam
 permitidos; com só 3 cortes, mexer mais neles seria ajustar ao acaso.
 
-Ações, FIIs e cripto não foram testados: não há fonte gratuita com os
-indicadores fundamentalistas "como eram" em cada data.
+### FIIs (22 datas trimestrais, 2020–2025)
+
+DY e P/VP de cada data foram reconstruídos com o informe mensal da CVM
+(valor patrimonial e rendimento por cota, só os informes já entregues na
+data) e o preço do Yahoo; o retorno medido é o total (preço + rendimentos)
+dos 12 meses seguintes. Vacância ficou de fora por falta de série gratuita.
+
+Top-10 do ranking, média por data:
+
+| | Treino 2020–2022 | Teste 2023–2025 |
+|---|---|---|
+| Regra antiga (DY alto + P/VP baixo), conservador: excesso sobre o CDI | −20,4 p.p. | −5,3 p.p. |
+| **Regra nova: excesso sobre o CDI** | **−6,3 p.p.** | **−2,0 p.p.** |
+| Regra antiga: bateu a mediana dos FIIs | 0% | 33% |
+| **Regra nova: bateu a mediana** | **100%** | **58%** |
+| Regra antiga: pior resultado | −23,1% | −6,1% |
+| **Regra nova: pior resultado** | **−8,4%** | **−3,0%** |
+
+A regra antiga era a pior entre todas as testadas: DY muito acima dos pares
+e desconto forte sobre o patrimônio costumam sinalizar fundo em
+dificuldade, cujo preço continua caindo. A regra nova ordena pela liquidez e
+exclui FIIs com DY mais de 2 p.p. acima da mediana ou P/VP abaixo de 0,8.
+Ela foi a melhor no treino e continuou à frente no teste. Mesmo assim, **os
+FIIs como classe renderam menos que o CDI em 2020–2025**, um período de
+juros altos.
+
+Ao montar este teste, apareceram desdobramentos de cotas não ajustados no
+Yahoo (XPML11 e KNCR11 com "retorno" de +700% em um ano). Janelas com salto
+diário acima de 35% passaram a ser descartadas na validação de FIIs e ETFs.
+
+Ações e cripto não foram testados: não há fonte gratuita simples com os
+indicadores fundamentalistas de ações "como eram" em cada data (a CVM tem os
+balanços, mas montar P/L e ROE históricos fica como próximo passo), e a
+CoinGecko gratuita só dá 365 dias.
 
 ## Limitações
 

@@ -145,7 +145,7 @@ os arquivos recentes passaram no Ruff;
 
 o repositório possuía dívida técnica histórica fora do conjunto alterado.
 
-Em 1º de novembro de 2026, após a revisão: 435 testes determinísticos
+Em 1º de novembro de 2026, após a revisão: 457 testes determinísticos
 aprovados e cobertura combinada do núcleo, backtest e tributação de cerca de 82%.
 
 Testes sem o marcador slow não acessam a internet: uma fixture automática em

@@ -1,0 +1,47 @@
+name: Fontes de dados
+
+# Fontes gratuitas mudam de formato sem aviso. Uma vez por semana este
+# workflow confere cada uma e roda os testes que acessam APIs reais. Se algo
+# essencial quebrar, o GitHub envia e-mail para quem mantém o repositório.
+
+on:
+  schedule:
+    - cron: "17 11 * * 1"  # segundas, 08h17 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verificar fontes
+        run: python scripts/verificar_fontes.py --markdown resumo_fontes.md
+
+      - name: Testes com APIs reais (sem baixar os dados da CVM)
+        if: always()
+        run: |
+          python -m pytest -q tests -m slow \
+            --deselect tests/test_fundos.py::TestIntegracao \
+            --tb=short
+
+      - name: Resumo
+        if: always()
+        run: cat resumo_fontes.md >> "$GITHUB_STEP_SUMMARY" || true

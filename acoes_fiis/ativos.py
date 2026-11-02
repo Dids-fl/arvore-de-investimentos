@@ -77,6 +77,9 @@ PESOS_ACOES: dict[int, dict[str, float]] = {
     },
 }
 
+# PESOS_FIIS e REF_FIIS deixaram de ser usados no score: a validação histórica
+# mostrou que DY alto e P/VP baixo escolhiam os piores FIIs (ver
+# acoes_fiis/screener.py::_score_fii). Mantidos só como referência.
 PESOS_FIIS: dict[int, dict[str, float]] = {
     1: {  # Conservador — DY alto e recorrente + vacância zero + P/VP seguro
         "dy":       0.45,  # renda mensal previsível é o objetivo principal

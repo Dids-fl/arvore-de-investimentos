@@ -169,3 +169,20 @@ A fatia "Fundos de Ações/ETF" da carteira só recebe ETFs de ações. A
 classificação usa o nome oficial do fundo (Tesouro, IPCA, DAP, boi gordo,
 ouro, bitcoin etc.) e, quando o nome é genérico, a volatilidade anual
 observada: abaixo de 8% o ETF é tratado como renda fixa.
+
+## Monitoramento semanal
+
+O workflow `.github/workflows/fontes-dados.yml` roda toda segunda-feira e
+executa `scripts/verificar_fontes.py`, que faz uma consulta pequena a cada
+fonte com o próprio código do app. Se uma fonte essencial mudar de formato
+ou sair do ar, a execução falha e o GitHub envia e-mail. Para rodar na hora:
+aba **Actions** → **Fontes de dados** → **Run workflow**, ou localmente
+`python scripts/verificar_fontes.py`.
+
+## Cache dos rankings de fundos
+
+O ranking de fundos e de previdência leva cerca de um minuto. Ele fica em
+`~/.cache/arvore_investimentos/rankings/` até a CVM publicar um novo dia de
+informe (no máximo 24 horas); buscas repetidas levam cerca de 2 segundos.
+A lista de títulos do Tesouro do dia fica em cache por 3 horas, em vez de
+baixar a cada busca o arquivo histórico de 15 MB.

@@ -465,3 +465,33 @@ def test_sem_referencia_de_mercado_classe_fica_indisponivel(monkeypatch, titulos
 
     with pytest.raises(DadosIndisponiveisError):
         ranker.rankear_rf()
+
+
+def test_coletar_tesouro_reaproveita_lista_do_dia(monkeypatch) -> None:
+    chamadas = []
+
+    def baixar():
+        chamadas.append(1)
+        return [{"nome": "Tesouro Selic 2029", "taxa": 0.001, "vencimento": "01/03/2029", "tipo": "SELIC"}]
+
+    monkeypatch.setattr(coletor, "coletar_tesouro_via_package_show", baixar)
+
+    primeira = coletor.coletar_tesouro()
+    segunda = coletor.coletar_tesouro()
+
+    assert primeira == segunda
+    assert len(chamadas) == 1
+
+
+def test_coletar_tesouro_nao_guarda_falha(monkeypatch) -> None:
+    chamadas = []
+
+    def falhar():
+        chamadas.append(1)
+        return None
+
+    monkeypatch.setattr(coletor, "coletar_tesouro_via_package_show", falhar)
+
+    assert coletor.coletar_tesouro() is None
+    assert coletor.coletar_tesouro() is None
+    assert len(chamadas) == 2

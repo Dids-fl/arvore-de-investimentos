@@ -84,3 +84,23 @@ def _bloquear_rede(request, monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", _negar)
     monkeypatch.setattr(socket, "create_connection", _negar)
+
+
+@pytest.fixture(autouse=True)
+def _sem_cache_de_ranking(monkeypatch):
+    """Rankings de fundos são calculados nos testes, sem ler o cache do usuário."""
+    try:
+        import fundos.cache_ranking as cache_ranking
+    except ImportError:
+        return
+    monkeypatch.setattr(cache_ranking, "_ultima_data_informe", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _cache_do_tesouro_isolado(monkeypatch, tmp_path):
+    """Cada teste usa um cache do Tesouro vazio e próprio."""
+    try:
+        import renda_fixa.coletor as coletor
+    except ImportError:
+        return
+    monkeypatch.setattr(coletor, "_CACHE_TESOURO", tmp_path / "tesouro_titulos.json")

@@ -710,16 +710,12 @@ def load_market_data(
                 results[key] = value
                 if value is None and key not in opcionais:
                     failures[key] = "fonte sem valor válido"
-            except (
-                requests.exceptions.RequestException,
-                RuntimeError,
-                OSError,
-                ValueError,
-                TypeError,
-                KeyError,
-                AttributeError,
-            ) as exc:
-                logger.warning(f"Falha ao obter {key}: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                # Bibliotecas de terceiros (yfinance, python-bcb) levantam
+                # exceções próprias, como YFRateLimitError. Qualquer falha de
+                # uma fonte vira "fonte indisponível": opcional segue sem o
+                # dado; obrigatória cai no cache antigo ou no erro explícito.
+                logger.warning(f"Falha ao obter {key}: {type(exc).__name__}: {exc}")
                 results[key] = None
                 if key not in opcionais:
                     failures[key] = str(exc)

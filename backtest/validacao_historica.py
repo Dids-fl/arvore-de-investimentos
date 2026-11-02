@@ -59,11 +59,11 @@ def _sgs(codigo: int, inicio: str, fim: str | None = None) -> pd.Series:
     blocos = []
     atual = pd.Timestamp(inicio)
     while atual <= fim_dt:
-        proximo = min(atual + pd.DateOffset(years=5) - pd.Timedelta(days=1), fim_dt)
+        proximo = min(atual + pd.DateOffset(years=5) - pd.Timedelta(1, unit="D"), fim_dt)
         df = sgs.get({"v": codigo}, start=atual.strftime("%Y-%m-%d"), end=proximo.strftime("%Y-%m-%d"))
         if not df.empty:
             blocos.append(df["v"])
-        atual = proximo + pd.Timedelta(days=1)
+        atual = proximo + pd.Timedelta(1, unit="D")
     serie = pd.concat(blocos).sort_index()
     return serie[~serie.index.duplicated(keep="last")].astype(float)
 
@@ -144,7 +144,7 @@ def cdi_realizado(inicio: pd.Timestamp, fim: pd.Timestamp) -> float | None:
     """Fator acumulado do CDI entre duas datas (exclui o dia inicial)."""
     cdi = serie_cdi()
     janela = cdi.loc[(cdi.index > inicio) & (cdi.index <= fim)]
-    if janela.empty or cdi.index.max() < fim - pd.Timedelta(days=7):
+    if janela.empty or cdi.index.max() < fim - pd.Timedelta(7, unit="D"):
         return None
     return float((1 + janela / 100).prod())
 
@@ -157,6 +157,21 @@ def ipca_realizado(inicio: pd.Timestamp, fim: pd.Timestamp) -> float | None:
     if len(meses) < esperado:
         return None
     return float((1 + meses / 100).prod())
+
+
+SALTO_DIARIO_MAXIMO = 0.35
+
+
+def _serie_confiavel(serie: pd.Series, inicio: pd.Timestamp, fim: pd.Timestamp) -> bool:
+    """Falso se houver salto diário impossível (desdobramento não ajustado).
+
+    O Yahoo às vezes não ajusta desdobramentos e grupamentos de FIIs e ETFs,
+    o que cria "retornos" de centenas de por cento em um dia.
+    """
+    janela = serie.loc[inicio - pd.Timedelta(5, unit="D"):fim].dropna()
+    if len(janela) < 2:
+        return False
+    return bool((janela.pct_change().abs().dropna() <= SALTO_DIARIO_MAXIMO).all())
 
 
 def _spearman(a: list[float], b: list[float]) -> float | None:
@@ -175,7 +190,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
     a data, para não usar informação do futuro.
     """
     selic = _valor_ate(serie_selic_meta(), dia)
-    ipca12 = _valor_ate(serie_ipca_12m(), dia - pd.Timedelta(days=40))
+    ipca12 = _valor_ate(serie_ipca_12m(), dia - pd.Timedelta(40, unit="D"))
     if selic is None or ipca12 is None:
         return None
     ibov_cagr = None
@@ -185,7 +200,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
         inicio_10a = dia - pd.DateOffset(years=10)
         ibov_ini = _valor_ate(ibov, inicio_10a)
         ibov_fim = _valor_ate(ibov, dia)
-        if not ibov_ini or not ibov_fim or ibov.index.min() > inicio_10a + pd.Timedelta(days=10):
+        if not ibov_ini or not ibov_fim or ibov.index.min() > inicio_10a + pd.Timedelta(10, unit="D"):
             return None
         ibov_cagr = _anualizar(ibov_fim / ibov_ini, 10)
         from macroeconomia.premio_acoes import volatilidade_anual
@@ -194,7 +209,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
 
     def focus_por_ano(indicador: str) -> dict[int, float]:
         focus = focus_anual(indicador)
-        ate = focus.loc[(focus["Data"] <= dia) & (focus["Data"] > dia - pd.Timedelta(days=45))]
+        ate = focus.loc[(focus["Data"] <= dia) & (focus["Data"] > dia - pd.Timedelta(45, unit="D"))]
         resultado = {}
         for ano in range(dia.year, dia.year + 4):
             linhas = ate.loc[ate["DataReferencia"] == ano].sort_values("Data")
@@ -222,7 +237,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
 def datas_base(inicio: str, fim: str, meses: int = 6) -> list[pd.Timestamp]:
     """Primeiro dia útil de cada período, de ``inicio`` a ``fim``."""
     datas = pd.date_range(inicio, fim, freq=f"{meses}MS")
-    return [pd.bdate_range(d, d + pd.Timedelta(days=7))[0] for d in datas]
+    return [pd.bdate_range(d, d + pd.Timedelta(7, unit="D"))[0] for d in datas]
 
 
 # ── Parte 1: projeções do engine x realizado ──────────────────────────────────
@@ -239,7 +254,7 @@ def validar_projecoes() -> dict[str, Any]:
             continue
         for anos in HORIZONTES_ANOS:
             fim = dia + pd.DateOffset(years=anos)
-            if fim > hoje - pd.Timedelta(days=10):
+            if fim > hoje - pd.Timedelta(10, unit="D"):
                 continue
             taxas = engine.taxas_por_risco(
                 mercado, prazo_meses=12 * anos, data_referencia=dia.date()
@@ -351,7 +366,7 @@ def pesquisar_regra_acoes() -> dict[str, Any]:
         vol = volatilidade_anual(ibov, dia)
         for anos in HORIZONTES_ANOS:
             fim = dia + pd.DateOffset(years=anos)
-            if fim > hoje - pd.Timedelta(days=10):
+            if fim > hoje - pd.Timedelta(10, unit="D"):
                 continue
             fator_cdi = cdi_realizado(dia, fim)
             ini, fin = _valor_ate(ibov, dia), _valor_ate(ibov, fim)
@@ -498,7 +513,7 @@ def validar_tesouro() -> dict[str, Any]:
         ]
         for anos in (1, 3):
             fim = dia_real + pd.DateOffset(years=anos)
-            if fim > hoje - pd.Timedelta(days=10):
+            if fim > hoje - pd.Timedelta(10, unit="D"):
                 continue
             datas_fim = precos.loc[precos["Data Base"] >= fim, "Data Base"]
             if datas_fim.empty:
@@ -773,6 +788,8 @@ def validar_etfs() -> dict[str, Any]:
                 continue
             if screener_etf.classe_etf(nomes.get(ticker), metricas["volatilidade"], ticker) != "acoes":
                 continue
+            if not _serie_confiavel(fechamento[ticker], dia - pd.DateOffset(years=1), fim):
+                continue
             saida = _valor_ate(fechamento[ticker].dropna(), fim)
             entrada = _valor_ate(fechamento[ticker].dropna(), dia)
             if not saida or not entrada:
@@ -816,6 +833,180 @@ def validar_etfs() -> dict[str, Any]:
     return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
 
 
+# ── Parte 5: ranking de FIIs (CVM + Yahoo) ─────────────────────────────────────
+
+URL_FII_MENSAL = "https://dados.cvm.gov.br/dados/FII/DOC/INF_MENSAL/DADOS/inf_mensal_fii_{ano}.zip"
+
+
+def informes_fii() -> pd.DataFrame:
+    """Informe mensal de todos os FIIs (CVM): valor patrimonial e DY por cota."""
+    def baixar() -> pd.DataFrame:
+        import io
+        import zipfile
+
+        import requests
+
+        partes = []
+        for ano in range(2019, date.today().year + 1):
+            resposta = requests.get(URL_FII_MENSAL.format(ano=ano), timeout=120)
+            if resposta.status_code != 200:
+                continue
+            with zipfile.ZipFile(io.BytesIO(resposta.content)) as arquivo:
+                nomes = arquivo.namelist()
+                ler = lambda parte: pd.read_csv(  # noqa: E731
+                    arquivo.open(next(n for n in nomes if parte in n)), sep=";", encoding="latin1"
+                )
+                complemento = ler("complemento")
+                geral = ler("geral")
+            # Até 2024 a coluna se chamava CNPJ_Fundo.
+            for tabela in (complemento, geral):
+                tabela.rename(columns={"CNPJ_Fundo": "CNPJ_Fundo_Classe"}, inplace=True)
+            chaves = ["CNPJ_Fundo_Classe", "Data_Referencia"]
+            dados = complemento[chaves + ["Valor_Patrimonial_Cotas", "Percentual_Dividend_Yield_Mes"]].merge(
+                geral[chaves + ["Codigo_ISIN", "Mercado_Negociacao_Bolsa"]], on=chaves
+            )
+            partes.append(dados)
+        tudo = pd.concat(partes, ignore_index=True)
+        tudo = tudo.loc[tudo["Codigo_ISIN"].astype(str).str.match(r"^BR[A-Z]{4}CTF")]
+        tudo["ticker"] = tudo["Codigo_ISIN"].str[2:6] + "11"
+        tudo["Data_Referencia"] = pd.to_datetime(tudo["Data_Referencia"])
+        return tudo.sort_values("Data_Referencia").drop_duplicates(["ticker", "Data_Referencia"], keep="last")
+
+    return _em_cache("fii_informes", baixar)
+
+
+def precos_fii(tickers: list[str]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fechamento, fechamento ajustado (retorno total) e volume diários."""
+    def baixar() -> pd.DataFrame:
+        import time
+
+        import yfinance as yf
+
+        partes = []
+        for i in range(0, len(tickers), 40):
+            bloco = [f"{t}.SA" for t in tickers[i:i + 40]]
+            partes.append(
+                yf.download(bloco, period="7y", auto_adjust=False, progress=False, threads=False)
+            )
+            time.sleep(5)
+        return pd.concat(partes, axis=1)
+
+    dados = _em_cache("fii_precos", baixar)
+    tabelas = []
+    for campo in ("Close", "Adj Close", "Volume"):
+        tabela = dados[campo].copy()
+        tabela.columns = [c.replace(".SA", "") for c in tabela.columns]
+        tabela.index = pd.to_datetime(tabela.index).tz_localize(None)
+        tabelas.append(tabela)
+    return tabelas[0], tabelas[1], tabelas[2]
+
+
+def _indicadores_fii(ticker, dia, informes, fechamento, volume) -> dict | None:
+    """DY 12 meses sobre o preço, P/VP e liquidez como estariam em ``dia``.
+
+    O informe do mês M é entregue até o fim do mês M+1, então só entram os
+    informes com referência pelo menos 45 dias antes de ``dia``.
+    """
+    preco = _valor_ate(fechamento[ticker].dropna(), dia)
+    if not preco or preco <= 0:
+        return None
+    publicados = informes.loc[
+        (informes["Data_Referencia"] <= dia - pd.Timedelta(45, unit="D"))
+        & (informes["Data_Referencia"] > dia - pd.Timedelta(45 + 366, unit="D"))
+    ]
+    if len(publicados) < 10:
+        return None
+    vp = float(publicados["Valor_Patrimonial_Cotas"].iloc[-1])
+    distribuido = float(
+        (publicados["Percentual_Dividend_Yield_Mes"].fillna(0) * publicados["Valor_Patrimonial_Cotas"]).sum()
+    )
+    janela = fechamento[ticker].loc[dia - pd.Timedelta(62, unit="D"):dia].dropna()
+    vol = volume[ticker].reindex(janela.index).fillna(0)
+    if vp <= 0 or janela.empty:
+        return None
+    return {
+        "ticker": ticker,
+        "tipo_ativo": "fii",
+        "dy": distribuido / preco * 100,
+        "pvp": preco / vp,
+        "liquidez": float((janela * vol).mean()),
+        "vacancia": None,
+    }
+
+
+def validar_fiis() -> dict[str, Any]:
+    """Pontua FIIs com os dados de cada data e mede o retorno total de 12 meses.
+
+    A vacância (15% do score) não tem série mensal gratuita simples e fica
+    fora; o peso dela é redistribuído entre DY, P/VP e liquidez.
+    """
+    from acoes_fiis import screener
+    from acoes_fiis.ativos import MIN_LIQUIDEZ_FIIS
+
+    informes = informes_fii()
+    informes = informes.loc[informes["Mercado_Negociacao_Bolsa"].astype(str).str.upper() == "S"]
+    tickers = sorted(informes["ticker"].unique())
+    fechamento, ajustado, volume = precos_fii(tickers)
+    por_ticker = {t: g for t, g in informes.groupby("ticker")}
+    hoje = pd.Timestamp(date.today())
+    registros, universos = [], []
+    for dia in datas_base("2020-07-01", (hoje - pd.DateOffset(years=1)).strftime("%Y-%m-%d"), meses=3):
+        fim = dia + pd.DateOffset(years=1)
+        cdi = cdi_realizado(dia, fim)
+        candidatos = []
+        for ticker in fechamento.columns:
+            if ticker not in por_ticker:
+                continue
+            ind = _indicadores_fii(ticker, dia, por_ticker[ticker], fechamento, volume)
+            if ind is None or ind["liquidez"] < MIN_LIQUIDEZ_FIIS:
+                continue
+            if not _serie_confiavel(ajustado[ticker], dia - pd.DateOffset(years=1), fim):
+                continue
+            entrada = _valor_ate(ajustado[ticker].dropna(), dia)
+            saida = _valor_ate(ajustado[ticker].dropna(), fim)
+            if not entrada or not saida:
+                continue
+            ind["retorno_realizado"] = saida / entrada - 1
+            candidatos.append(ind)
+        candidatos = [c for c in screener._validar_fiis(candidatos) if c["dy"] <= 30]
+        if len(candidatos) < 20:
+            continue
+        universos.append(
+            {
+                "data_base": dia.date().isoformat(),
+                "cdi": cdi - 1 if cdi else None,
+                "fiis": [
+                    {k: c[k] for k in ("ticker", "dy", "pvp", "liquidez", "retorno_realizado")}
+                    for c in candidatos
+                ],
+            }
+        )
+        dy_mediana = statistics.median(c["dy"] for c in candidatos)
+        for perfil in (1, 2, 3):
+            for c in candidatos:
+                c["score"], _ = screener._score_fii(c, perfil, dy_mediana)
+            ordem = sorted(candidatos, key=lambda c: -c["score"])
+            retornos = [c["retorno_realizado"] for c in candidatos]
+            registros.append(
+                {
+                    "data_base": dia.date().isoformat(),
+                    "anos": 1,
+                    "perfil": perfil,
+                    "fiis": len(candidatos),
+                    "escolhido": ordem[0]["ticker"],
+                    "retorno_escolhido": ordem[0]["retorno_realizado"],
+                    "retorno_top3": statistics.fmean(c["retorno_realizado"] for c in ordem[:3]),
+                    "retorno_top10": statistics.fmean(c["retorno_realizado"] for c in ordem[:10]),
+                    "retorno_medio": statistics.fmean(retornos),
+                    "retorno_mediano": statistics.median(retornos),
+                    "melhor_possivel": max(retornos),
+                    "cdi": cdi - 1 if cdi else None,
+                    "spearman": _spearman([c["score"] for c in candidatos], retornos),
+                }
+            )
+    return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 PARTES: dict[str, Callable[[], dict[str, Any]]] = {
@@ -824,6 +1015,7 @@ PARTES: dict[str, Callable[[], dict[str, Any]]] = {
     "fundos": validar_fundos,
     "previdencia": lambda: validar_fundos(previdencia=True),
     "etfs": validar_etfs,
+    "fiis": validar_fiis,
     "pesquisa_acoes": pesquisar_regra_acoes,
 }
 

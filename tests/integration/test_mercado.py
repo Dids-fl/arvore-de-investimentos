@@ -308,3 +308,58 @@ def test_yahoo_fora_do_ar_nao_bloqueia_o_app(monkeypatch, tmp_path) -> None:
     assert resultado["ibov_cagr"] is None
     assert resultado["ibov_volatilidade"] is None
     assert any("Volatilidade do Ibovespa" in aviso for aviso in resultado["avisos"])
+
+
+def test_excecao_propria_de_biblioteca_nao_derruba_o_carregamento(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Ex.: yfinance levanta YFRateLimitError, que não herda de RequestException."""
+
+    class ErroDeBiblioteca(Exception):
+        pass
+
+    def limite_atingido():
+        raise ErroDeBiblioteca("Too Many Requests. Rate limited.")
+
+    monkeypatch.setattr(mercado, "CACHE_FILE", tmp_path / "market.json")
+    monkeypatch.setattr(
+        mercado,
+        "_fetch_sgs_value",
+        lambda serie: (0.10, "01/07/2026") if serie == mercado.SGS_SELIC else (0.04, "30/06/2026"),
+    )
+    monkeypatch.setattr(mercado, "_fetch_focus_selic_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_focus_ipca_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_ibov_cagr_10a", limite_atingido)
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", limite_atingido)
+
+    resultado = mercado.load_market_data(force_refresh=True)
+
+    assert resultado["selic"] == pytest.approx(0.10)
+    assert resultado["ibov_cagr"] is None
+
+
+def test_falha_de_fonte_obrigatoria_usa_cache_antigo(
+    monkeypatch,
+    tmp_path,
+    mercado_valido,
+) -> None:
+    arquivo = tmp_path / "market.json"
+    monkeypatch.setattr(mercado, "CACHE_FILE", arquivo)
+    mercado._save_market_cache(mercado_valido)
+    antigo = time.time() - 8 * 3600
+    os.utime(arquivo, (antigo, antigo))
+
+    def fora_do_ar(serie):
+        raise ConnectionResetError("BCB fora do ar")
+
+    monkeypatch.setattr(mercado, "_fetch_sgs_value", fora_do_ar)
+    monkeypatch.setattr(mercado, "_fetch_focus_selic_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_focus_ipca_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_ibov_cagr_10a", lambda: None)
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: None)
+
+    resultado = mercado.load_market_data()
+
+    assert resultado["cache_status"] == "stale"
+    assert resultado["selic"] == pytest.approx(mercado_valido["selic"])

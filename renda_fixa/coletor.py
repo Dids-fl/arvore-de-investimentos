@@ -1,6 +1,9 @@
 # renda_fixa/coletor.py
+import json
 import logging
+import time
 from io import StringIO
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -161,9 +164,32 @@ def coletar_tesouro_via_package_show():
 # 3. WRAPPER (fallback automático)
 # ──────────────────────────────────────────────────────────────
 
+_CACHE_TESOURO = Path.home() / ".cache" / "arvore_investimentos" / "tesouro_titulos.json"
+# O Tesouro publica as taxas uma vez por dia útil; o arquivo tem 15 MB de
+# histórico, então a lista do dia é guardada por algumas horas.
+_TTL_TESOURO_S = 3 * 60 * 60
+
+
 def coletar_tesouro():
     """
-    Função pública para obter títulos do Tesouro.
+    Função pública para obter títulos do Tesouro (com cache de 3 horas).
     Tenta package_show; se falhar, retorna None (o ranker usará fallback).
     """
-    return coletar_tesouro_via_package_show()
+    try:
+        if _CACHE_TESOURO.is_file() and time.time() - _CACHE_TESOURO.stat().st_mtime < _TTL_TESOURO_S:
+            titulos = json.loads(_CACHE_TESOURO.read_text(encoding="utf-8"))
+            if titulos:
+                return titulos
+    except (OSError, ValueError) as exc:
+        logger.debug(f"Cache do Tesouro ilegível: {exc}")
+
+    titulos = coletar_tesouro_via_package_show()
+    if titulos:
+        try:
+            _CACHE_TESOURO.parent.mkdir(parents=True, exist_ok=True)
+            temporario = _CACHE_TESOURO.with_suffix(".tmp")
+            temporario.write_text(json.dumps(titulos, ensure_ascii=False, default=str), encoding="utf-8")
+            temporario.replace(_CACHE_TESOURO)
+        except OSError as exc:
+            logger.debug(f"Não foi possível gravar o cache do Tesouro: {exc}")
+    return titulos
