@@ -622,11 +622,57 @@ def _resumir_ranking(registros: list[dict]) -> dict[str, Any]:
 
 # ── Parte 3: rankers de fundos e previdência (CVM) ─────────────────────────────
 
-def _cotas_em(cnpjs: list[str], dia: str) -> dict[str, float]:
-    """Última cota de cada fundo até ``dia`` no banco local da CVM."""
-    from fundos.informe_diario_coletor import get_informe_coletor
+BANCO_INFORME_ANTIGO = CACHE_DIR / "informe_diario_antigo.db"
+URL_INFORME_MENSAL = "https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/inf_diario_fi_{ano}{mes:02d}.zip"
+_COLETOR_COMBINADO: dict[str, Any] = {}
 
-    conexao = get_informe_coletor().conn
+
+def coletor_informe_combinado():
+    """Coletor do informe diário com o histórico do app mais meses antigos.
+
+    O app guarda só 3 anos. Para ter mais datas de corte, os meses de 2021
+    até o início da janela do app são baixados (arquivos mensais gratuitos da
+    CVM) para um banco separado, usado só aqui. Uma visão temporária une os
+    dois bancos, então as consultas do próprio coletor funcionam sem mudança.
+    """
+    if "coletor" in _COLETOR_COMBINADO:
+        return _COLETOR_COMBINADO["coletor"]
+    import io
+    import zipfile
+
+    import requests
+
+    from fundos.informe_diario_coletor import DB_PATH, InformeDiarioColetorCVM
+
+    atual = InformeDiarioColetorCVM(atualizar=False)
+    primeiro = atual.conn.execute("SELECT MIN(Data_Competencia) FROM informe_diario").fetchone()[0]
+    limite = pd.Timestamp(primeiro).to_period("M")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    antigo = InformeDiarioColetorCVM(db_path=BANCO_INFORME_ANTIGO, atualizar=False)
+    for periodo in pd.period_range("2021-01", limite - 1, freq="M"):
+        if antigo.mes_ja_carregado(periodo.year, periodo.month):
+            continue
+        url = URL_INFORME_MENSAL.format(ano=periodo.year, mes=periodo.month)
+        resposta = requests.get(url, timeout=300)
+        resposta.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(resposta.content)) as arquivo:
+            nome = next(n for n in arquivo.namelist() if n.endswith(".csv"))
+            with arquivo.open(nome) as csv:
+                for pedaco in pd.read_csv(csv, sep=";", encoding="latin1", low_memory=False, chunksize=100_000):
+                    antigo._processar_chunk(pedaco)
+        print(f"   informe {periodo} carregado", flush=True)
+    antigo.conn.execute(f"ATTACH DATABASE '{Path(DB_PATH).resolve()}' AS atual")
+    antigo.conn.execute(
+        "CREATE TEMP VIEW informe_diario AS "
+        "SELECT * FROM main.informe_diario UNION ALL SELECT * FROM atual.informe_diario"
+    )
+    _COLETOR_COMBINADO["coletor"] = antigo
+    return antigo
+
+
+def _cotas_em(cnpjs: list[str], dia: str) -> dict[str, float]:
+    """Última cota de cada fundo até ``dia`` (banco do app + meses antigos)."""
+    conexao = coletor_informe_combinado().conn
     cotas: dict[str, float] = {}
     for i in range(0, len(cnpjs), 500):
         bloco = cnpjs[i:i + 500]
@@ -646,22 +692,30 @@ def _cotas_em(cnpjs: list[str], dia: str) -> dict[str, float]:
     return cotas
 
 
+# Nove cortes a cada 4 meses; cada um usa até 2 anos de histórico anterior.
+CORTES_FUNDOS = (
+    "2023-01-31", "2023-05-31", "2023-09-29",
+    "2024-01-31", "2024-05-31", "2024-09-30",
+    "2025-01-31", "2025-05-30", "2025-09-30",
+)
+
+
 def validar_fundos(previdencia: bool = False) -> dict[str, Any]:
     """Ranqueia fundos com dados até cada data de corte e mede os 12 meses seguintes.
 
-    Usa o banco local da CVM (janela de 3 anos do app). Limitações: o
-    cadastro é o atual, então fundos encerrados depois do corte não entram
+    Usa o banco local da CVM mais os meses antigos de
+    ``coletor_informe_combinado``. Limitações: o cadastro é o atual, então fundos encerrados depois do corte não entram
     (viés de sobrevivência, que afeta igualmente escolhidos e universo).
     """
     import fundos.ranker_fundos as ranker_fundos
     import fundos.ranker_previdenciarios as ranker_prev
-    from fundos import informe_diario_coletor as informe
 
     modulo = ranker_prev if previdencia else ranker_fundos
+    informe = coletor_informe_combinado()
     originais = (modulo.listar_historicos, modulo.listar_metricas_agregadas)
     registros = []
     try:
-        for corte in ("2025-01-31", "2025-05-30", "2025-09-30"):
+        for corte in CORTES_FUNDOS:
             fim = (pd.Timestamp(corte) + pd.DateOffset(years=1)).strftime("%Y-%m-%d")
             modulo.listar_historicos = (
                 lambda cnpjs, limite=252, _d=corte: informe.listar_historicos(cnpjs, limite, _d)
@@ -1007,6 +1061,515 @@ def validar_fiis() -> dict[str, Any]:
     return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
 
 
+# ── Parte 7: ranking de ações (CVM + Yahoo) ────────────────────────────────────
+
+URL_DFP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{ano}.zip"
+URL_FCA = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FCA/DADOS/fca_cia_aberta_{ano}.zip"
+URL_FRE = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/fre_cia_aberta_{ano}.zip"
+
+
+def acoes_emitidas() -> pd.DataFrame:
+    """Quantidade de ações integralizadas por empresa e ano (Formulário de Referência)."""
+    def baixar() -> pd.DataFrame:
+        import io
+        import zipfile
+
+        import requests
+
+        partes = []
+        for ano in range(2011, date.today().year + 1):
+            resposta = requests.get(URL_FRE.format(ano=ano), timeout=300)
+            if resposta.status_code != 200:
+                continue
+            with zipfile.ZipFile(io.BytesIO(resposta.content)) as arquivo:
+                capital = pd.read_csv(
+                    arquivo.open(f"fre_cia_aberta_capital_social_{ano}.csv"), sep=";", encoding="latin1"
+                )
+            capital = capital.loc[capital["Tipo_Capital"].astype(str) == "Capital Integralizado"]
+            capital = capital.sort_values("Versao").groupby("CNPJ_Companhia")["Quantidade_Total_Acoes"].last()
+            partes.append(pd.DataFrame({"CNPJ_CIA": capital.index, "acoes": capital.values, "ano_fre": ano}))
+        return pd.concat(partes, ignore_index=True)
+
+    return _em_cache("acoes_emitidas_fre", baixar)
+
+
+def _conta(tabela: pd.DataFrame, prefixo: str, padrao: str) -> pd.Series:
+    """Valor (em R$) da conta de 2º nível cujo nome casa com ``padrao``, por CNPJ."""
+    linhas = tabela.loc[
+        (tabela["ORDEM_EXERC"].astype(str).str.upper().str.startswith("ÚLTIMO"))
+        & tabela["CD_CONTA"].astype(str).str.fullmatch(prefixo + r"\.\d{2}")
+        & tabela["DS_CONTA"].astype(str).str.contains(padrao, case=False, regex=True)
+    ].copy()
+    escala = linhas["ESCALA_MOEDA"].astype(str).str.upper().map({"MIL": 1_000.0}).fillna(1.0)
+    linhas["valor"] = linhas["VL_CONTA"].astype(float) * escala
+    linhas = linhas.sort_values(["CNPJ_CIA", "VERSAO", "CD_CONTA"])
+    return linhas.groupby("CNPJ_CIA")["valor"].last()
+
+
+def fundamentos_acoes() -> pd.DataFrame:
+    """Lucro líquido, patrimônio e número de ações por empresa e ano (DFP da CVM)."""
+    def baixar() -> pd.DataFrame:
+        import io
+        import zipfile
+
+        import requests
+
+        partes = []
+        for ano in range(2011, date.today().year):
+            resposta = requests.get(URL_DFP.format(ano=ano), timeout=300)
+            if resposta.status_code != 200:
+                continue
+            with zipfile.ZipFile(io.BytesIO(resposta.content)) as arquivo:
+                ler = lambda parte: pd.read_csv(  # noqa: E731
+                    arquivo.open(f"dfp_cia_aberta_{parte}_{ano}.csv"), sep=";", encoding="latin1"
+                )
+                dre, bpp = ler("DRE_con"), ler("BPP_con")
+            lucro = _conta(dre, "3", r"lucro.*(?:l[ií]quido|preju[ií]zo)|preju[ií]zo.*l[ií]quido")
+            patrimonio = _conta(bpp, "2", r"^patrim[oô]nio l[ií]quido")
+            tabela = pd.DataFrame({"lucro": lucro, "patrimonio": patrimonio}).dropna()
+            tabela["ano"] = ano
+            partes.append(tabela.reset_index(names="CNPJ_CIA"))
+            print(f"   DFP {ano}: {len(tabela)} empresas", flush=True)
+        balancos = pd.concat(partes, ignore_index=True)
+        # Ações do FRE do ano seguinte ao exercício (posição perto do fim do
+        # exercício); se faltar, a do próprio ano.
+        fre = acoes_emitidas()
+        seguinte = fre.assign(ano=fre["ano_fre"] - 1)[["CNPJ_CIA", "ano", "acoes"]]
+        mesmo = fre.assign(ano=fre["ano_fre"])[["CNPJ_CIA", "ano", "acoes"]]
+        balancos = balancos.merge(seguinte, on=["CNPJ_CIA", "ano"], how="left")
+        balancos = balancos.merge(mesmo, on=["CNPJ_CIA", "ano"], how="left", suffixes=("", "_mesmo"))
+        balancos["acoes"] = balancos["acoes"].fillna(balancos["acoes_mesmo"])
+        return balancos.drop(columns="acoes_mesmo").dropna(subset=["acoes"])
+
+    return _em_cache("acoes_fundamentos_v2", baixar)
+
+
+def tickers_acoes() -> pd.DataFrame:
+    """Códigos de negociação (ON, PN, units) por CNPJ, de vários anos do FCA."""
+    def baixar() -> pd.DataFrame:
+        import io
+        import zipfile
+
+        import requests
+
+        partes = []
+        for ano in range(2016, date.today().year + 1):
+            resposta = requests.get(URL_FCA.format(ano=ano), timeout=120)
+            if resposta.status_code != 200:
+                continue
+            with zipfile.ZipFile(io.BytesIO(resposta.content)) as arquivo:
+                vm = pd.read_csv(
+                    arquivo.open(f"fca_cia_aberta_valor_mobiliario_{ano}.csv"), sep=";", encoding="latin1"
+                )
+            vm = vm.loc[
+                (vm["Mercado"].astype(str) == "Bolsa")
+                & vm["Valor_Mobiliario"].astype(str).str.contains("Ações|Units", regex=True)
+            ]
+            partes.append(vm[["CNPJ_Companhia", "Codigo_Negociacao"]])
+        tudo = pd.concat(partes).dropna().drop_duplicates()
+        tudo["Codigo_Negociacao"] = tudo["Codigo_Negociacao"].astype(str).str.strip().str.upper()
+        return tudo.loc[tudo["Codigo_Negociacao"].str.fullmatch(r"[A-Z]{4}\d{1,2}")]
+
+    return _em_cache("acoes_tickers", baixar)
+
+
+def precos_acoes(tickers: list[str]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fechamento, fechamento ajustado e volume diários (Yahoo), desde 2010."""
+    def baixar() -> pd.DataFrame:
+        import time
+
+        import yfinance as yf
+
+        partes = []
+        for i in range(0, len(tickers), 40):
+            bloco = [f"{t}.SA" for t in tickers[i:i + 40]]
+            for tentativa in range(4):
+                try:
+                    dados = yf.download(
+                        bloco, start="2010-01-01", auto_adjust=False, progress=False, threads=False
+                    )
+                    if not dados.empty:
+                        partes.append(dados)
+                        break
+                except Exception as exc:  # noqa: BLE001
+                    print(f"   Yahoo: {type(exc).__name__}, nova tentativa", flush=True)
+                time.sleep(60 * (tentativa + 1))
+            time.sleep(8)
+            print(f"   preços {min(i + 40, len(tickers))}/{len(tickers)}", flush=True)
+        return pd.concat(partes, axis=1)
+
+    dados = _em_cache("acoes_precos", baixar)
+    dados = _completar_precos(dados, tickers)
+    tabelas = []
+    for campo in ("Close", "Adj Close", "Volume"):
+        tabela = dados[campo].copy()
+        tabela.columns = [c.replace(".SA", "") for c in tabela.columns]
+        tabela.index = pd.to_datetime(tabela.index).tz_localize(None)
+        tabelas.append(tabela.loc[:, ~tabela.columns.duplicated()])
+    return tabelas[0], tabelas[1], tabelas[2]
+
+
+def _completar_precos(dados: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
+    """Baixa de novo, devagar, os tickers que falharam por limite do Yahoo."""
+    import time
+
+    import yfinance as yf
+
+    arquivo = CACHE_DIR / "acoes_precos_complemento.pkl"
+    complemento = pd.read_pickle(arquivo) if arquivo.exists() else pd.DataFrame()
+    presentes = set()
+    for tabela in (dados, complemento):
+        if not tabela.empty:
+            fechado = tabela["Close"]
+            presentes |= {c.replace(".SA", "") for c in fechado.columns[fechado.notna().any()]}
+    tentados_arquivo = CACHE_DIR / "acoes_precos_tentados.txt"
+    tentados = set(tentados_arquivo.read_text().split()) if tentados_arquivo.exists() else set()
+    faltando = [t for t in tickers if t not in presentes and t not in tentados]
+    for i in range(0, len(faltando), 10):
+        bloco = faltando[i:i + 10]
+        try:
+            novo = yf.download(
+                [f"{t}.SA" for t in bloco], start="2010-01-01", auto_adjust=False, progress=False, threads=False
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"   Yahoo: {type(exc).__name__}; pausa", flush=True)
+            time.sleep(120)
+            continue
+        if isinstance(novo.columns, pd.MultiIndex) and not novo.empty:
+            complemento = novo if complemento.empty else pd.concat([complemento, novo], axis=1)
+            pd.to_pickle(complemento, arquivo)
+        tentados |= set(bloco)
+        tentados_arquivo.write_text("\n".join(sorted(tentados)))
+        time.sleep(15)
+        print(f"   complemento {min(i + 10, len(faltando))}/{len(faltando)}", flush=True)
+    if complemento.empty:
+        return dados
+    complemento = complemento.loc[:, ~complemento.columns.duplicated()]
+    return pd.concat([dados, complemento], axis=1).loc[:, lambda d: ~d.columns.duplicated()]
+
+
+def _ano_balanco_disponivel(dia: pd.Timestamp) -> int:
+    """Último exercício cuja DFP já tinha sido entregue (prazo: 31 de março)."""
+    return dia.year - 1 if dia.month >= 4 else dia.year - 2
+
+
+def universo_acoes_em(dia, fundamentos, mapa, fechamento, ajustado, volume) -> list[dict]:
+    """Indicadores de cada ação como estariam em ``dia`` (sem dado do futuro)."""
+    ano = _ano_balanco_disponivel(dia)
+    balanco = fundamentos.loc[fundamentos["ano"] == ano].set_index("CNPJ_CIA")
+    universo = []
+    for ticker, cnpj in mapa.items():
+        if ticker not in fechamento.columns or cnpj not in balanco.index:
+            continue
+        linha = balanco.loc[cnpj]
+        if isinstance(linha, pd.DataFrame):
+            linha = linha.iloc[-1]
+        preco = _valor_ate(fechamento[ticker].dropna(), dia)
+        janela = fechamento[ticker].loc[dia - pd.Timedelta(62, unit="D"):dia].dropna()
+        if not preco or preco <= 0 or janela.empty or linha["acoes"] <= 0 or linha["patrimonio"] <= 0:
+            continue
+        mcap = preco * float(linha["acoes"])
+        lucro = float(linha["lucro"])
+        ini_aj = _valor_ate(ajustado[ticker].dropna(), dia - pd.DateOffset(years=1))
+        ini_px = _valor_ate(fechamento[ticker].dropna(), dia - pd.DateOffset(years=1))
+        fim_aj = _valor_ate(ajustado[ticker].dropna(), dia)
+        dy = 0.0
+        if ini_aj and ini_px and fim_aj:
+            dy = max(0.0, ((fim_aj / ini_aj) / (preco / ini_px) - 1) * 100)
+        universo.append(
+            {
+                "ticker": ticker,
+                "cnpj": cnpj,
+                "cotacao": preco,
+                "pl": mcap / lucro if lucro else 0.0,
+                "pvp": mcap / float(linha["patrimonio"]),
+                "roe": lucro / float(linha["patrimonio"]) * 100,
+                "dy": dy,
+                "liquidez": float((janela * volume[ticker].reindex(janela.index).fillna(0)).mean()),
+                "mktcap_proxy": mcap,
+                "dividendos_consistentes": False,
+                "crescimento_receita": 0,
+                "divida_patrimonio": 0,
+            }
+        )
+    return universo
+
+
+def validar_acoes() -> dict[str, Any]:
+    """Aplica ``screener.ranquear_acoes`` em datas passadas e mede 12 meses à frente.
+
+    Limitações: receita e dívida (pesos pequenos no score) ficam fora; o
+    número de ações é o do balanço anual; empresas que deixaram de enviar
+    DFP antes de 2011 não entram.
+    """
+    from acoes_fiis import screener
+    from acoes_fiis.ativos import MIN_LIQUIDEZ_ACOES
+
+    fundamentos = fundamentos_acoes()
+    mapa_df = tickers_acoes()
+    mapa = dict(zip(mapa_df["Codigo_Negociacao"], mapa_df["CNPJ_Companhia"]))
+    fechamento, ajustado, volume = precos_acoes(sorted(mapa))
+    ibov = serie_yahoo("^BVSP")
+    hoje = pd.Timestamp(date.today())
+    registros, universos = [], []
+    for dia in datas_base("2013-01-01", (hoje - pd.DateOffset(years=1)).strftime("%Y-%m-%d")):
+        fim = dia + pd.DateOffset(years=1)
+        cdi = cdi_realizado(dia, fim)
+        universo = universo_acoes_em(dia, fundamentos, mapa, fechamento, ajustado, volume)
+        for acao in universo:
+            serie = ajustado[acao["ticker"]]
+            entrada, saida = _valor_ate(serie.dropna(), dia), _valor_ate(serie.dropna(), fim)
+            confiavel = _serie_confiavel(serie, dia - pd.DateOffset(years=1), fim)
+            acao["retorno_realizado"] = saida / entrada - 1 if (entrada and saida and confiavel) else None
+        universo = [a for a in universo if a["retorno_realizado"] is not None]
+        liquidos = [a for a in universo if a["liquidez"] >= MIN_LIQUIDEZ_ACOES]
+        if len(liquidos) < 30:
+            continue
+        ibov_ret = _valor_ate(ibov, fim) / _valor_ate(ibov, dia) - 1
+        universos.append(
+            {
+                "data_base": dia.date().isoformat(),
+                "cdi": cdi - 1 if cdi else None,
+                "ibov": ibov_ret,
+                "acoes": [
+                    {k: a[k] for k in ("ticker", "pl", "pvp", "roe", "dy", "liquidez", "mktcap_proxy", "retorno_realizado")}
+                    for a in liquidos
+                ],
+            }
+        )
+        retornos = {a["ticker"]: a["retorno_realizado"] for a in liquidos}
+        for perfil in (1, 2, 3):
+            ranking = screener.ranquear_acoes([dict(a) for a in liquidos], perfil, n=10)
+            if len(ranking) < 5:
+                continue
+            escolhidos = [retornos[a["ticker"]] for a in ranking]
+            todos = list(retornos.values())
+            registros.append(
+                {
+                    "data_base": dia.date().isoformat(),
+                    "anos": 1,
+                    "perfil": perfil,
+                    "acoes": len(todos),
+                    "escolhido": ranking[0]["ticker"],
+                    "retorno_escolhido": escolhidos[0],
+                    "retorno_top3": statistics.fmean(escolhidos[:3]),
+                    "retorno_top10": statistics.fmean(escolhidos),
+                    "retorno_medio": statistics.fmean(todos),
+                    "retorno_mediano": statistics.median(todos),
+                    "melhor_possivel": max(todos),
+                    "cdi": cdi - 1 if cdi else None,
+                    "ibov": ibov_ret,
+                    "spearman": None,
+                }
+            )
+        print(f"   ações {dia.date()}: {len(liquidos)} líquidas", flush=True)
+    return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
+
+
+# ── Parte 6: carteiras recomendadas por perfil ─────────────────────────────────
+
+INICIO_CARTEIRAS = "2008-01-01"
+
+
+def _mensal(serie: pd.Series) -> pd.Series:
+    return serie.dropna().resample("ME").last()
+
+
+def indice_ipca_mais() -> pd.Series:
+    """Índice diário de um Tesouro IPCA+ sem cupom com ~5 anos, rolado no vencimento.
+
+    Usa o PU de mercado do próprio Tesouro: captura a marcação a mercado que
+    um investidor em IPCA+ sentiria (semelhante ao IMA-B 5).
+    """
+    precos = historico_tesouro()
+    ipca = precos.loc[precos["Tipo Titulo"] == "Tesouro IPCA+"].copy()
+    ipca = ipca.loc[ipca["PU Base Manha"] > 0]
+    tabela = ipca.pivot_table(index="Data Base", columns="Data Vencimento", values="PU Base Manha")
+    datas = tabela.index.sort_values()
+    nivel, valores, escolhido = 1.0, [], None
+    for anterior, atual in zip(datas[:-1], datas[1:]):
+        if escolhido is None or (escolhido - anterior).days < 365 * 2 or pd.isna(tabela.at[anterior, escolhido]):
+            vivos = [v for v in tabela.columns if v > anterior + pd.DateOffset(years=3) and not pd.isna(tabela.at[anterior, v])]
+            if not vivos:
+                valores.append((atual, nivel))
+                continue
+            escolhido = min(vivos, key=lambda v: abs((v - anterior).days - 365 * 5))
+        p0, p1 = tabela.at[anterior, escolhido], tabela.at[atual, escolhido]
+        if pd.notna(p0) and pd.notna(p1) and p0 > 0 and abs(p1 / p0 - 1) < 0.2:
+            nivel *= p1 / p0
+        valores.append((atual, nivel))
+    return pd.Series(dict(valores)).sort_index()
+
+
+def indice_fii() -> pd.Series:
+    """Média igual dos FIIs líquidos (retorno total), sem séries com desdobramento quebrado."""
+    informes = informes_fii()
+    tickers = sorted(informes["ticker"].unique())
+    fechamento, ajustado, volume = precos_fii(tickers)
+    retornos = ajustado.pct_change(fill_method=None)
+    liquidez = (fechamento * volume).rolling(63, min_periods=20).mean().shift(1)
+    elegivel = (liquidez >= 500_000) & (retornos.abs() <= SALTO_DIARIO_MAXIMO)
+    media = retornos.where(elegivel).mean(axis=1)
+    contagem = elegivel.sum(axis=1)
+    media = media.where(contagem >= 20).dropna()
+    return (1 + media).cumprod()
+
+
+def proxies_mensais() -> pd.DataFrame:
+    """Índices mensais que representam cada classe da carteira."""
+    cdi = (1 + serie_cdi() / 100).cumprod()
+    tabela = pd.DataFrame(
+        {
+            "cdi": _mensal(cdi),
+            "ipca_mais": _mensal(indice_ipca_mais()),
+            "ibov": _mensal(serie_yahoo("^BVSP")),
+            "fii": _mensal(indice_fii()),
+        }
+    )
+    for nome, ticker in (("usd", "USDBRL=X"), ("btc", "BTC-BRL")):
+        try:
+            tabela[nome] = _mensal(serie_yahoo(ticker))
+        except Exception as exc:  # noqa: BLE001 — opcional
+            print(f"   {ticker} indisponível: {exc}")
+    return tabela.loc[INICIO_CARTEIRAS:]
+
+
+# Cada categoria do app vira uma mistura das séries acima. Multimercado e
+# previdência sem renda fixa pura não têm índice gratuito: usam uma mistura
+# documentada (70% CDI, 15% IPCA+, 15% Ibovespa).
+_MULTI = {"cdi": 0.70, "ipca_mais": 0.15, "ibov": 0.15}
+PROXY_CATEGORIA: dict[str, dict[str, float]] = {
+    "rf": {"cdi": 1}, "rf_liq": {"cdi": 1}, "rf_reserva": {"cdi": 1}, "rf_selic_cdb": {"cdi": 1},
+    "rf_reavalie": {"cdi": 1}, "fundos_rf": {"cdi": 1}, "fundos_rf_liq": {"cdi": 1},
+    "prev_pgbl_rf": {"cdi": 1}, "prev_vgbl_rf": {"cdi": 1}, "coe": {"cdi": 1},
+    "estruturados": {"cdi": 1}, "ofertas": {"cdi": 1},
+    "rf_ipca": {"ipca_mais": 1},
+    "rf_equilibrio": {"cdi": 0.5, "ipca_mais": 0.5},
+    "fundos": _MULTI, "fundos_div": _MULTI, "fundos_multi": _MULTI,
+    "prev_pgbl": _MULTI, "prev_vgbl": _MULTI,
+    "fiis": {"fii": 1}, "fiis_del": {"fii": 1},
+    "rv": {"ibov": 1}, "rv_dca": {"ibov": 1}, "rv_compl": {"ibov": 1},
+    "fundos_acoes": {"ibov": 1}, "fundos_etf": {"ibov": 1}, "fundos_dca": {"ibov": 1},
+    "rv_cripto": {"btc": 1}, "fundos_cripto": {"btc": 1},
+    "cambio": {"usd": 1},
+}
+# Quando uma série não existe no início do período (FIIs antes de 2019,
+# bitcoin antes de 2014), usa-se um substituto de risco parecido.
+_SUBSTITUTO = {"fii": {"ipca_mais": 0.5, "ibov": 0.5}, "btc": {"ibov": 1}, "usd": {"cdi": 1}}
+
+
+def simular_carteira(carteira: dict[str, float], proxies: pd.DataFrame) -> dict[str, Any]:
+    """Carteira rebalanceada todo mês: retorno anual, pior queda e pior 12 meses."""
+    retornos = proxies.pct_change(fill_method=None)
+    total = pd.Series(0.0, index=retornos.index)
+    for categoria, peso in carteira.items():
+        mistura = PROXY_CATEGORIA.get(categoria, {"cdi": 1})
+        for serie, fracao in mistura.items():
+            r = retornos[serie] if serie in retornos else pd.Series(index=retornos.index, dtype=float)
+            if r.isna().any():
+                substituto = sum(retornos[s] * f for s, f in _SUBSTITUTO.get(serie, {"cdi": 1}).items())
+                r = r.fillna(substituto)
+            total += peso / 100 * fracao * r.fillna(0)
+    total = total.iloc[1:]
+    nivel = (1 + total).cumprod()
+    queda = nivel / nivel.cummax() - 1
+    doze = (1 + total).rolling(12).apply(lambda x: x.prod(), raw=True) - 1
+    cdi12 = (1 + retornos["cdi"].iloc[1:]).rolling(12).apply(lambda x: x.prod(), raw=True) - 1
+    anos = len(total) / 12
+    return {
+        "retorno_anual": float(nivel.iloc[-1] ** (1 / anos) - 1),
+        "cdi_anual": float((1 + retornos["cdi"].iloc[1:]).prod() ** (1 / anos) - 1),
+        "pior_queda": float(queda.min()),
+        "pior_12m": float(doze.min()),
+        "perdeu_dinheiro_12m": float((doze < 0).mean()),
+        "perdeu_do_cdi_12m": float((doze < cdi12).mean()),
+    }
+
+
+def validar_carteiras(quantidade_perfis: int = 1500) -> dict[str, Any]:
+    """Simula as carteiras que o app recomenda, desde 2008, por perfil.
+
+    Os perfis são gerados como nos testes de invariantes; a carteira de cada
+    um vem do próprio ``engine.criar_analise``.
+    """
+    import random
+
+    import engine
+    import mercado as modulo_mercado
+
+    mercado = modulo_mercado.load_market_data()
+    proxies = proxies_mensais()
+    rng = random.Random(20261102)
+    experiencias = sorted(set(engine._EXPERIENCIAS.values()))
+    cache_sim: dict[tuple, dict] = {}
+    registros = []
+    for _ in range(quantidade_perfis):
+        respostas = {campo: rng.choice(sorted(op)) for campo, op in engine.RESPOSTAS_MAP.items()}
+        respostas.update(
+            {
+                "liquidez_pct": rng.choice([0, 10, 50]),
+                "experiencia": rng.sample(experiencias, rng.randint(0, 3)),
+                "cap_inicial": rng.choice([10_000, 100_000, 1_000_000]),
+                "aporte_mensal": rng.choice([0, 1_000]),
+                "despesas_essenciais_mensais": 4_000,
+                "reserva_atual": rng.choice([0, 30_000, 200_000]),
+                "modo_meta": "rendendo",
+                "regime_previdencia": "regressivo",
+            }
+        )
+        try:
+            analise = engine.criar_analise(respostas, mercado, data_referencia=date.today())
+        except (engine.DividaJurosAltosError, engine.RecomendacaoBloqueadaError):
+            continue
+        resultado = analise["resultado"]
+        carteira = {k: float(v) for k, v in resultado["portfolio"].items() if float(v) > 0}
+        chave = tuple(sorted(carteira.items()))
+        if chave not in cache_sim:
+            cache_sim[chave] = simular_carteira(carteira, proxies)
+        registros.append(
+            {
+                "nivel_risco": resultado["nivel_risco_perfil"],
+                "emocional": engine.RESPOSTAS_MAP["emocional"][respostas["emocional"]],
+                "prazo": engine.RESPOSTAS_MAP["prazo"][respostas["prazo"]],
+                "idade": engine.RESPOSTAS_MAP["idade"][respostas["idade"]],
+                "renda": engine.RESPOSTAS_MAP["renda"][respostas["renda"]],
+                "carteira": carteira,
+                "taxa_projetada": resultado["taxa_perfil"],
+                **cache_sim[chave],
+            }
+        )
+
+    def resumir(grupo: list[dict]) -> dict[str, Any]:
+        return {
+            "perfis": len(grupo),
+            "carteiras_distintas": len({tuple(sorted(r["carteira"].items())) for r in grupo}),
+            "retorno_anual_medio": statistics.fmean(r["retorno_anual"] for r in grupo),
+            "pior_queda_media": statistics.fmean(r["pior_queda"] for r in grupo),
+            "pior_queda_extrema": min(r["pior_queda"] for r in grupo),
+            "pior_12m_medio": statistics.fmean(r["pior_12m"] for r in grupo),
+            "pior_12m_extremo": min(r["pior_12m"] for r in grupo),
+            "perdeu_dinheiro_12m": statistics.fmean(r["perdeu_dinheiro_12m"] for r in grupo),
+            "perdeu_do_cdi_12m": statistics.fmean(r["perdeu_do_cdi_12m"] for r in grupo),
+        }
+
+    resumo: dict[str, Any] = {"periodo": f"{proxies.index[1].date()} a {proxies.index[-1].date()}"}
+    resumo["cdi_anual"] = registros[0]["cdi_anual"] if registros else None
+    for nivel in (1, 2, 3):
+        grupo = [r for r in registros if r["nivel_risco"] == nivel]
+        if grupo:
+            resumo[f"nivel_{nivel}"] = resumir(grupo)
+    for emocional, rotulo in ((1, "venderia_tudo"), (2, "esperaria"), (3, "compraria_mais")):
+        grupo = [r for r in registros if r["emocional"] == emocional]
+        if grupo:
+            resumo[f"emocional_{rotulo}"] = resumir(grupo)
+    for prazo, rotulo in ((1, "curto"), (2, "medio"), (3, "longo")):
+        grupo = [r for r in registros if r["prazo"] == prazo]
+        if grupo:
+            resumo[f"prazo_{rotulo}"] = resumir(grupo)
+    piores = sorted(registros, key=lambda r: r["pior_queda"])[:15]
+    return {"resumo": resumo, "piores": piores, "registros": registros[:300]}
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 PARTES: dict[str, Callable[[], dict[str, Any]]] = {
@@ -1016,6 +1579,8 @@ PARTES: dict[str, Callable[[], dict[str, Any]]] = {
     "previdencia": lambda: validar_fundos(previdencia=True),
     "etfs": validar_etfs,
     "fiis": validar_fiis,
+    "carteiras": validar_carteiras,
+    "acoes": validar_acoes,
     "pesquisa_acoes": pesquisar_regra_acoes,
 }
 
@@ -1031,9 +1596,15 @@ def main(argumentos: Iterable[str] | None = None) -> dict[str, Any]:
     if SAIDA_JSON.exists():
         anterior = json.loads(SAIDA_JSON.read_text(encoding="utf-8"))
         resultados = {**anterior, **resultados}
+    novos = {}
     for parte in args.partes:
         print(f"→ {parte}...", flush=True)
-        resultados[parte] = PARTES[parte]()
+        novos[parte] = PARTES[parte]()
+    # Relê o arquivo só agora: outra execução pode ter gravado outras partes
+    # enquanto esta rodava.
+    if SAIDA_JSON.exists():
+        resultados = {**json.loads(SAIDA_JSON.read_text(encoding="utf-8")), **resultados}
+    resultados.update(novos)
     SAIDA_JSON.parent.mkdir(parents=True, exist_ok=True)
     SAIDA_JSON.write_text(
         json.dumps(resultados, ensure_ascii=False, indent=2, default=str) + "\n",

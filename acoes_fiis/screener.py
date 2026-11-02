@@ -363,6 +363,22 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
                 logger.debug(f"Erro ao enriquecer {ticker}: {e}")
         enriquecidos.append(ind)
 
+    return ranquear_acoes(enriquecidos, perfil, n, liquidos)
+
+
+def ranquear_acoes(
+    enriquecidos: list[dict],
+    perfil: int,
+    n: int = 5,
+    liquidos: list[dict] | None = None,
+) -> list[dict]:
+    """Filtra e pontua um universo de ações já enriquecido.
+
+    Separado de ``top_acoes`` para que a validação histórica pontue
+    indicadores reconstruídos de datas passadas com exatamente a mesma regra.
+    """
+    if liquidos is None:
+        liquidos = list(enriquecidos)
     # Filtro Market Cap
     mktcap_min = LIMITE_MKTCAP.get(perfil, 1_000_000_000)
     liquidos_filtrados = []
