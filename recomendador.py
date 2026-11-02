@@ -7,6 +7,7 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 
 from core.categorias import _ARRISCADAS, RK, _risco
+from utils.formatacao import formatar_pct
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -232,10 +233,10 @@ def calcular_recomendacao(
         )
 
     if dividas == 1:
-        melhor = max(taxas.values()) * 100
+        melhor = formatar_pct(max(taxas.values()), 1)
         raise DividaJurosAltosError(
             "Quite ou renegocie as dívidas de juros altos antes de investir. "
-            f"O melhor retorno anual estimado ({melhor:.1f}%) não justifica "
+            f"O melhor retorno anual estimado ({melhor}) não justifica "
             "manter cartão rotativo ou cheque especial."
         )
     if dividas == 2:

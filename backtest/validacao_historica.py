@@ -69,8 +69,8 @@ def _sgs(codigo: int, inicio: str, fim: str | None = None) -> pd.Series:
 
 
 def serie_cdi() -> pd.Series:
-    """CDI diário (% ao dia), SGS 12."""
-    return _em_cache("cdi_diario", lambda: _sgs(12, "2003-01-01"))
+    """CDI diário (% ao dia), SGS 12, desde 1995 (pós-Plano Real)."""
+    return _em_cache("cdi_diario_1995", lambda: _sgs(12, "1995-01-01"))
 
 
 def serie_selic_meta() -> pd.Series:
@@ -89,13 +89,13 @@ def serie_ipca_12m() -> pd.Series:
 
 
 def focus_anual(indicador: str) -> pd.DataFrame:
-    """Medianas anuais do Focus (Data, DataReferencia, Mediana) desde 2012."""
+    """Medianas anuais do Focus (Data, DataReferencia, Mediana) desde 2002."""
     def baixar() -> pd.DataFrame:
         from bcb import Expectativas
 
         endpoint = Expectativas().get_endpoint("ExpectativasMercadoAnuais")
         partes = []
-        for ano in range(2012, date.today().year + 1):
+        for ano in range(2002, date.today().year + 1):
             df = (
                 endpoint.query()
                 .filter(
@@ -113,7 +113,7 @@ def focus_anual(indicador: str) -> pd.DataFrame:
         dados["DataReferencia"] = dados["DataReferencia"].astype(int)
         return dados
 
-    return _em_cache(f"focus_{indicador.lower()}", baixar)
+    return _em_cache(f"focus_{indicador.lower()}_2002", baixar)
 
 
 def serie_yahoo(ticker: str) -> pd.Series:
@@ -179,6 +179,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
     if selic is None or ipca12 is None:
         return None
     ibov_cagr = None
+    ibov_vol = None
     if incluir_ibov:
         ibov = serie_yahoo("^BVSP")
         inicio_10a = dia - pd.DateOffset(years=10)
@@ -187,6 +188,9 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
         if not ibov_ini or not ibov_fim or ibov.index.min() > inicio_10a + pd.Timedelta(days=10):
             return None
         ibov_cagr = _anualizar(ibov_fim / ibov_ini, 10)
+        from macroeconomia.premio_acoes import volatilidade_anual
+
+        ibov_vol = volatilidade_anual(ibov, dia)
 
     def focus_por_ano(indicador: str) -> dict[int, float]:
         focus = focus_anual(indicador)
@@ -206,6 +210,7 @@ def mercado_em(dia: pd.Timestamp, incluir_ibov: bool = True) -> dict[str, Any] |
         "focus_ipca_por_ano": focus_por_ano("IPCA"),
         "ipca": ipca12 / 100,
         "ibov_cagr": ibov_cagr,
+        "ibov_volatilidade": ibov_vol,
         "data_ref": dia.strftime("%d/%m/%Y"),
         "fontes": [],
         "avisos": [],
@@ -251,6 +256,10 @@ def validar_projecoes() -> dict[str, Any]:
                 # 50/50 comprado e mantido, como no nível 2 (média das taxas)
                 2: _anualizar((cdi + fator_ibov) / 2, anos),
             }
+            carteiras = {1: {"rf": 100}, 2: {"rf": 50, "rv": 50}, 3: {"rv": 100}}
+            ipca_h = engine.ipca_esperado_mercado(
+                mercado, prazo_meses=12 * anos, data_referencia=dia.date()
+            )
             for nivel in (1, 2, 3):
                 previsto = taxas[nivel]
                 registros.append(
@@ -259,7 +268,9 @@ def validar_projecoes() -> dict[str, Any]:
                         "anos": anos,
                         "nivel": nivel,
                         "previsto": previsto,
-                        "pessimista": engine._taxa_pessimista(previsto, mercado["ipca"]),
+                        "pessimista": engine._taxa_pessimista_carteira(
+                            previsto, ipca_h, carteiras[nivel], anos, mercado
+                        ),
                         "realizado": realizado[nivel],
                         "ingenuo": mercado["selic"] if nivel == 1 else None,
                     }
@@ -311,6 +322,102 @@ def validar_projecoes() -> dict[str, Any]:
                 )
             resumo[f"{chave}_{anos}a"] = item
     return {"resumo": resumo, "registros": registros}
+
+
+# ── Pesquisa: regra de retorno esperado para ações ────────────────────────────
+
+INICIO_TESTE = pd.Timestamp("2013-01-01")
+
+
+def pesquisar_regra_acoes() -> dict[str, Any]:
+    """Compara regras de retorno esperado de ações com treino e teste separados.
+
+    Treino: datas-base de 2004 a 2012. Teste: 2013 em diante. Qualquer
+    parâmetro (o prêmio fixo) é calibrado só no treino; o prêmio histórico é
+    recalculado em cada data só com o passado.
+    """
+    import engine
+    from macroeconomia.premio_acoes import desconto_pessimista, premio_historico, volatilidade_anual
+
+    ibov = serie_yahoo("^BVSP")
+    cdi = serie_cdi()
+    hoje = pd.Timestamp(date.today())
+    linhas = []
+    for dia in datas_base("2004-01-01", (hoje - pd.DateOffset(years=1)).strftime("%Y-%m-%d")):
+        mercado = mercado_em(dia)
+        if mercado is None:
+            continue
+        premio = premio_historico(ibov, cdi, dia)
+        vol = volatilidade_anual(ibov, dia)
+        for anos in HORIZONTES_ANOS:
+            fim = dia + pd.DateOffset(years=anos)
+            if fim > hoje - pd.Timedelta(days=10):
+                continue
+            fator_cdi = cdi_realizado(dia, fim)
+            ini, fin = _valor_ate(ibov, dia), _valor_ate(ibov, fim)
+            if fator_cdi is None or not ini or not fin:
+                continue
+            rf = engine.taxas_por_risco(mercado, prazo_meses=12 * anos, data_referencia=dia.date())[1]
+            linhas.append(
+                {
+                    "data_base": dia.date().isoformat(),
+                    "teste": dia >= INICIO_TESTE,
+                    "anos": anos,
+                    "rf_previsto": rf,
+                    "ibov_cagr_10a": mercado["ibov_cagr"],
+                    "premio_historico": premio,
+                    "volatilidade": vol,
+                    "ipca": mercado["ipca"],
+                    "ibov_realizado": _anualizar(fin / ini, anos),
+                    "misto_realizado": _anualizar((fator_cdi + fin / ini) / 2, anos),
+                }
+            )
+
+    treino = [r for r in linhas if not r["teste"] and r["anos"] == 5]
+    premio_fixo = statistics.fmean(r["ibov_realizado"] - r["rf_previsto"] for r in treino)
+
+    regras: dict[str, Callable[[dict], float | None]] = {
+        "atual_cagr_10a": lambda r: r["ibov_cagr_10a"],
+        "curva_sem_premio": lambda r: r["rf_previsto"],
+        "curva_premio_fixo_treino": lambda r: r["rf_previsto"] + premio_fixo,
+        "curva_premio_historico": lambda r: (
+            None if r["premio_historico"] is None else r["rf_previsto"] + r["premio_historico"]
+        ),
+    }
+    resultado: dict[str, Any] = {"premio_fixo_calibrado_no_treino": premio_fixo, "regras": {}}
+    for nome, regra in regras.items():
+        por_amostra = {}
+        for amostra, filtro in (("treino", False), ("teste", True)):
+            for anos in HORIZONTES_ANOS:
+                grupo = [r for r in linhas if r["teste"] is filtro and r["anos"] == anos]
+                pares = [(regra(r), r) for r in grupo if regra(r) is not None]
+                if not pares:
+                    continue
+                erros = [prev - r["ibov_realizado"] for prev, r in pares]
+                erros_misto = [
+                    (prev + r["rf_previsto"]) / 2 - r["misto_realizado"] for prev, r in pares
+                ]
+                cobertura_nova = [
+                    r["ibov_realizado"] >= prev - desconto_pessimista(r["volatilidade"], anos)
+                    for prev, r in pares
+                    if r["volatilidade"]
+                ]
+                cobertura_antiga = [
+                    r["ibov_realizado"] >= engine._taxa_pessimista(prev, r["ipca"]) for prev, r in pares
+                ]
+                por_amostra[f"{amostra}_{anos}a"] = {
+                    "amostras": len(pares),
+                    "vies": statistics.fmean(erros),
+                    "erro_absoluto_medio": statistics.fmean(abs(e) for e in erros),
+                    "erro_absoluto_medio_misto": statistics.fmean(abs(e) for e in erros_misto),
+                    "acima_pessimista_volatilidade": (
+                        sum(cobertura_nova) / len(cobertura_nova) if cobertura_nova else None
+                    ),
+                    "acima_pessimista_antigo": sum(cobertura_antiga) / len(cobertura_antiga),
+                }
+        resultado["regras"][nome] = por_amostra
+    resultado["linhas"] = linhas
+    return resultado
 
 
 # ── Parte 2: ranking do Tesouro Direto ─────────────────────────────────────────
@@ -367,6 +474,7 @@ def validar_tesouro() -> dict[str, Any]:
     precos = precos.loc[sem_fluxos]
     hoje = pd.Timestamp(date.today())
     registros = []
+    universos = []
     for dia in datas_base("2013-01-01", (hoje - pd.DateOffset(years=1)).strftime("%Y-%m-%d")):
         datas_disp = precos.loc[precos["Data Base"] >= dia, "Data Base"]
         if datas_disp.empty:
@@ -381,10 +489,12 @@ def validar_tesouro() -> dict[str, Any]:
             "selic_por_ano": mercado["focus_selic_por_ano"],
             "ipca_por_ano": mercado["focus_ipca_por_ano"],
         }
+        # Só o preço de compra indica oferta: o Tesouro Selic negocia com
+        # taxa 0,00% ou negativa (ágio), e não pode ser descartado por isso.
         ofertados = precos.loc[
             (precos["Data Base"] == dia_real)
             & (precos["PU Compra Manha"] > 0)
-            & (precos["Taxa Compra Manha"] > 0)
+            & precos["Taxa Compra Manha"].notna()
         ]
         for anos in (1, 3):
             fim = dia_real + pd.DateOffset(years=anos)
@@ -425,10 +535,26 @@ def validar_tesouro() -> dict[str, Any]:
                 candidatos.append(produto)
             if len(candidatos) < 3:
                 continue
+            universos.append(
+                {
+                    "data_base": dia_real.date().isoformat(),
+                    "anos": anos,
+                    "cdi": _anualizar(cdi, anos) if cdi else None,
+                    "titulos": [
+                        {
+                            "ticker": p["ticker"],
+                            "tipo": p["tipo"],
+                            "prazo_dias": p["prazo_dias"],
+                            "taxa_bruta": p["taxa_bruta"],
+                            "taxa_nominal_estimada": p["taxa_nominal_estimada"],
+                            "retorno_realizado": p["retorno_realizado"],
+                        }
+                        for p in candidatos
+                    ],
+                }
+            )
             for perfil in (1, 2, 3):
-                for p in candidatos:
-                    p["score"] = ranker._calcular_score(p, perfil, anos)
-                ordem = sorted(candidatos, key=lambda p: -p["score"])
+                ordem = ranker.pontuar_titulos([dict(p) for p in candidatos], perfil, anos)
                 registros.append(
                     {
                         "data_base": dia_real.date().isoformat(),
@@ -443,12 +569,12 @@ def validar_tesouro() -> dict[str, Any]:
                         "melhor_possivel": max(p["retorno_realizado"] for p in candidatos),
                         "cdi": _anualizar(cdi, anos) if cdi else None,
                         "spearman": _spearman(
-                            [p["score"] for p in candidatos],
-                            [p["retorno_realizado"] for p in candidatos],
+                            [p["score"] for p in ordem],
+                            [p["retorno_realizado"] for p in ordem],
                         ),
                     }
                 )
-    return {"resumo": _resumir_ranking(registros), "registros": registros}
+    return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
 
 
 def _resumir_ranking(registros: list[dict]) -> dict[str, Any]:
@@ -635,6 +761,7 @@ def validar_etfs() -> dict[str, Any]:
     fechamento, volume, nomes = historico_etfs()
     hoje = pd.Timestamp(date.today())
     registros = []
+    universos = []
     for dia in datas_base("2020-01-01", (hoje - pd.DateOffset(years=1)).strftime("%Y-%m-%d"), meses=3):
         fim = dia + pd.DateOffset(years=1)
         cdi = cdi_realizado(dia, fim)
@@ -655,6 +782,16 @@ def validar_etfs() -> dict[str, Any]:
             candidatos.append(metricas)
         if len(candidatos) < 8:
             continue
+        universos.append(
+            {
+                "data_base": dia.date().isoformat(),
+                "cdi": cdi - 1 if cdi else None,
+                "etfs": [
+                    {k: c[k] for k in ("ticker", "retorno_12m", "volatilidade", "sharpe", "volume", "retorno_realizado")}
+                    for c in candidatos
+                ],
+            }
+        )
         for perfil in (1, 2, 3):
             for c in candidatos:
                 c["score"], _ = screener_etf._score_etf(c, perfil)
@@ -676,7 +813,7 @@ def validar_etfs() -> dict[str, Any]:
                     "spearman": _spearman([c["score"] for c in candidatos], retornos),
                 }
             )
-    return {"resumo": _resumir_ranking(registros), "registros": registros}
+    return {"resumo": _resumir_ranking(registros), "registros": registros, "universos": universos}
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -687,6 +824,7 @@ PARTES: dict[str, Callable[[], dict[str, Any]]] = {
     "fundos": validar_fundos,
     "previdencia": lambda: validar_fundos(previdencia=True),
     "etfs": validar_etfs,
+    "pesquisa_acoes": pesquisar_regra_acoes,
 }
 
 

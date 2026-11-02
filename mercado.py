@@ -19,6 +19,7 @@ import json
 import math
 import os
 import tempfile
+import threading
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -196,12 +197,13 @@ def _validar_payload_cache(data: Any) -> bool:
             minimo=-0.20,
             maximo=1.0,
         )
-        _validar_taxa(
-            data["ibov_cagr"],
-            "CAGR do Ibovespa em cache",
-            minimo=-0.90,
-            maximo=2.0,
-        )
+        if data["ibov_cagr"] is not None:
+            _validar_taxa(
+                data["ibov_cagr"],
+                "CAGR do Ibovespa em cache",
+                minimo=-0.90,
+                maximo=2.0,
+            )
         if data["focus_selic"] is not None:
             _validar_taxa(
                 data["focus_selic"],
@@ -473,11 +475,17 @@ def _fetch_focus_por_ano(
     return resultado
 
 
-def _fetch_ibov_cagr_10a() -> float | None:
+_HISTORICO_IBOV: dict[str, Any] = {"ts": 0.0, "closes": None}
+_HISTORICO_IBOV_LOCK = threading.Lock()
+
+
+def _historico_ibov_10a():
+    """Fechamentos do Ibovespa em 10 anos, baixados uma vez por carga."""
     if yf is None:
         return None
-
-    try:
+    with _HISTORICO_IBOV_LOCK:
+        if _HISTORICO_IBOV["closes"] is not None and time.time() - _HISTORICO_IBOV["ts"] < 600:
+            return _HISTORICO_IBOV["closes"]
         history = yf.Ticker("^BVSP").history(
             period="10y",
             interval="1d",
@@ -486,8 +494,44 @@ def _fetch_ibov_cagr_10a() -> float | None:
         )
         if history is None or "Close" not in history:
             return None
-
         closes = history["Close"].dropna()
+        _HISTORICO_IBOV.update(ts=time.time(), closes=closes)
+        return closes
+
+
+def _fetch_ibov_volatilidade_10a() -> float | None:
+    """Volatilidade anual do Ibovespa (base do cenário pessimista de ações)."""
+    from macroeconomia.premio_acoes import volatilidade_anual
+
+    try:
+        closes = _historico_ibov_10a()
+        if closes is None or len(closes) < 250:
+            return None
+        indice = closes.copy()
+        indice.index = indice.index.tz_localize(None) if indice.index.tz is not None else indice.index
+        vol = volatilidade_anual(indice, indice.index.max())
+        return None if vol is None else _validar_taxa(vol, "Volatilidade do Ibovespa", minimo=0.0, maximo=2.0)
+    except (
+        requests.exceptions.RequestException,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        OSError,
+        AttributeError,
+        KeyError,
+    ) as exc:
+        logger.warning(f"Erro ao calcular volatilidade do Ibovespa: {exc}")
+        return None
+
+
+def _fetch_ibov_cagr_10a() -> float | None:
+    if yf is None:
+        return None
+
+    try:
+        closes = _historico_ibov_10a()
+        if closes is None:
+            return None
         if len(closes) < 200:
             logger.warning(
                 "Histórico insuficiente do Ibovespa: %d observações.",
@@ -635,11 +679,21 @@ def load_market_data(
         "focus_selic_por_ano": _fetch_focus_selic_por_ano,
         "ibov_cagr": _fetch_ibov_cagr_10a,
         # Opcionais: enriquecem a análise, mas não bloqueiam o carregamento.
+        "ibov_volatilidade": _fetch_ibov_volatilidade_10a,
         "cdi": lambda: _fetch_sgs_value(SGS_CDI_ANUAL),
         "poupanca": _fetch_poupanca_anual,
         "focus_ipca_por_ano": _fetch_focus_ipca_por_ano,
     }
-    opcionais = {"focus_selic_por_ano", "cdi", "poupanca", "focus_ipca_por_ano"}
+    # O CAGR do Ibovespa é só informativo desde que as projeções passaram a
+    # usar a curva de juros (ver engine.taxas_por_risco).
+    opcionais = {
+        "focus_selic_por_ano",
+        "cdi",
+        "poupanca",
+        "focus_ipca_por_ano",
+        "ibov_cagr",
+        "ibov_volatilidade",
+    }
 
     results: dict[str, Any] = {}
     failures: dict[str, str] = {}
@@ -712,18 +766,16 @@ def load_market_data(
         failures["ipca"] = str(exc)
 
     try:
-        if ibov_raw is None:
-            raise ValueError(
-                "yfinance ausente, histórico insuficiente ou fonte indisponível"
+        if ibov_raw is not None:
+            ibov_value = _validar_taxa(
+                ibov_raw,
+                "CAGR do Ibovespa",
+                minimo=-0.90,
+                maximo=2.0,
             )
-        ibov_value = _validar_taxa(
-            ibov_raw,
-            "CAGR do Ibovespa",
-            minimo=-0.90,
-            maximo=2.0,
-        )
     except (TypeError, ValueError) as exc:
-        failures["ibov_cagr"] = str(exc)
+        logger.warning(f"CAGR do Ibovespa descartado: {exc}")
+    ibov_vol = results.get("ibov_volatilidade")
 
     focus_por_ano: dict[int, float] = {}
     if isinstance(focus_raw, Mapping):
@@ -779,7 +831,6 @@ def load_market_data(
     # `failures` vazio garante que esses valores foram preenchidos e validados.
     assert selic_value is not None
     assert ipca_value is not None
-    assert ibov_value is not None
 
     fontes = [
         (
@@ -790,12 +841,23 @@ def load_market_data(
             f"IPCA 12m {formatar_pct(ipca_value)} a.a. — "
             f"BCB/SGS série {SGS_IPCA_12M} (ref. {ipca_ref})"
         ),
-        (
-            f"Ibovespa CAGR 10a {formatar_pct(ibov_value)} a.a. — "
-            "Yahoo Finance/yfinance"
-        ),
     ]
     avisos: list[str] = []
+    if ibov_value is not None:
+        fontes.append(
+            f"Ibovespa CAGR 10a {formatar_pct(ibov_value)} a.a. — Yahoo Finance/yfinance"
+        )
+    if isinstance(ibov_vol, (int, float)):
+        fontes.append(
+            f"Volatilidade do Ibovespa (10 anos) {formatar_pct(ibov_vol)} a.a. — "
+            "Yahoo Finance/yfinance"
+        )
+    else:
+        ibov_vol = None
+        avisos.append(
+            "⚠️  Volatilidade do Ibovespa indisponível; o cenário pessimista de "
+            "ações usa a regra simplificada."
+        )
 
     if focus_por_ano:
         for ano, taxa in focus_por_ano.items():
@@ -818,6 +880,7 @@ def load_market_data(
         "focus_selic_por_ano": focus_por_ano,
         "ipca": ipca_value,
         "ibov_cagr": ibov_value,
+        "ibov_volatilidade": ibov_vol,
         # Mantido por compatibilidade: representa a referência da SELIC.
         "data_ref": selic_ref,
         "fontes": fontes,

@@ -18,10 +18,12 @@ de rentabilidade ou orientação tributária.
 ## Limitações das projeções
 
 - Retornos são hipóteses, não previsões.
-- CAGR histórico pode não se repetir.
+- O retorno de ações é ancorado nos juros esperados; o prêmio real das ações
+  pode ser maior ou menor no futuro.
 - A curva do Focus pode mudar rapidamente.
 - A extrapolação além do último nó aumenta incerteza.
-- O cenário pessimista não é uma distribuição probabilística.
+- O cenário pessimista usa uma aproximação normal da volatilidade; eventos
+  extremos podem ficar abaixo dele.
 - Inflação, aportes e reinvestimentos podem divergir.
 - Valores reais dependem do índice e período escolhidos.
 

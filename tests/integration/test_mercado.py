@@ -154,6 +154,7 @@ def test_load_market_data_com_coletores_simulados(
         "_fetch_ibov_cagr_10a",
         lambda: 0.12,
     )
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: 0.24)
 
     monkeypatch.setattr(
         mercado,
@@ -213,6 +214,7 @@ def test_focus_indisponivel_nao_impede_carregamento(
         "_fetch_ibov_cagr_10a",
         lambda: 0.12,
     )
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: 0.24)
 
     monkeypatch.setattr(
         mercado,
@@ -247,6 +249,7 @@ def test_dados_opcionais_gratuitos_enriquecem_payload(
     monkeypatch.setattr(mercado, "_fetch_sgs_value", valores.__getitem__)
     monkeypatch.setattr(mercado, "_fetch_focus_selic_por_ano", dict)
     monkeypatch.setattr(mercado, "_fetch_ibov_cagr_10a", lambda: 0.12)
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: 0.24)
     monkeypatch.setattr(
         mercado,
         "_fetch_focus_ipca_por_ano",
@@ -276,6 +279,7 @@ def test_dados_opcionais_ausentes_nao_bloqueiam(
     monkeypatch.setattr(mercado, "_fetch_focus_selic_por_ano", dict)
     monkeypatch.setattr(mercado, "_fetch_focus_ipca_por_ano", dict)
     monkeypatch.setattr(mercado, "_fetch_ibov_cagr_10a", lambda: 0.12)
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: 0.24)
 
     resultado = mercado.load_market_data(force_refresh=True)
 
@@ -284,3 +288,23 @@ def test_dados_opcionais_ausentes_nao_bloqueiam(
     assert resultado["poupanca"] is None
     assert resultado["focus_ipca_por_ano"] == {}
     assert any("CDI indisponível" in aviso for aviso in resultado["avisos"])
+
+
+def test_yahoo_fora_do_ar_nao_bloqueia_o_app(monkeypatch, tmp_path) -> None:
+    """Ibovespa virou informativo: sem ele, o app segue com aviso."""
+    monkeypatch.setattr(mercado, "CACHE_FILE", tmp_path / "market.json")
+    monkeypatch.setattr(
+        mercado,
+        "_fetch_sgs_value",
+        lambda serie: (0.10, "01/07/2026") if serie == mercado.SGS_SELIC else (0.04, "30/06/2026"),
+    )
+    monkeypatch.setattr(mercado, "_fetch_focus_selic_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_focus_ipca_por_ano", dict)
+    monkeypatch.setattr(mercado, "_fetch_ibov_cagr_10a", lambda: None)
+    monkeypatch.setattr(mercado, "_fetch_ibov_volatilidade_10a", lambda: None)
+
+    resultado = mercado.load_market_data(force_refresh=True)
+
+    assert resultado["ibov_cagr"] is None
+    assert resultado["ibov_volatilidade"] is None
+    assert any("Volatilidade do Ibovespa" in aviso for aviso in resultado["avisos"])

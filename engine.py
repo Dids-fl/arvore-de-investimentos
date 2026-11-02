@@ -17,6 +17,7 @@ from calculos import (
 from core.catalogo import _disp, _get_prod, _tipo_tributario
 from core.categorias import RK, _risco
 from core.ranking_liquido import comparar_pgbl_vgbl
+from macroeconomia.premio_acoes import desconto_pessimista
 from macroeconomia.curva_selic import (
     ProjecaoSelic,
     projetar_selic,
@@ -548,7 +549,7 @@ def _validar_market(
             data_referencia=data_referencia,
         ),
         "ipca": _numero_mercado(market, "ipca"),
-        "ibov_cagr": _numero_mercado(market, "ibov_cagr"),
+        "ibov_cagr": _numero_mercado(market, "ibov_cagr", opcional=True),
     }
 
 
@@ -771,12 +772,15 @@ def taxas_por_risco(
         prazo_meses=prazo_meses,
         data_referencia=data_base,
     )
-    ibov = float(dados["ibov_cagr"])
-    return {
-        1: taxa_base,
-        2: (taxa_base + ibov) / 2.0,
-        3: ibov,
-    }
+    # Todas as classes partem dos juros esperados (curva Selic/Focus). Na
+    # validação histórica (docs/validacao-historica.md), separando treino
+    # (2004–2012) e teste (2013–2025), "ações renderão o mesmo que os juros
+    # esperados" foi a única regra boa nos dois períodos; repetir o CAGR de 10
+    # anos do Ibovespa errou muito (+15 p.p./ano no treino, −4 no teste) e um
+    # prêmio fixo calibrado no treino falhou no teste. A diferença de risco
+    # entre perfis aparece no cenário pessimista, não numa promessa de retorno.
+    del dados
+    return {1: taxa_base, 2: taxa_base, 3: taxa_base}
 
 
 def resumo_taxas_mercado(
@@ -863,8 +867,51 @@ def _taxa_ponderada(
 
 
 def _taxa_pessimista(taxa_central: float, ipca: float) -> float:
+    """Piso pessimista da renda fixa (validado: real ≥ pessimista 73–88%)."""
     candidato = max(ipca + 0.02, taxa_central * 0.60)
     return min(taxa_central, candidato)
+
+
+_PESO_ACOES_POR_RISCO = {1: 0.0, 2: 0.5, 3: 1.0}
+
+
+def _exposicao_acoes(portfolio: Mapping[str, int | float]) -> float:
+    """Fração da carteira com risco de ações (nível 2 conta pela metade)."""
+    positivos = _portfolio_positivo(portfolio)
+    total = sum(positivos.values())
+    if total <= 0:
+        return 0.0
+    return sum(
+        percentual * _PESO_ACOES_POR_RISCO.get(_risco(categoria), 1.0)
+        for categoria, percentual in positivos.items()
+    ) / total
+
+
+def _taxa_pessimista_carteira(
+    taxa_central: float,
+    ipca: float,
+    portfolio: Mapping[str, int | float],
+    anos: float,
+    market: Mapping[str, Any] | None,
+) -> float:
+    """Cenário que o resultado real supera em cerca de 80% das vezes.
+
+    Parte da carteira em ações recebe um desconto proporcional à volatilidade
+    do Ibovespa e menor em prazos longos (0,84 x vol / raiz do prazo). Na
+    validação histórica isso deixou o real acima do pessimista em 72–100% das
+    vezes; a regra antiga ficava em 22–56% para ações.
+    """
+    base = _taxa_pessimista(taxa_central, ipca)
+    volatilidade = market.get("ibov_volatilidade") if market else None
+    if not isinstance(volatilidade, (int, float)) or isinstance(volatilidade, bool):
+        return base
+    if not math.isfinite(volatilidade) or volatilidade <= 0:
+        return base
+    exposicao = _exposicao_acoes(portfolio)
+    if exposicao <= 0:
+        return base
+    desconto = exposicao * desconto_pessimista(float(volatilidade), anos)
+    return min(base, taxa_central - desconto)
 
 
 def projetar_portfolio(
@@ -1624,7 +1671,9 @@ def gerar_recomendacao_completa(
     info_carteira = _get_prod(perfil_exibido)
     tratamento_representativo = _tipo_tributario(perfil_exibido)
     taxa_perfil = _taxa_ponderada(portfolio, taxas)
-    taxa_pess = _taxa_pessimista(taxa_perfil, ipca)
+    taxa_pess = _taxa_pessimista_carteira(
+        taxa_perfil, ipca, portfolio, prazo_taxa_meses / 12, market
+    )
 
     portfolio_busca = dict(portfolio)
     if rec_key in _CLASSE and rec_key not in portfolio_busca:
@@ -1880,7 +1929,9 @@ def tabela_projecao_portfolio(
                 prazo_meses=prazo_meses,
                 data_referencia=data_base,
             )
-            pessimismo = _taxa_pessimista(taxa_central, ipca)
+            pessimismo = _taxa_pessimista_carteira(
+                taxa_central, ipca, portfolio, anos, market
+            )
         else:
             taxas_horizonte = taxas
             taxa_central = _taxa_ponderada(portfolio, taxas_horizonte)
@@ -2454,10 +2505,8 @@ def montar_payload_exportacao(
                 str(ano): round(float(taxa) * 100, 2)
                 for ano, taxa in (market.get("focus_ipca_por_ano") or {}).items()
             },
-            "ibov_cagr_10a_pct": round(
-                float(market["ibov_cagr"]) * 100,
-                2,
-            ),
+            "ibov_cagr_10a_pct": _pct_opcional(market.get("ibov_cagr")),
+            "ibov_volatilidade_pct": _pct_opcional(market.get("ibov_volatilidade")),
             "taxa_carteira_ponderada_bruto_pct": round(
                 resultado["taxa_perfil"] * 100,
                 2,

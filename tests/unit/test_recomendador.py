@@ -28,11 +28,10 @@ def test_formulario_rejeita_opcao_desconhecida() -> None:
 
 
 def test_dados_de_mercado_obrigatorios() -> None:
-    with pytest.raises(ValueError, match="ibov_cagr"):
-        engine.taxas_por_risco(
-            {
-                "selic": 0.10,
-                "focus_selic": None,
-                "ipca": 0.04,
-            }
-        )
+    with pytest.raises(ValueError, match="ipca"):
+        engine.taxas_por_risco({"selic": 0.10, "focus_selic": None})
+
+
+def test_ibovespa_e_opcional() -> None:
+    taxas = engine.taxas_por_risco({"selic": 0.10, "focus_selic": None, "ipca": 0.04})
+    assert taxas[1] == taxas[3]

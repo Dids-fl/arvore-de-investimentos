@@ -13,9 +13,10 @@ RK = _categorias.RK
 _risco = _categorias._risco
 
 
-def test_taxas_por_risco_usam_curva_selic_focus_e_ibov(
+def test_taxas_por_risco_usam_curva_de_juros_em_todos_os_niveis(
     mercado_valido,
 ) -> None:
+    """Validação histórica: ações ancoradas nos juros esperados erram menos."""
     data_base = date(2026, 7, 29)
 
     taxas = engine.taxas_por_risco(
@@ -29,13 +30,11 @@ def test_taxas_por_risco_usam_curva_selic_focus_e_ibov(
         data_referencia=data_base,
     )
 
-    assert taxas[1] == pytest.approx(taxa_base)
-    assert taxas[2] == pytest.approx(
-        (taxa_base + mercado_valido["ibov_cagr"]) / 2
-    )
-    assert taxas[3] == pytest.approx(
-        mercado_valido["ibov_cagr"]
-    )
+    assert taxas == {
+        1: pytest.approx(taxa_base),
+        2: pytest.approx(taxa_base),
+        3: pytest.approx(taxa_base),
+    }
 
 
 def test_curva_selic_muda_conforme_o_prazo(
@@ -530,3 +529,23 @@ def test_projecao_registra_ipca_do_horizonte(respostas_padrao, mercado_valido) -
             mercado_valido, prazo_meses=12, data_referencia=date(2026, 7, 29)
         )
     )
+
+
+def test_pessimista_mais_largo_para_carteira_de_acoes(mercado_valido) -> None:
+    mercado = {**mercado_valido, "ibov_volatilidade": 0.25}
+    taxa, ipca = 0.12, 0.045
+    renda_fixa = engine._taxa_pessimista_carteira(taxa, ipca, {RK.RF: 100}, 1, mercado)
+    acoes_1a = engine._taxa_pessimista_carteira(taxa, ipca, {RK.RV: 100}, 1, mercado)
+    acoes_9a = engine._taxa_pessimista_carteira(taxa, ipca, {RK.RV: 100}, 9, mercado)
+
+    assert renda_fixa == pytest.approx(engine._taxa_pessimista(taxa, ipca))
+    assert acoes_1a == pytest.approx(taxa - 0.8416 * 0.25)
+    # o desconto cai com a raiz do prazo
+    assert acoes_9a == pytest.approx(taxa - 0.8416 * 0.25 / 3)
+
+
+def test_pessimista_sem_volatilidade_usa_regra_simplificada(mercado_valido) -> None:
+    mercado = {**mercado_valido, "ibov_volatilidade": None}
+    assert engine._taxa_pessimista_carteira(
+        0.12, 0.045, {RK.RV: 100}, 1, mercado
+    ) == pytest.approx(engine._taxa_pessimista(0.12, 0.045))

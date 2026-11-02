@@ -7,7 +7,7 @@
 | Selic meta | Banco Central do Brasil, SGS | Série 432 | Base da curva conservadora |
 | IPCA em 12 meses | Banco Central do Brasil, SGS | Série 13522 | Retorno real e cenário |
 | Expectativas da Selic | Banco Central, Olinda/Focus | `ExpectativasMercadoAnuais` | Nós anuais da curva |
-| Ibovespa | Yahoo Finance via `yfinance` | `^BVSP` | CAGR histórico de 10 anos |
+| Ibovespa (opcional) | Yahoo Finance via `yfinance` | `^BVSP` | Volatilidade de 10 anos (cenário pessimista) e CAGR informativo |
 | CDI anualizado (opcional) | Banco Central do Brasil, SGS | Série 4389 | Exibição e normalização de taxas em % do CDI |
 | Poupança (opcional) | Banco Central do Brasil, SGS | Série 195 | Comparativo da projeção com a poupança |
 | Expectativas do IPCA (opcional) | Banco Central, Olinda/Focus | `ExpectativasMercadoAnuais` | Exibição da inflação esperada |
@@ -16,7 +16,7 @@ As séries do SGS são consultadas em janela recente. Registros vazios,
 malformados, não finitos ou com data futura são descartados.
 
 O Focus é obtido pela biblioteca `python-bcb`. A ausência do Focus é tolerada;
-Selic, IPCA e Ibovespa são obrigatórios na implementação atual. CDI, poupança e
+Selic e IPCA são obrigatórios na implementação atual; o Ibovespa é opcional. CDI, poupança e
 Focus IPCA são opcionais: quando faltam, o campo fica `None`, um aviso é
 registrado e o comparativo correspondente é omitido.
 

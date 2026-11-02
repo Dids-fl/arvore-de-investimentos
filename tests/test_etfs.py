@@ -211,7 +211,7 @@ def test_score_ignora_taxa_ausente_sem_inventar_valor():
     )
 
 
-def test_score_muda_conforme_o_perfil():
+def test_menor_volatilidade_vence_em_todos_os_perfis():
     defensivo = dados_etf_ficticios(
         retorno=8.0,
         volatilidade=8.0,
@@ -244,8 +244,16 @@ def test_score_muda_conforme_o_perfil():
         perfil=3,
     )
 
+    # Validação histórica: menor volatilidade venceu em todos os perfis.
     assert score_defensivo_p1 > score_agressivo_p1
-    assert score_agressivo_p3 > score_defensivo_p3
+    assert score_defensivo_p3 > score_agressivo_p3
+
+
+def test_retorno_passado_nao_muda_o_score():
+    """Momentum de 12 meses não previu retorno futuro; é só informativo."""
+    base = dados_etf_ficticios(retorno=5.0, volatilidade=15.0, sharpe=0.2, taxa=0.3, volume=10_000_000)
+    subiu = dict(base, retorno_12m=60.0, sharpe=2.5)
+    assert screener._score_etf(base, perfil=2)[0] == screener._score_etf(subiu, perfil=2)[0]
 
 
 @pytest.fixture

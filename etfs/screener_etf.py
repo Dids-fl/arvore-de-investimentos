@@ -36,29 +36,19 @@ REF_ETF = {
     "volume": {"bom": 50_000_000, "ruim": 1_000_000},
 }
 
-PESOS_ETF = {
-    1: {
-        "retorno_12m": 0.25,
-        "volatilidade": 0.30,
-        "sharpe": 0.20,
-        "taxa": 0.15,
-        "volume": 0.10,
-    },
-    2: {
-        "retorno_12m": 0.30,
-        "volatilidade": 0.20,
-        "sharpe": 0.25,
-        "taxa": 0.15,
-        "volume": 0.10,
-    },
-    3: {
-        "retorno_12m": 0.40,
-        "volatilidade": 0.10,
-        "sharpe": 0.25,
-        "taxa": 0.10,
-        "volume": 0.15,
-    },
+# Validação histórica (docs/validacao-historica.md), treino 2020–2022 e
+# teste 2023–2025: entre ETFs de ações, os de MENOR volatilidade renderam mais
+# e caíram menos nos dois períodos; retorno e Sharpe dos últimos 12 meses
+# (momentum) não previram nada e foram os piores no treino. Por isso o score
+# usa volatilidade, liquidez e custo; retorno e Sharpe ficam só informativos.
+_PESOS_ETF_VALIDADOS = {
+    "retorno_12m": 0.0,
+    "volatilidade": 0.70,
+    "sharpe": 0.0,
+    "taxa": 0.15,
+    "volume": 0.15,
 }
+PESOS_ETF = {perfil: dict(_PESOS_ETF_VALIDADOS) for perfil in (1, 2, 3)}
 
 _CACHE_ETFS: list[str] | None = None
 _CACHE_TIMESTAMP = 0.0
@@ -308,11 +298,11 @@ def _score_etf(
         "volume",
     ):
         valor = ind.get(nome)
-        if valor is None:
+        peso = pesos[nome]
+        if valor is None or peso <= 0:
             continue
 
         referencia = REF_ETF[nome]
-        peso = pesos[nome]
         nota = norm(
             float(valor),
             referencia["bom"],

@@ -325,21 +325,47 @@ def test_calcular_prazo_dias_aceita_formatos_e_fallback() -> None:
     assert ranker._calcular_prazo_dias(None) == 9999
 
 
-def test_calcular_score_varia_com_perfil() -> None:
-    produto = {
-        "taxa_bruta": 0.12,
-        "garantia": "Governo Federal",
-        "liquidez": "D+1",
-        "prazo_dias": 1096,
-        "tipo": "Tesouro Prefixado",
+def _titulo(tipo, nominal, anos):
+    return {
+        "ticker": f"TD-{tipo}-{anos}",
+        "tipo": tipo,
+        "taxa_nominal_estimada": nominal,
+        "prazo_dias": int(anos * 365.25),
     }
 
-    score_conservador = ranker._calcular_score(produto, perfil=1)
-    score_moderado = ranker._calcular_score(produto, perfil=2)
-    score_agressivo = ranker._calcular_score(produto, perfil=3)
 
-    assert 0 <= score_conservador <= 10
-    assert score_conservador <= score_moderado <= score_agressivo
+def test_prefixado_so_ganha_do_selic_com_premio_minimo() -> None:
+    selic = _titulo("SELIC", 0.14, 2)
+    pre_pouco = _titulo("Prefixado", 0.145, 2)  # +0,5 p.p.
+    pre_bom = _titulo("Prefixado", 0.165, 2)  # +2,5 p.p.
+
+    ordem = ranker.pontuar_titulos([dict(selic), dict(pre_pouco)], perfil=2, prazo_anos=2)
+    assert ordem[0]["tipo"] == "SELIC"
+
+    ordem = ranker.pontuar_titulos([dict(selic), dict(pre_bom)], perfil=2, prazo_anos=2)
+    assert ordem[0]["tipo"] == "Prefixado"
+    assert "acima do Tesouro Selic" in ordem[0]["motivos"][0]
+
+
+def test_conservador_exige_premio_maior() -> None:
+    selic = _titulo("SELIC", 0.14, 2)
+    pre = _titulo("Prefixado", 0.155, 2)  # +1,5 p.p.
+
+    moderado = ranker.pontuar_titulos([dict(selic), dict(pre)], perfil=2, prazo_anos=2)
+    conservador = ranker.pontuar_titulos([dict(selic), dict(pre)], perfil=1, prazo_anos=2)
+
+    assert moderado[0]["tipo"] == "Prefixado"
+    assert conservador[0]["tipo"] == "SELIC"
+
+
+def test_titulo_longo_demais_para_o_prazo_nao_e_preferido() -> None:
+    selic = _titulo("SELIC", 0.14, 1)
+    ipca_longo = _titulo("IPCA", 0.20, 10)
+
+    ordem = ranker.pontuar_titulos([dict(selic), dict(ipca_longo)], perfil=3, prazo_anos=1)
+
+    assert ordem[0]["tipo"] == "SELIC"
+    assert "além do seu prazo" in ordem[1]["motivos"][0]
 
 
 def test_ranker_prioriza_vencimento_compativel_com_horizonte(

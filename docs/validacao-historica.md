@@ -12,114 +12,117 @@ faria. Depois compara com o que de fato aconteceu.
 
 - **Sem olhar o futuro:** Selic do dia, IPCA 12 meses só até o último mês já
   divulgado, mediana do Focus publicada até a data e Ibovespa até a data.
+- **Treino e teste separados:** toda regra nova foi escolhida com um período
+  e conferida em outro, que não foi usado na escolha (ações: treino
+  2004–2012, teste 2013–2025; Tesouro: 2013–2018 e 2019–2025; ETFs:
+  2020–2022 e 2023–2025).
 - **Fontes gratuitas:** BCB/SGS (Selic, CDI, IPCA), Focus/Olinda, Tesouro
   Transparente (preços diários desde 2004), CVM (banco local do app) e Yahoo
   Finance.
-- **Datas-base:** semestrais de 2013 a 2025 para projeções e Tesouro;
-  trimestrais de 2020 a 2025 para ETFs; três cortes em 2025 para fundos (o
-  banco da CVM guarda 3 anos).
 
-## 1. Projeções de retorno do engine
+## 1. Projeções de retorno do engine (2013–2025)
 
-Erro = previsto − realizado, em pontos percentuais ao ano.
+Erro = previsto − realizado, em pontos percentuais ao ano. "Real ≥
+pessimista" deveria ficar perto de 80% ou acima.
 
-| Classe (nível de risco) | Horizonte | Previsto | Realizado | Viés | Erro médio | Real ≥ pessimista |
-|---|---|---|---|---|---|---|
-| Renda fixa (curva Selic/Focus x CDI) | 1 ano | 9,64% | 9,85% | −0,2 | 0,9 | 88% |
-| | 3 anos | 8,88% | 9,50% | −0,6 | 2,7 | 73% |
-| | 5 anos | 8,57% | 8,83% | −0,3 | 2,7 | 78% |
-| Misto (50/50) | 1 ano | 8,34% | 10,19% | −1,9 | 8,4 | 58% |
-| | 3 anos | 7,72% | 9,95% | −2,2 | 4,8 | 73% |
-| | 5 anos | 7,53% | 9,72% | −2,2 | 3,1 | 89% |
-| Ações (CAGR Ibov 10 anos x Ibovespa) | 1 ano | 7,04% | 10,52% | −3,5 | 17,1 | 54% |
-| | 3 anos | 6,57% | 9,92% | −3,3 | 10,1 | 55% |
-| | 5 anos | 6,50% | 10,26% | −3,8 | 6,7 | 78% |
+| Classe | Horizonte | Erro médio antes | Erro médio agora | Viés agora | Real ≥ pessimista (antes → agora) |
+|---|---|---|---|---|---|
+| Renda fixa (curva Selic/Focus x CDI) | 1 / 3 / 5 anos | 0,9 / 2,7 / 2,7 | 0,9 / 2,7 / 2,7 | −0,2 / −0,6 / −0,3 | 88 / 73 / 78% → 88 / 82 / 83% |
+| Misto 50/50 | 1 / 3 / 5 anos | 8,4 / 4,8 / 3,1 | **7,2 / 3,2 / 1,6** | −0,5 / −1,1 / −1,2 | 58 / 73 / 89% → **92 / 100 / 100%** |
+| Ações (x Ibovespa) | 1 / 3 / 5 anos | 17,1 / 10,1 / 6,7 | **14,8 / 6,8 / 3,0** | −0,9 / −1,0 / −1,7 | 54 / 55 / 78% → **92 / 95 / 100%** |
+| Inflação (x IPCA) | 1 / 3 / 5 anos | 2,4 / 2,8 / 2,4 | **1,9 / 1,7 / 1,4** | −0,8 / −1,2 / −1,1 | — |
 
-**Renda fixa: bom.** A curva da Selic montada com o Focus quase não tem viés e
-erra menos que simplesmente repetir a Selic atual (erro de 1,4 / 3,2 / 4,1
-p.p. em 1 / 3 / 5 anos, contra 0,9 / 2,7 / 2,7 p.p. do engine).
+O erro de 1 ano em ações continua alto porque a bolsa oscila muito em 12
+meses; nenhuma regra simples prevê isso. O que importa é que o viés sumiu e o
+cenário pessimista passou a ser de fato pessimista.
 
-**Ações: o ponto mais fraco.** Repetir o CAGR dos últimos 10 anos do
-Ibovespa subestimou o retorno em cerca de 3,5 p.p. ao ano em todos os
-horizontes. Em vários momentos o app previa que ações renderiam menos que o
-CDI. O "cenário pessimista" de ações também não foi pessimista: em 1 e 3
-anos, quase metade das vezes o resultado real ficou abaixo dele.
+### Como a regra de ações foi escolhida
 
-Regras alternativas testadas no mesmo período (erro médio, p.p. ao ano):
+| Regra (erro médio em 5 anos) | Treino 2004–2012 | Teste 2013–2025 |
+|---|---|---|
+| Antiga: repetir o CAGR do Ibovespa em 10 anos | 15,3 | 6,7 |
+| **Curva de juros esperada, sem prêmio (adotada)** | **9,0** | **3,0** |
+| Curva + prêmio fixo calibrado no treino (−6,7 p.p.) | 6,8 | 8,4 |
+| Curva + prêmio histórico recalculado em cada data | 10,3 | 4,6 |
 
-| Regra para ações | 1 ano | 3 anos | 5 anos |
-|---|---|---|---|
-| Atual: CAGR do Ibovespa em 10 anos | 17,1 | 10,1 | 6,7 |
-| Curva Selic/Focus (= renda fixa) | 14,8 | 6,8 | 3,0 |
-| Curva Selic/Focus + 2 p.p. | 14,6 | 6,8 | 2,8 |
-| Média (CAGR 10a, curva + 3 p.p.) | 15,8 | 8,3 | 4,3 |
-
-O prêmio de 2 p.p. foi escolhido olhando este mesmo período, então o ganho
-dele sobre "curva sem prêmio" não é evidência forte. O resultado robusto é
-que **ancorar ações na curva de juros esperada erra bem menos que repetir os
-últimos 10 anos**. A regra do engine não foi alterada: a escolha fica para
-decisão explícita.
+O prêmio calibrado no treino falhou no teste: o excesso do Ibovespa sobre o
+CDI muda muito de uma década para outra. "Ações renderão o mesmo que os
+juros esperados" foi a única regra boa nos dois períodos. De 2004 a 2025 o
+Ibovespa rendeu, em média, perto do CDI. A diferença de risco entre perfis
+passou a aparecer no **cenário pessimista**, que cai com a exposição a ações:
+central − 0,84 × volatilidade do Ibovespa ÷ √prazo (0,84 é o percentil 20 da
+distribuição normal, não um número ajustado aos dados).
 
 ### Inflação
 
-| Horizonte | IPCA usado hoje (Focus) | Realizado | Erro médio | Erro do método antigo (IPCA 12m repetido) |
-|---|---|---|---|---|
-| 1 ano | 4,93% | 5,74% | 1,85 | 2,42 |
-| 3 anos | 4,54% | 5,72% | 1,68 | 2,80 |
-| 5 anos | 4,51% | 5,62% | 1,42 | 2,36 |
-
-Com base nisso, **o engine passou a usar o IPCA esperado pelo Focus**
-(`engine.ipca_esperado_mercado`) no poder de compra, no cenário pessimista e
-na meta. O próprio Focus subestimou a inflação em cerca de 1 p.p. ao ano no
-período, então o "poder de compra" projetado tende a ser um pouco otimista.
+O engine usa o IPCA esperado pelo Focus mês a mês no horizonte
+(`engine.ipca_esperado_mercado`). O próprio Focus subestimou a inflação em
+cerca de 1 p.p. ao ano no período, então o "poder de compra" projetado tende
+a ser um pouco otimista.
 
 ## 2. Rankers de ativos
 
-"Escolhido" é o 1º do ranking; "bateu a mediana" compara com o ativo mediano
-do universo elegível na mesma data; Spearman mede se a ordem do score acompanha
-a ordem dos retornos (0 = nenhuma relação, 1 = perfeita).
+"1º colocado" é o primeiro do ranking. "Perdeu do CDI" conta as vezes em que
+ele rendeu mais de 2 p.p. abaixo do CDI.
 
-| Ranker (perfil moderado) | Datas | Retorno do 1º | Mediana do universo | CDI | 1º bateu a mediana | Spearman |
-|---|---|---|---|---|---|---|
-| Tesouro, 1 ano | 26 | 8,02% | 10,62% | 9,86% | 46% | 0,01 |
-| Tesouro, 3 anos | 21 | 11,11% | 11,42% | 9,45% | 48% | 0,21 |
-| Fundos (CVM), 1 ano | 3 | 12,40% | 14,10% | 14,57% | 67% | 0,42 |
-| Previdência (CVM), 1 ano | 3 | 14,87% | 13,47% | 14,57% | 100% | 0,49 |
-| ETFs de ações, 1 ano | 21 | 9,83% | 7,26% | 11,46% | 52% | −0,03 |
+### Tesouro Direto (26 datas, 2013–2025)
 
-- **Tesouro:** o score não prevê o retorno de 1 ano. A marcação a mercado dos
-  prefixados e IPCA+ longos domina. Em 3 anos aparece uma relação fraca
-  (0,2).
-- **Fundos e previdência:** o score tem relação real com o retorno seguinte
-  (0,4 a 0,5). Na previdência, o 1º colocado bateu a mediana nas 3 datas. Nos
-  fundos comuns, em set/2025 o 1º para **todos os perfis, inclusive o
-  conservador**, foi um fundo de debêntures incentivadas (6,9% contra 14,5% do
-  CDI): o bônus por isenção de IR leva ao topo fundos com risco de crédito e
-  de marcação.
-- **ETFs:** o score não prevê o retorno. Na prática ele escolhe quase sempre o
-  IVVB11 (S&P 500), por liquidez e Sharpe.
+| Horizonte de 1 ano | Antes | Agora |
+|---|---|---|
+| Conservador: excesso sobre o CDI / perdeu do CDI / bateu a mediana | −0,3 p.p. / 19% / 46% | **+0,6 p.p. / 0% / 62%** |
+| Moderado | +0,2 p.p. / 19% / 50% | **+0,5 p.p. / 12% / 69%** |
+
+Regra nova: o Tesouro Selic é a referência; um prefixado ou IPCA+ só fica à
+frente se vencer até 1,5 ano depois do prazo do investidor e pagar pelo menos
+2 p.p. (conservador) ou 1 p.p. (demais perfis) acima da Selic esperada.
+
+**Custo honesto:** em 3 anos, para moderado e agressivo, o retorno médio caiu
+de +1,1 para +0,4 p.p. sobre o CDI, com o mesmo risco. A regra antiga ganhava
+apostando em títulos longos durante a queda de juros de 2016–2019. A nova
+prioriza não perder do CDI.
+
+Ao refazer este teste foi encontrado e corrigido um erro do próprio backtest:
+títulos com taxa 0,00% eram descartados, e o Tesouro Selic negociou assim em
+boa parte de 2013–2018.
+
+### ETFs de ações (21 datas, 2020–2025)
+
+| | Antes | Agora |
+|---|---|---|
+| Retorno do 1º colocado | 9,8% | **15,0%** |
+| Média dos 3 primeiros (mediana do universo: 7,3%; CDI: 11,5%) | 5,3% | **11,3%** |
+| Pior caso dos 3 primeiros | −22,5% | **−15,2%** |
+
+No treino e no teste, os ETFs de ações de **menor volatilidade** renderam
+mais e caíram menos; o retorno e o Sharpe dos últimos 12 meses não previram
+nada. O score passou a usar volatilidade (70%), liquidez (15%) e custo (15%).
+Fundos regionais (FINOR, FINAM, FUNDES) e ativos que não são fundos de índice
+ficam fora.
+
+### Fundos e previdência (CVM, 3 cortes em 2025, 12 meses seguintes)
+
+| | Antes | Agora |
+|---|---|---|
+| Fundos, conservador: média do 1º colocado | 12,4% | **14,4%** (CDI 14,6%) |
+| Fundos, conservador: correlação score × retorno | 0,44 | **0,54** |
+| Previdência, conservador: 1º bateu a mediana | 100% | 100% |
+
+O perfil conservador deixou de receber fundos de "Crédito Livre", "Duração
+Alta", exterior e incentivados de infraestrutura. Antes, o bônus por isenção
+de IR levava ao topo um fundo de debêntures incentivadas que rendeu 6,9%
+contra 14,5% do CDI. Nos perfis moderado e agressivo esses fundos continuam
+permitidos; com só 3 cortes, mexer mais neles seria ajustar ao acaso.
 
 Ações, FIIs e cripto não foram testados: não há fonte gratuita com os
-indicadores fundamentalistas "como eram" em cada data (Fundamentus e
-CoinGecko gratuitos só dão o dado atual ou 365 dias).
+indicadores fundamentalistas "como eram" em cada data.
 
 ## Limitações
 
 - Fundos: só 3 cortes e janelas de 12 meses que se sobrepõem; o cadastro é o
-  atual, então fundos encerrados não entram (viés de sobrevivência).
+  atual (viés de sobrevivência).
 - ETFs: universo atual (mesmo viés) e sem taxa de administração histórica.
 - Tesouro: títulos com cupom (juros semestrais, Renda+, Educa+) ficaram de
   fora porque o preço cai a cada pagamento.
 - Retornos brutos de IR (fundos já descontam a taxa de administração).
-- 2013–2025 inclui juros muito altos e muito baixos, mas é um único período
-  histórico; desempenho passado não garante o futuro.
-
-## Próximos passos sugeridos
-
-1. Trocar a regra de ações por "curva Selic/Focus + prêmio" e calibrar o
-   prêmio fora da amostra (por exemplo, com dados anteriores a 2013).
-2. Tornar o cenário pessimista de ações mais pessimista nos horizontes de 1 a
-   3 anos.
-3. Limitar o bônus de isenção de IR nos fundos para o perfil conservador, ou
-   exigir risco de crédito compatível.
-4. Repetir este teste periodicamente para acompanhar a evolução.
+- Desempenho passado não garante o futuro: as regras foram escolhidas por
+  serem robustas em dois períodos diferentes, não por acertarem o futuro.

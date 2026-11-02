@@ -657,6 +657,14 @@ def _render_alocacao(analise: dict) -> None:
             f"Taxa-base: {formatar_pct(resultado['taxa_base'])} a.a. · "
             f"Cenário pessimista: {formatar_pct(resultado['taxa_pess'])} a.a."
         )
+        st.caption(
+            "Todas as classes partem dos juros esperados pelo mercado (curva "
+            "Selic/Focus): de 2004 a 2025, o Ibovespa rendeu em média perto do "
+            "CDI, e essa regra foi a que menos errou na validação histórica. "
+            "Mais ações significam mais risco, não retorno garantido maior; "
+            "por isso o cenário pessimista fica mais baixo para carteiras "
+            "com mais renda variável."
+        )
 
 
 _COLUNAS_EM_REAIS = {
@@ -707,7 +715,12 @@ def _projecoes_dataframe(projecoes: list[dict]) -> pd.DataFrame:
         item.update(
             {
                 "Poder de compra": linha["vf_real"],
-                "Pessimista líquido": linha["vf_pessimista_liquido"],
+                # Sem dado fiscal, o pessimista usa o pior cenário fiscal.
+                "Pessimista líquido": (
+                    linha["vf_pessimista_liquido"]
+                    if linha["vf_pessimista_liquido"] is not None
+                    else linha.get("vf_pessimista_liquido_min")
+                ),
                 "Precisão tributária": linha["precisao_tributaria"],
             }
         )

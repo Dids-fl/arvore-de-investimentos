@@ -63,7 +63,7 @@ campos são:
 - `focus_selic`;
 - `focus_selic_por_ano`;
 - `ipca`;
-- `ibov_cagr`;
+- `ibov_cagr` e `ibov_volatilidade` (opcionais);
 - `data_ref`;
 - `fontes`;
 - `avisos`;
@@ -71,7 +71,8 @@ campos são:
 - `cache_status`;
 - `_schema_version`.
 
-Selic, IPCA e CAGR do Ibovespa são obrigatórios para o motor atual. A curva do
+Selic e IPCA são obrigatórios para o motor atual; CAGR e volatilidade do
+Ibovespa são opcionais. A curva do
 Focus é opcional e sua ausência deve gerar aviso, não um número fictício.
 
 ### Análise

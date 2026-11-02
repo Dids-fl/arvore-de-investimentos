@@ -524,3 +524,32 @@ def test_filtro_remove_fundos_fechados_e_master():
     )
     resultado = FiltroFundos().filtrar_nao_investiveis(df)
     assert list(resultado["CNPJ_Classe"]) == ["1", "4"]
+
+
+def test_conservador_nao_recebe_credito_livre_nem_incentivados():
+    from fundos.filtros import FiltroFundos
+
+    df = pd.DataFrame(
+        {
+            "CNPJ_Classe": ["1", "2", "3", "4", "5"],
+            "Classificacao_Anbima": [
+                "Renda Fixa Duração Baixa Soberano",
+                "Renda Fixa Duração Livre Crédito Livre",
+                "Renda Fixa Duração Alta Grau de Invest.",
+                "Renda Fixa Duração Livre Grau de Invest.",
+                "Renda Fixa Simples",
+            ],
+            "Denominacao_Social": [
+                "TESOURO SELIC FIF",
+                "FUNDO CREDITO",
+                "FUNDO IMA-B 5+",
+                "ITAÚ DEB INC PÓS-FIXADO FUNDO INCENTIVADO",
+                "FUNDO SIMPLES",
+            ],
+        }
+    )
+    conservador = FiltroFundos(perfil=1).filtrar_risco_conservador(df)
+    moderado = FiltroFundos(perfil=2).filtrar_risco_conservador(df)
+
+    assert list(conservador["CNPJ_Classe"]) == ["1", "5"]
+    assert len(moderado) == 5
