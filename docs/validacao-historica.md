@@ -13,9 +13,9 @@ faria. Depois compara com o que de fato aconteceu.
 - **Sem olhar o futuro:** Selic do dia, IPCA 12 meses só até o último mês já
   divulgado, mediana do Focus publicada até a data e Ibovespa até a data.
 - **Treino e teste separados:** toda regra nova foi escolhida com um período
-  e conferida em outro, que não foi usado na escolha (ações: treino
-  2004–2012, teste 2013–2025; Tesouro: 2013–2018 e 2019–2025; ETFs:
-  2020–2022 e 2023–2025).
+  e conferida em outro, que não foi usado na escolha (projeção de ações:
+  treino 2004–2012, teste 2013–2025; ranking de ações e Tesouro: 2013–2018
+  e 2019–2025; ETFs e FIIs: 2020–2022 e 2023–2025).
 - **Fontes gratuitas:** BCB/SGS (Selic, CDI, IPCA), Focus/Olinda, Tesouro
   Transparente (preços diários desde 2004), CVM (banco local do app) e Yahoo
   Finance.
@@ -99,13 +99,26 @@ nada. O score passou a usar volatilidade (70%), liquidez (15%) e custo (15%).
 Fundos regionais (FINOR, FINAM, FUNDES) e ativos que não são fundos de índice
 ficam fora.
 
-### Fundos e previdência (CVM, 3 cortes em 2025, 12 meses seguintes)
+### Fundos e previdência (CVM, 9 cortes de 2023 a 2025, 12 meses seguintes)
 
-| | Antes | Agora |
-|---|---|---|
-| Fundos, conservador: média do 1º colocado | 12,4% | **14,4%** (CDI 14,6%) |
-| Fundos, conservador: correlação score × retorno | 0,44 | **0,54** |
-| Previdência, conservador: 1º bateu a mediana | 100% | 100% |
+O teste passou de 3 para 9 datas-base, de janeiro de 2023 a setembro de
+2025. Para isso, os informes diários da CVM desde 2021 são baixados só para
+a validação, em um banco separado do app. Média das 9 datas:
+
+| | 1º colocado | Mediana dos fundos | CDI | 1º bateu a mediana | 1º bateu o CDI | Correlação score × retorno |
+|---|---|---|---|---|---|---|
+| Fundos, conservador | 13,5% | 12,5% | 12,9% | 100% | 89% | 0,53 |
+| Fundos, moderado | 13,2% | 12,3% | 12,9% | 89% | 78% | 0,23 |
+| Fundos, agressivo | 18,4% | 12,3% | 12,9% | 89% | 78% | 0,23 |
+| Previdência, conservador | 13,9% | 11,8% | 12,9% | 100% | 100% | 0,52 |
+| Previdência, moderado | 13,7% | 11,3% | 12,9% | 100% | 67% | 0,21 |
+| Previdência, agressivo | 10,8% | 11,3% | 12,9% | 78% | 56% | 0,19 |
+
+O resultado de 2025 se manteve com mais datas: no conservador, o 1º
+colocado bateu a mediana em todas elas. O ponto fraco é a previdência
+agressiva, cujo 1º colocado rendeu menos que o CDI na média. Com 9 janelas
+de 12 meses que se sobrepõem, ainda não há dados suficientes para trocar a
+regra com segurança.
 
 O perfil conservador deixou de receber fundos de "Crédito Livre", "Duração
 Alta", exterior e incentivados de infraestrutura. Antes, o bônus por isenção
@@ -215,8 +228,12 @@ alocação não foi alterada.
 - O motor tributário ainda tem casos sem comprovação documental; essa parte
   depende de informes de rendimentos reais ou de um contador.
 
-- Fundos: só 3 cortes e janelas de 12 meses que se sobrepõem; o cadastro é o
-  atual (viés de sobrevivência).
+- Fundos: 9 cortes, com janelas de 12 meses que se sobrepõem. O cadastro é o
+  atual, o que gera viés de sobrevivência.
+- Ações: o Yahoo não tem preços de empresas que saíram da bolsa.
+- Carteiras: multimercado e previdência são representados por uma mistura
+  de índices, não por fundos reais. FIIs antes de 2019 e bitcoin usam
+  substitutos.
 - ETFs: universo atual (mesmo viés) e sem taxa de administração histórica.
 - Tesouro: títulos com cupom (juros semestrais, Renda+, Educa+) ficaram de
   fora porque o preço cai a cada pagamento.
