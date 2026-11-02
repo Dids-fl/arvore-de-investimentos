@@ -81,6 +81,13 @@ CDB, LCI, LCA e COE não têm ranking de ativos: não existe fonte pública e
 gratuita com as ofertas e taxas dos bancos. Eles continuam cobertos nas
 regras de recomendação e no motor tributário.
 
+## Validação com dados do passado
+
+`python -m backtest.validacao_historica` volta a datas passadas, monta os dados
+como estavam naquele dia e compara a previsão do app com o que aconteceu. O
+resultado mais recente está em
+[docs/validacao-historica.md](docs/validacao-historica.md).
+
 ## Desenvolvimento
 
 ```bash

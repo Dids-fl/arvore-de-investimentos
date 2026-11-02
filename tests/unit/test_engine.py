@@ -447,3 +447,86 @@ def test_despesas_zero_contraditorias_nao_liberam_risco(
     resultado = analise["resultado"]
     assert resultado["portfolio"] == {RK.RF_RESERVA: 100.0}
     assert any("R$ 0,00" in aviso for aviso in resultado["avisos"])
+
+
+def test_previdencia_sem_regime_mostra_faixa_em_vez_de_vazio(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    respostas = {
+        **respostas_padrao,
+        "objetivo": "aposentadoria",
+        "modo_meta": "sim",
+        "meta_valor": 50_000_000,
+        "meta_prazo": 10,
+    }
+    analise = engine.criar_analise(
+        respostas,
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )
+    linha = analise["projecoes"][-1]
+
+    assert linha["vf_liquido"] is None
+    assert "regime da previdência" in linha["faixa_variaveis"]
+    assert 0 < linha["vf_liquido_min"] <= linha["vf_liquido_max"] < linha["vf_bruto"]
+    assert linha["imposto_min"] <= linha["imposto_max"]
+
+    meta = analise["meta"]
+    assert meta["atingida"] is None
+    assert meta["atingida_cenarios"] == "nenhum"
+    assert meta["valor_liquido_min"] <= meta["valor_liquido_max"]
+
+
+def test_faixa_coincide_com_valor_unico_quando_regime_informado(
+    respostas_padrao,
+    mercado_valido,
+) -> None:
+    base = {**respostas_padrao, "objetivo": "aposentadoria", "modo_meta": "rendendo"}
+    sem_regime = engine.criar_analise(
+        base, mercado_valido, data_referencia=date(2026, 7, 29)
+    )["projecoes"][-1]
+    regressivo = engine.criar_analise(
+        {**base, "regime_previdencia": "regressivo"},
+        mercado_valido,
+        data_referencia=date(2026, 7, 29),
+    )["projecoes"][-1]
+
+    assert regressivo["vf_liquido"] is not None
+    assert regressivo["vf_liquido_min"] is None
+    assert sem_regime["vf_liquido_min"] - 0.01 <= regressivo["vf_liquido"]
+    assert regressivo["vf_liquido"] <= sem_regime["vf_liquido_max"] + 0.01
+
+
+def test_ipca_esperado_usa_focus_mes_a_mes(mercado_valido) -> None:
+    mercado = {**mercado_valido, "focus_ipca_por_ano": {2026: 0.05, 2027: 0.04}}
+    um_ano = engine.ipca_esperado_mercado(
+        mercado, prazo_meses=12, data_referencia=date(2026, 7, 1)
+    )
+    # 6 meses a 5% (2026) e 6 meses a 4% (2027)
+    assert um_ano == pytest.approx((1.05**0.5 * 1.04**0.5) - 1)
+
+    longo = engine.ipca_esperado_mercado(
+        mercado, prazo_meses=120, data_referencia=date(2026, 7, 1)
+    )
+    assert 0.04 < longo < 0.0405  # depois de 2027 repete o último ponto
+
+
+def test_ipca_esperado_sem_focus_usa_ipca_12m(mercado_valido) -> None:
+    mercado = {**mercado_valido, "focus_ipca_por_ano": {}}
+    assert engine.ipca_esperado_mercado(
+        mercado, prazo_meses=60, data_referencia=date(2026, 7, 1)
+    ) == pytest.approx(mercado_valido["ipca"])
+
+
+def test_projecao_registra_ipca_do_horizonte(respostas_padrao, mercado_valido) -> None:
+    analise = engine.criar_analise(
+        respostas_padrao, mercado_valido, data_referencia=date(2026, 7, 29)
+    )
+    ipcas = {linha["anos"]: linha["ipca_horizonte"] for linha in analise["projecoes"]}
+    assert ipcas[1.0] != pytest.approx(mercado_valido["ipca"])
+    assert ipcas[1.0] == pytest.approx(
+        engine.ipca_esperado_mercado(
+            mercado_valido, prazo_meses=12, data_referencia=date(2026, 7, 29)
+        )
+    )

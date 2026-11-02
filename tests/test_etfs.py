@@ -314,6 +314,9 @@ def test_top_etfs_respeita_n_zero(ranking_mock):
         ("BB ETF ÍNDICE FUTURO DE BOI GORDO B3", "commodity"),
         ("HASHDEX NASDAQ BITCOIN REFERENCE PRICE FUNDO DE ÍNDICE", "cripto"),
         ("ISHARES BOVA FUNDO DE ÍNDICE", "acoes"),
+        ("Fundo de Investimento Amazônia - FINAM", "outro"),
+        ("PORTO SUDESTE V.M. S.A.", "outro"),
+        ("FUNDES", "outro"),
         ("BTG PACTUAL TEVA AÇÕES COMMODITIES BRASIL FUNDO DE ÍNDICE", "acoes"),
         ("Btg Pactual Teva Itbr Ipca 95-5 Fundo De Indice", "renda_fixa"),
         ("BB ETF ÍNDICE DAP5 B3 FUNDO DE ÍNDICE", "renda_fixa"),
@@ -333,12 +336,12 @@ def test_classe_etf(nome, classe):
 def test_classe_etf_usa_volatilidade_quando_nome_e_generico(volatilidade, classe):
     from etfs.screener_etf import classe_etf
 
-    assert classe_etf("BL03 Fundo Invest Financeiro", volatilidade) == classe
+    assert classe_etf("BL03 FUNDO DE ÍNDICE", volatilidade) == classe
 
 
 def test_top_etfs_de_acoes_ignora_renda_fixa_e_ativos_sem_preco(monkeypatch):
     universo = {
-        "BOVA11": {"nome": "ISHARES IBOVESPA", "volatilidade": 18.0},
+        "BOVA11": {"nome": "ISHARES IBOVESPA FUNDO DE ÍNDICE", "volatilidade": 18.0},
         "LFTS11": {"nome": "TESOURO SELIC ETF", "volatilidade": 0.5},
         "XXXX11": {"nome": "BL03 Fundo Invest Financeiro", "volatilidade": 2.0},
         "FNAM11": {"nome": "Fundo de Investimento Amazônia", "volatilidade": 30.0, "preco": 0.0},
@@ -356,3 +359,10 @@ def test_top_etfs_de_acoes_ignora_renda_fixa_e_ativos_sem_preco(monkeypatch):
 
     assert [item["ticker"] for item in resultado] == ["BOVA11"]
     assert resultado[0]["classe"] == "acoes"
+
+
+def test_fundos_regionais_nao_sao_etf():
+    from etfs.screener_etf import classe_etf
+
+    assert classe_etf("FNOR11", 30.0, "FNOR11") == "outro"
+    assert classe_etf("BOVA11", 20.0, "BOVA11") == "acoes"  # nome desconhecido

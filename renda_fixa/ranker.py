@@ -4,9 +4,73 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 
+from utils.exceptions import DadosIndisponiveisError
+
 from .coletor import coletar_tesouro
 
 logger = logging.getLogger(__name__)
+
+
+def _referencias_mercado() -> dict:
+    """Selic e IPCA atuais e esperados (Focus) para comparar os títulos.
+
+    Usa o mesmo carregador do app (com cache local), então não faz consultas
+    extras quando o app já carregou os indicadores.
+    """
+    from mercado import load_market_data  # import tardio: evita ciclo
+
+    mercado = load_market_data()
+    return {
+        "selic_atual": mercado.get("selic"),
+        "ipca_atual": mercado.get("ipca"),
+        "selic_por_ano": dict(mercado.get("focus_selic_por_ano") or {}),
+        "ipca_por_ano": dict(mercado.get("focus_ipca_por_ano") or {}),
+    }
+
+
+def _taxa_esperada(por_ano: dict, atual: float | None, ano_inicial: int, ano_final: int):
+    """Média das expectativas anuais do Focus entre dois anos.
+
+    Anos além do último ponto do Focus repetem o último valor (mesma hipótese
+    terminal usada na curva da Selic do app); sem Focus, usa o valor atual.
+    """
+    serie = {int(ano): float(taxa) for ano, taxa in (por_ano or {}).items()}
+    if not serie:
+        return atual
+    ultimo_ano = max(serie)
+    valores = []
+    for ano in range(ano_inicial, max(ano_inicial, ano_final) + 1):
+        if ano in serie:
+            valores.append(serie[ano])
+        elif ano > ultimo_ano:
+            valores.append(serie[ultimo_ano])
+        elif atual is not None:
+            valores.append(float(atual))
+    return sum(valores) / len(valores) if valores else atual
+
+
+def taxa_nominal_equivalente(produto: dict, referencias: dict, data_referencia=None):
+    """Converte a taxa do título em taxa nominal anual comparável.
+
+    Prefixado: a própria taxa. IPCA+: (1 + taxa real) x (1 + IPCA esperado).
+    Selic: (1 + Selic esperada) x (1 + ágio/deságio). Devolve ``None`` se faltar
+    a referência necessária.
+    """
+    taxa = float(produto.get("taxa_bruta") or 0.0)
+    tipo = str(produto.get("tipo", "")).upper()
+    hoje = _data_referencia(data_referencia).date()
+    ano_final = _ano_vencimento(produto.get("vencimento")) or hoje.year
+    if "IPCA" in tipo:
+        ipca = _taxa_esperada(
+            referencias.get("ipca_por_ano"), referencias.get("ipca_atual"), hoje.year, ano_final
+        )
+        return None if ipca is None else (1 + taxa) * (1 + ipca) - 1
+    if "SELIC" in tipo:
+        selic = _taxa_esperada(
+            referencias.get("selic_por_ano"), referencias.get("selic_atual"), hoje.year, ano_final
+        )
+        return None if selic is None else (1 + selic) * (1 + taxa) - 1
+    return taxa
 
 
 def _ano_vencimento(vencimento) -> int | None:
@@ -92,15 +156,19 @@ def _compatibilidade_prazo(prazo_dias, prazo_anos) -> float:
 
 
 def _calcular_score(produto, perfil, prazo_anos=None):
-    taxa = produto.get("taxa_bruta", 0.0)
+    """Score 0–10 a partir da taxa nominal equivalente do título.
+
+    ``produto["taxa_nominal_estimada"]`` (preenchida por ``rankear_rf``) já
+    inclui o IPCA ou a Selic esperados pelo Focus; sem ela, usa a taxa bruta.
+    """
+    taxa = produto.get("taxa_nominal_estimada")
+    if taxa is None:
+        taxa = produto.get("taxa_bruta", 0.0)
     garantia = produto.get("garantia", "Sem garantia")
     liquidez = produto.get("liquidez", "Baixa")
     prazo = produto.get("prazo_dias", 9999)
-    tipo = produto.get("tipo", "")
 
     taxa_ajustada = taxa
-    if "IPCA" in tipo:
-        taxa_ajustada += 0.06
 
     if perfil == 1:  # Conservador
         if "Governo Federal" in garantia:
@@ -161,9 +229,14 @@ def rankear_rf(
     *,
     prazo_anos: float | None = None,
     data_referencia=None,
+    referencias: dict | None = None,
 ):
     """
     Retorna recomendações de Renda Fixa (apenas Tesouro Direto).
+
+    Os títulos são comparados pela taxa nominal equivalente: IPCA+ e Selic
+    recebem o IPCA e a Selic esperados pelo Focus até o vencimento.
+    ``referencias`` permite injetar esses valores (testes e backtests).
 
     Sem fallback fixo: se SELIC/CDI não puderem ser obtidos online,
     propaga DadosIndisponiveisError (o chamador — recomendador_ativos —
@@ -177,8 +250,26 @@ def rankear_rf(
         logger.warning("Nenhum título do Tesouro obtido (fonte online sem dados no momento).")
         return []
 
+    if referencias is None:
+        try:
+            referencias = _referencias_mercado()
+        except DadosIndisponiveisError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise DadosIndisponiveisError(
+                "Selic/IPCA para comparar títulos do Tesouro", str(exc)
+            ) from exc
+
     produtos = _processar_tesouro(titulos, data_referencia)
     produtos = [produto for produto in produtos if produto["prazo_dias"] > 0]
+    comparaveis = []
+    for p in produtos:
+        p["taxa_nominal_estimada"] = taxa_nominal_equivalente(p, referencias, data_referencia)
+        if p["taxa_nominal_estimada"] is None:
+            logger.warning("Sem referência de mercado para comparar %s; título omitido.", p["ticker"])
+            continue
+        comparaveis.append(p)
+    produtos = comparaveis
     for p in produtos:
         p["score"] = _calcular_score(p, perfil, prazo_anos)
         p["compatibilidade_prazo"] = round(

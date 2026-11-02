@@ -31,6 +31,7 @@ from urllib3.util.retry import Retry
 
 from config import MAX_RETRIES, REQUEST_TIMEOUT, RETRY_BACKOFF
 from utils.exceptions import DadosIndisponiveisError
+from utils.formatacao import formatar_pct
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -562,7 +563,7 @@ def _extras_opcionais(results: Mapping[str, Any]) -> dict[str, Any]:
         extras[chave] = valor
         extras[f"{chave}_ref"] = referencia
         fontes.append(
-            f"{rotulo} {valor * 100:.2f}% a.a. — BCB/SGS série {serie} "
+            f"{rotulo} {formatar_pct(valor)} a.a. — BCB/SGS série {serie} "
             f"(ref. {referencia})"
         )
 
@@ -584,7 +585,7 @@ def _extras_opcionais(results: Mapping[str, Any]) -> dict[str, Any]:
     )
     for ano, taxa in extras["focus_ipca_por_ano"].items():
         fontes.append(
-            f"Previsão IPCA Focus {ano}: {taxa * 100:.2f}% a.a. — BCB/Olinda"
+            f"Previsão IPCA Focus {ano}: {formatar_pct(taxa)} a.a. — BCB/Olinda"
         )
 
     extras["_fontes"] = fontes
@@ -782,15 +783,15 @@ def load_market_data(
 
     fontes = [
         (
-            f"SELIC {selic_value * 100:.2f}% a.a. — "
+            f"SELIC {formatar_pct(selic_value)} a.a. — "
             f"BCB/SGS série {SGS_SELIC} (ref. {selic_ref})"
         ),
         (
-            f"IPCA 12m {ipca_value * 100:.2f}% a.a. — "
+            f"IPCA 12m {formatar_pct(ipca_value)} a.a. — "
             f"BCB/SGS série {SGS_IPCA_12M} (ref. {ipca_ref})"
         ),
         (
-            f"Ibovespa CAGR 10a {ibov_value * 100:.2f}% a.a. — "
+            f"Ibovespa CAGR 10a {formatar_pct(ibov_value)} a.a. — "
             "Yahoo Finance/yfinance"
         ),
     ]
@@ -799,7 +800,7 @@ def load_market_data(
     if focus_por_ano:
         for ano, taxa in focus_por_ano.items():
             fontes.append(
-                f"Previsão SELIC Focus {ano}: {taxa * 100:.2f}% a.a. — "
+                f"Previsão SELIC Focus {ano}: {formatar_pct(taxa)} a.a. — "
                 "BCB/Olinda"
             )
     else:

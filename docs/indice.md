@@ -22,6 +22,8 @@ curta do projeto.
   e workflow.
 - [Validação financeira](validacao-financeira.md): o que já existe e o
   protocolo necessário para medir eficácia.
+- [Validação histórica](validacao-historica.md): previsões do app em datas
+  passadas comparadas com o que aconteceu depois.
 - [Limitações e riscos](limitacoes.md): restrições técnicas, financeiras,
   tributárias e operacionais.
 

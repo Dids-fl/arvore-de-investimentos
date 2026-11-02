@@ -47,3 +47,13 @@ def test_interpretar_numero(texto, esperado) -> None:
 def test_interpretar_numero_invalido(texto) -> None:
     with pytest.raises(ValueError):
         interpretar_numero(texto)
+
+
+@pytest.mark.parametrize(
+    ("valor", "casas", "esperado"),
+    [(0.1375, 2, "13,75%"), (0.0458, 1, "4,6%"), (-0.02, 2, "-2,00%"), (None, 2, "indeterminado")],
+)
+def test_formatar_pct(valor, casas, esperado) -> None:
+    from utils.formatacao import formatar_pct
+
+    assert formatar_pct(valor, casas) == esperado

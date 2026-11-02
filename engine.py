@@ -51,6 +51,7 @@ __all__ = [
     "comparativo_poupanca",
     "criar_analise",
     "gerar_recomendacao_completa",
+    "ipca_esperado_mercado",
     "mapear_respostas_formulario",
     "montar_payload_exportacao",
     "nome_categoria",
@@ -709,6 +710,50 @@ def taxa_base_mercado(
     ).taxa_anual_equivalente
 
 
+def ipca_esperado_mercado(
+    market: Mapping,
+    *,
+    prazo_meses: int = 12,
+    data_referencia: date | str | None = None,
+) -> float:
+    """IPCA anual esperado para o prazo, a partir das medianas do Focus.
+
+    Cada mês do horizonte usa a expectativa do Focus para o seu ano; anos
+    além do último ponto repetem o último valor (mesma hipótese terminal da
+    curva da Selic). Sem Focus, usa o IPCA acumulado em 12 meses.
+
+    Na validação histórica (``backtest/validacao_historica.py``), o Focus
+    errou menos que o IPCA passado de 12 meses em todos os horizontes.
+    """
+    data_base = _data_referencia_valida(data_referencia)
+    dados = _validar_market(market, data_referencia=data_base)
+    ipca_12m = float(dados["ipca"])
+    focus: dict[int, float] = {}
+    for ano, taxa in (market.get("focus_ipca_por_ano") or {}).items():
+        try:
+            valor = float(taxa)
+            ano_int = int(ano)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(valor) and -0.5 < valor < 1.0:
+            focus[ano_int] = valor
+    if not focus:
+        return ipca_12m
+    ultimo_ano = max(focus)
+    fator = 1.0
+    meses = max(1, int(prazo_meses))
+    for indice in range(meses):
+        ano = data_base.year + (data_base.month - 1 + indice) // 12
+        if ano in focus:
+            anual = focus[ano]
+        elif ano > ultimo_ano:
+            anual = focus[ultimo_ano]
+        else:
+            anual = ipca_12m
+        fator *= (1.0 + anual) ** (1.0 / 12.0)
+    return fator ** (12.0 / meses) - 1.0
+
+
 def taxas_por_risco(
     market: Mapping,
     *,
@@ -756,7 +801,11 @@ def resumo_taxas_mercado(
         prazo_meses=prazo_meses,
         data_referencia=data_base,
     )
-    ipca = float(dados["ipca"])
+    ipca = ipca_esperado_mercado(
+        market,
+        prazo_meses=prazo_meses,
+        data_referencia=data_base,
+    )
     perfis = []
     for nivel in (1, 2, 3):
         bruta = taxas[nivel]
@@ -777,6 +826,7 @@ def resumo_taxas_mercado(
         "meses_extrapolados": projecao.meses_extrapolados,
         "avisos_curva_selic": list(projecao.avisos),
         "taxas": taxas,
+        "ipca_esperado": ipca,
         "perfis": perfis,
     }
 
@@ -1471,7 +1521,7 @@ def gerar_recomendacao_completa(
     respostas_validas = _validar_respostas(respostas)
     contexto_fiscal = _contexto_fiscal_das_respostas(respostas_validas)
     data_base = _data_referencia_valida(data_referencia)
-    dados_mercado = _validar_market(
+    _validar_market(  # valida o payload antes de qualquer cálculo
         market,
         data_referencia=data_base,
     )
@@ -1488,7 +1538,11 @@ def gerar_recomendacao_completa(
         prazo_meses=prazo_taxa_meses,
         data_referencia=data_base,
     )
-    ipca = float(dados_mercado["ipca"])
+    ipca = ipca_esperado_mercado(
+        market,
+        prazo_meses=prazo_taxa_meses,
+        data_referencia=data_base,
+    )
 
     (
         rec_key,
@@ -1681,6 +1735,111 @@ def tabela_projecao(
     return linhas
 
 
+_PREV_CATEGORIAS = {RK.PREV_PGBL, RK.PREV_VGBL, RK.PREV_PGBL_RF, RK.PREV_VGBL_RF}
+_CRIPTO_CATEGORIAS = {RK.RV_CRIPTO, RK.FUNDOS_CRIPTO}
+_MAX_CENARIOS_FISCAIS = 16
+
+
+def _cenarios_fiscais(
+    contexto_fiscal: Mapping[str, Any],
+    portfolio: Mapping[str, int | float],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Combinações dos dados fiscais não informados que afetam a carteira.
+
+    Cada combinação é um contexto completo que o motor tributário consegue
+    calcular. Os valores são os extremos plausíveis de cada dado ausente, de
+    modo que o menor e o maior líquido entre eles formam uma faixa.
+    """
+    categorias = {chave for chave, peso in portfolio.items() if float(peso) > 0}
+    variacoes: list[tuple[str, str, list[Any]]] = []
+    if categorias & _PREV_CATEGORIAS:
+        if contexto_fiscal.get("regime_previdencia") is None:
+            variacoes.append(
+                ("regime_previdencia", "regime da previdência", ["regressivo", "progressivo"])
+            )
+        sem_renda = (
+            contexto_fiscal.get("renda_tributavel_anual") is None
+            and not contexto_fiscal.get("renda_tributavel_por_ano")
+        )
+        if sem_renda:
+            variacoes.append(
+                ("renda_tributavel_anual", "renda tributável anual", [0.0, 5_000_000.0])
+            )
+        pgbl = categorias & {RK.PREV_PGBL, RK.PREV_PGBL_RF}
+        if pgbl and contexto_fiscal.get("elegibilidade_deducao_pgbl") is None:
+            variacoes.append(
+                ("elegibilidade_deducao_pgbl", "dedução do PGBL", [False, True])
+            )
+    if categorias & _CRIPTO_CATEGORIAS and contexto_fiscal.get("jurisdicao_cripto") is None:
+        variacoes.append(("jurisdicao_cripto", "custódia da cripto", ["brasil", "exterior"]))
+    if contexto_fiscal.get("valor_vendas_mes") is None and any(
+        chave.startswith("rv") for chave in categorias
+    ):
+        variacoes.append(("valor_vendas_mes", "vendas mensais de ações", [0.0, 1_000_000.0]))
+
+    cenarios: list[dict[str, Any]] = [dict(contexto_fiscal)]
+    for campo, _rotulo, valores in variacoes:
+        cenarios = [
+            {**cenario, campo: valor} for cenario in cenarios for valor in valores
+        ][:_MAX_CENARIOS_FISCAIS]
+    return cenarios, [rotulo for _campo, rotulo, _valores in variacoes]
+
+
+def _faixa_tributaria(
+    cap_inicial: float,
+    aporte_mensal: float,
+    portfolio: Mapping[str, int | float],
+    taxas: Mapping[int, float],
+    ipca: float,
+    anos: float,
+    *,
+    data_referencia: date,
+    contexto_fiscal: Mapping[str, Any],
+    taxa_unica: float | None = None,
+) -> dict[str, Any] | None:
+    """Menor e maior valor líquido entre os cenários fiscais possíveis.
+
+    Usado quando falta um dado fiscal do usuário: em vez de inventar uma
+    alíquota, o motor calcula cada cenário plausível e devolve o intervalo.
+    """
+    cenarios, variaveis = _cenarios_fiscais(contexto_fiscal, portfolio)
+    if not variaveis:
+        return None
+    resultados = []
+    for cenario in cenarios:
+        try:
+            projecao = projetar_portfolio(
+                cap_inicial,
+                aporte_mensal,
+                portfolio,
+                taxas,
+                ipca,
+                anos,
+                taxa_unica=taxa_unica,
+                data_referencia=data_referencia,
+                contexto_fiscal=cenario,
+            )
+        except (TypeError, ValueError):
+            continue
+        if projecao["liquido"] is not None:
+            resultados.append(projecao)
+    if not resultados:
+        return None
+    liquidos = [p["liquido"] for p in resultados]
+    reais = [p["real"] for p in resultados if p["real"] is not None]
+    impostos = [p["imposto_estimado"] for p in resultados if p["imposto_estimado"] is not None]
+    return {
+        "liquido_min": min(liquidos),
+        "liquido_max": max(liquidos),
+        "real_min": min(reais) if reais else None,
+        "real_max": max(reais) if reais else None,
+        "imposto_min": min(impostos) if impostos else None,
+        "imposto_max": max(impostos) if impostos else None,
+        "cenarios": len(resultados),
+        "variaveis": variaveis,
+    }
+
+
 def tabela_projecao_portfolio(
     cap_inicial: float,
     aporte_mensal: float,
@@ -1716,6 +1875,11 @@ def tabela_projecao_portfolio(
                 portfolio,
                 taxas_horizonte,
             )
+            ipca = ipca_esperado_mercado(
+                market,
+                prazo_meses=prazo_meses,
+                data_referencia=data_base,
+            )
             pessimismo = _taxa_pessimista(taxa_central, ipca)
         else:
             taxas_horizonte = taxas
@@ -1743,10 +1907,46 @@ def tabela_projecao_portfolio(
             data_referencia=data_base,
             contexto_fiscal=contexto_fiscal,
         )
+        faixa = None
+        if central["liquido"] is None and contexto_fiscal is not None:
+            faixa = _faixa_tributaria(
+                cap_inicial,
+                aporte_mensal,
+                portfolio,
+                taxas_horizonte,
+                ipca,
+                anos,
+                data_referencia=data_base,
+                contexto_fiscal=contexto_fiscal,
+            )
+        faixa_pessimista = None
+        if pessimista["liquido"] is None and contexto_fiscal is not None:
+            faixa_pessimista = _faixa_tributaria(
+                cap_inicial,
+                aporte_mensal,
+                portfolio,
+                taxas_horizonte,
+                ipca,
+                anos,
+                data_referencia=data_base,
+                contexto_fiscal=contexto_fiscal,
+                taxa_unica=pessimismo,
+            )
         linhas.append(
             {
                 "anos": anos,
                 "prazo_taxa_meses": prazo_meses,
+                "ipca_horizonte": ipca,
+                "vf_liquido_min": faixa["liquido_min"] if faixa else None,
+                "vf_liquido_max": faixa["liquido_max"] if faixa else None,
+                "vf_real_min": faixa["real_min"] if faixa else None,
+                "vf_real_max": faixa["real_max"] if faixa else None,
+                "imposto_min": faixa["imposto_min"] if faixa else None,
+                "imposto_max": faixa["imposto_max"] if faixa else None,
+                "vf_pessimista_liquido_min": (
+                    faixa_pessimista["liquido_min"] if faixa_pessimista else None
+                ),
+                "faixa_variaveis": faixa["variaveis"] if faixa else [],
                 "taxa_base_horizonte": (
                     projecao_selic_horizonte.taxa_anual_equivalente
                     if projecao_selic_horizonte is not None
@@ -1823,19 +2023,50 @@ def analisar_meta(
     )
     valor_projetado = projecao["liquido"]
     if valor_projetado is None:
+        faixa = (
+            _faixa_tributaria(
+                cap_inicial,
+                aporte_mensal,
+                portfolio,
+                taxas,
+                ipca,
+                prazo,
+                data_referencia=_data_referencia_valida(data_referencia),
+                contexto_fiscal=contexto_fiscal,
+            )
+            if contexto_fiscal is not None
+            else None
+        )
+        atingida_cenarios = None
+        motivo = (
+            "A meta líquida não pode ser avaliada enquanto houver "
+            "tributação indeterminada em alguma classe."
+        )
+        if faixa:
+            if faixa["liquido_min"] >= meta:
+                atingida_cenarios = "todos"
+            elif faixa["liquido_max"] < meta:
+                atingida_cenarios = "nenhum"
+            else:
+                atingida_cenarios = "depende"
+            motivo = (
+                "Faltam dados fiscais ("
+                + ", ".join(faixa["variaveis"])
+                + "); o resultado mostra a faixa entre os cenários possíveis."
+            )
         return {
             "valor_alvo": meta,
             "prazo_anos": prazo,
             "valor_liquido_projetado": None,
+            "valor_liquido_min": faixa["liquido_min"] if faixa else None,
+            "valor_liquido_max": faixa["liquido_max"] if faixa else None,
             "atingida": None,
+            "atingida_cenarios": atingida_cenarios,
             "diferenca": None,
             "aporte_mensal_informado": aporte_mensal,
             "aporte_mensal_estimado": None,
             "precisao_tributaria": projecao["precisao_tributaria"],
-            "motivo_indeterminacao": (
-                "A meta líquida não pode ser avaliada enquanto houver "
-                "tributação indeterminada em alguma classe."
-            ),
+            "motivo_indeterminacao": motivo,
         }
 
     diferenca = valor_projetado - meta
@@ -1884,6 +2115,8 @@ def comparativo_poupanca(
         anos = float(linha["anos"])
         valor_poupanca = _vf_bruto(cap_inicial, aporte_mensal, float(taxa), anos)
         liquido = linha.get("vf_liquido")
+        minimo = linha.get("vf_liquido_min")
+        maximo = linha.get("vf_liquido_max")
         linhas.append(
             {
                 "anos": anos,
@@ -1891,6 +2124,12 @@ def comparativo_poupanca(
                 "vf_liquido_carteira": liquido,
                 "diferenca": (
                     None if liquido is None else float(liquido) - valor_poupanca
+                ),
+                "diferenca_min": (
+                    None if minimo is None else float(minimo) - valor_poupanca
+                ),
+                "diferenca_max": (
+                    None if maximo is None else float(maximo) - valor_poupanca
                 ),
             }
         )
@@ -1970,7 +2209,11 @@ def criar_analise(
             respostas_validas["aporte_mensal"],
             resultado["portfolio"],
             taxas_meta,
-            ipca,
+            ipca_esperado_mercado(
+                market,
+                prazo_meses=max(1, round(float(valores_meta[1]) * 12)),
+                data_referencia=data_base,
+            ),
             data_referencia=data_base,
             contexto_fiscal=contexto_fiscal,
         )

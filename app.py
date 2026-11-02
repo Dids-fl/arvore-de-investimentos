@@ -36,7 +36,7 @@ from importacao.lotes_tributarios import (
 from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
-from utils.formatacao import formatar_brl
+from utils.formatacao import formatar_brl, formatar_pct
 
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
@@ -75,28 +75,28 @@ def _market_signature(market: dict) -> tuple:
 def _render_sidebar(market: dict) -> None:
     with st.sidebar:
         st.header("📈 Dados de mercado")
-        st.metric("SELIC", f"{market['selic'] * 100:.2f}%")
-        st.metric("IPCA 12 meses", f"{market['ipca'] * 100:.2f}%")
+        st.metric("SELIC", f"{formatar_pct(market['selic'])}")
+        st.metric("IPCA 12 meses", f"{formatar_pct(market['ipca'])}")
         st.metric(
             "Ibovespa CAGR 10 anos",
-            f"{market['ibov_cagr'] * 100:.2f}%",
+            f"{formatar_pct(market['ibov_cagr'])}",
         )
         if market.get("focus_selic") is not None:
             st.metric(
                 "Focus SELIC",
-                f"{market['focus_selic'] * 100:.2f}%",
+                f"{formatar_pct(market['focus_selic'])}",
             )
         if market.get("cdi") is not None:
-            st.metric("CDI", f"{market['cdi'] * 100:.2f}%")
+            st.metric("CDI", f"{formatar_pct(market['cdi'])}")
         if market.get("poupanca") is not None:
             st.metric(
                 "Poupança (anualizada)",
-                f"{market['poupanca'] * 100:.2f}%",
+                f"{formatar_pct(market['poupanca'])}",
             )
         focus_ipca = market.get("focus_ipca_por_ano") or {}
         if focus_ipca:
             ano, taxa = next(iter(sorted(focus_ipca.items(), key=lambda i: int(i[0]))))
-            st.metric(f"Focus IPCA {ano}", f"{float(taxa) * 100:.2f}%")
+            st.metric(f"Focus IPCA {ano}", f"{formatar_pct(float(taxa))}")
 
         st.divider()
         if market.get("cache_status") == "stale":
@@ -545,7 +545,7 @@ def _render_metricas(analise: dict) -> None:
     )
     cols[2].metric(
         "Taxa ponderada",
-        f"{resultado['taxa_perfil'] * 100:.2f}% a.a.",
+        f"{formatar_pct(resultado['taxa_perfil'])} a.a.",
     )
     cols[3].metric(
         "Classificação da carteira",
@@ -587,8 +587,8 @@ def _render_recomendacao_principal(analise: dict) -> None:
             vgbl = alternativas["vgbl"]
             st.caption(
                 "Comparação previdenciária: "
-                f"PGBL {pgbl['tir_liquida_anual'] * 100:.2f}% a.a. líquido "
-                f"versus VGBL {vgbl['tir_liquida_anual'] * 100:.2f}% a.a. "
+                f"PGBL {formatar_pct(pgbl['tir_liquida_anual'])} a.a. líquido "
+                f"versus VGBL {formatar_pct(vgbl['tir_liquida_anual'])} a.a. "
                 "líquido. A adequação à aposentadoria foi mantida antes "
                 "desta comparação."
             )
@@ -629,6 +629,7 @@ def _render_alocacao(analise: dict) -> None:
             ]
         )
         figure.update_layout(
+            separators=",.",  # padrão brasileiro: 1.234,56
             height=420,
             margin={"t": 20, "b": 20, "l": 20, "r": 20},
             showlegend=False,
@@ -653,28 +654,78 @@ def _render_alocacao(analise: dict) -> None:
             },
         )
         st.caption(
-            f"Taxa-base: {resultado['taxa_base'] * 100:.2f}% a.a. · "
-            f"Cenário pessimista: {resultado['taxa_pess'] * 100:.2f}% a.a."
+            f"Taxa-base: {formatar_pct(resultado['taxa_base'])} a.a. · "
+            f"Cenário pessimista: {formatar_pct(resultado['taxa_pess'])} a.a."
         )
 
 
+_COLUNAS_EM_REAIS = {
+    "Bruto sem tributação definida",
+    "Carteira (líquido)",
+    "Diferença",
+    "Imposto estimado",
+    "Imposto parcial calculado",
+    "Líquido máximo",
+    "Líquido mínimo",
+    "Pessimista líquido",
+    "Poder de compra",
+    "Poupança",
+    "Preço",
+    "VF Bruto",
+    "VF Líquido",
+}
+
+
+def _com_reais(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Mostra valores em reais no padrão brasileiro (R$ 1.234,56).
+
+    O formato numérico do Streamlit segue o padrão americano; como estas
+    tabelas são só de leitura, os valores são exibidos já formatados.
+    """
+    dataframe = dataframe.copy()
+    for coluna in dataframe.columns:
+        if coluna in _COLUNAS_EM_REAIS:
+            dataframe[coluna] = dataframe[coluna].map(
+                lambda valor: "—" if valor is None or valor != valor else formatar_brl(valor)
+            )
+    return dataframe
+
+
 def _projecoes_dataframe(projecoes: list[dict]) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
+    tem_faixa = any(linha.get("vf_liquido_min") is not None for linha in projecoes)
+    linhas = []
+    for linha in projecoes:
+        item = {
+            "Anos": linha["anos"],
+            "VF Bruto": linha["vf_bruto"],
+            "Imposto estimado": linha["imposto_estimado"],
+            "VF Líquido": linha["vf_liquido"],
+        }
+        if tem_faixa:
+            item["Líquido mínimo"] = linha.get("vf_liquido_min")
+            item["Líquido máximo"] = linha.get("vf_liquido_max")
+        item.update(
             {
-                "Anos": linha["anos"],
-                "VF Bruto": linha["vf_bruto"],
-                "Imposto estimado": linha["imposto_estimado"],
-                "VF Líquido": linha["vf_liquido"],
                 "Poder de compra": linha["vf_real"],
-                "Pessimista líquido": linha[
-                    "vf_pessimista_liquido"
-                ],
+                "Pessimista líquido": linha["vf_pessimista_liquido"],
                 "Precisão tributária": linha["precisao_tributaria"],
             }
-            for linha in projecoes
-        ]
-    )
+        )
+        linhas.append(item)
+    dataframe = pd.DataFrame(linhas)
+    if tem_faixa and dataframe["VF Líquido"].isna().all():
+        dataframe = dataframe.drop(columns=["VF Líquido", "Imposto estimado"])
+    return dataframe
+
+
+def _faixa_ipca(projecoes: list[dict], market: dict) -> str:
+    valores = [linha["ipca_horizonte"] for linha in projecoes if linha.get("ipca_horizonte") is not None]
+    if not valores:
+        return f"{formatar_pct(market['ipca'])} a.a. (últimos 12 meses)"
+    menor, maior = min(valores), max(valores)
+    if round(menor, 4) == round(maior, 4):
+        return f"{formatar_pct(menor)} a.a."
+    return f"{formatar_pct(menor)} a {formatar_pct(maior)} a.a., conforme o prazo"
 
 
 def _render_projecoes(analise: dict) -> None:
@@ -687,36 +738,23 @@ def _render_projecoes(analise: dict) -> None:
         f"Capital inicial: **{formatar_brl(respostas['cap_inicial'])}** · "
         f"Aporte mensal: **{formatar_brl(respostas['aporte_mensal'])}** · "
         f"Taxa ponderada bruta: "
-        f"**{resultado['taxa_perfil'] * 100:.2f}% a.a.** · "
-        f"IPCA: **{market['ipca'] * 100:.2f}% a.a.**"
+        f"**{formatar_pct(resultado['taxa_perfil'])} a.a.** · "
+        f"IPCA esperado (Focus): **{_faixa_ipca(analise['projecoes'], market)}**"
     )
 
     st.dataframe(
-        _projecoes_dataframe(analise["projecoes"]),
+        _com_reais(_projecoes_dataframe(analise["projecoes"])),
         hide_index=True,
         width="stretch",
         column_config={
             "Anos": st.column_config.NumberColumn("Anos", format="%d"),
-            "VF Bruto": st.column_config.NumberColumn(
-                "VF Bruto",
-                format="R$ %.2f",
-            ),
-            "Imposto estimado": st.column_config.NumberColumn(
-                "Imposto estimado",
-                format="R$ %.2f",
-            ),
-            "VF Líquido": st.column_config.NumberColumn(
-                "VF Líquido",
-                format="R$ %.2f",
-            ),
-            "Poder de compra": st.column_config.NumberColumn(
-                "Poder de compra",
-                format="R$ %.2f",
-            ),
-            "Pessimista líquido": st.column_config.NumberColumn(
-                "Pessimista líquido",
-                format="R$ %.2f",
-            ),
+            "VF Bruto": st.column_config.TextColumn("VF Bruto"),
+            "Imposto estimado": st.column_config.TextColumn("Imposto estimado"),
+            "VF Líquido": st.column_config.TextColumn("VF Líquido"),
+            "Poder de compra": st.column_config.TextColumn("Poder de compra"),
+            "Pessimista líquido": st.column_config.TextColumn("Pessimista líquido"),
+            "Líquido mínimo": st.column_config.TextColumn("Líquido mínimo"),
+            "Líquido máximo": st.column_config.TextColumn("Líquido máximo"),
         },
     )
 
@@ -725,10 +763,10 @@ def _render_projecoes(analise: dict) -> None:
         taxa_poupanca = market.get("poupanca")
         st.markdown(
             f"**Comparativo com a poupança** "
-            f"({taxa_poupanca * 100:.2f}% a.a., isenta de IR — BCB/SGS 195)"
+            f"({formatar_pct(taxa_poupanca)} a.a., isenta de IR — BCB/SGS 195)"
         )
         st.dataframe(
-            pd.DataFrame(
+            _com_reais(pd.DataFrame(
                 [
                     {
                         "Anos": linha["anos"],
@@ -738,16 +776,14 @@ def _render_projecoes(analise: dict) -> None:
                     }
                     for linha in comparativo
                 ]
-            ),
+            )),
             hide_index=True,
             width="stretch",
             column_config={
                 "Anos": st.column_config.NumberColumn("Anos", format="%d"),
-                "Carteira (líquido)": st.column_config.NumberColumn(
-                    format="R$ %.2f"
-                ),
-                "Poupança": st.column_config.NumberColumn(format="R$ %.2f"),
-                "Diferença": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Carteira (líquido)": st.column_config.TextColumn("Carteira (líquido)"),
+                "Poupança": st.column_config.TextColumn("Poupança"),
+                "Diferença": st.column_config.TextColumn("Diferença"),
             },
         )
         st.caption(
@@ -759,10 +795,22 @@ def _render_projecoes(analise: dict) -> None:
         linha["vf_liquido"] is None
         for linha in analise["projecoes"]
     ):
-        st.warning(
-            "Há tributação indeterminada. As células líquidas vazias não "
-            "foram preenchidas com uma alíquota genérica."
+        variaveis = next(
+            (linha["faixa_variaveis"] for linha in analise["projecoes"] if linha.get("faixa_variaveis")),
+            [],
         )
+        if variaveis:
+            st.info(
+                "Faltam dados fiscais (" + ", ".join(variaveis) + "). Em vez de "
+                "uma alíquota genérica, o líquido aparece como faixa entre o pior "
+                "e o melhor cenário possível. Preencha as premissas tributárias "
+                "para obter um valor único."
+            )
+        else:
+            st.warning(
+                "Há tributação indeterminada. As células líquidas vazias não "
+                "foram preenchidas com uma alíquota genérica."
+            )
 
     serie = analise["serie_projecao"]
     figure = go.Figure()
@@ -782,6 +830,27 @@ def _render_projecoes(analise: dict) -> None:
             name="Líquido",
         )
     )
+    if any(linha.get("vf_liquido_min") is not None for linha in serie):
+        figure.add_trace(
+            go.Scatter(
+                x=[linha["anos"] for linha in serie],
+                y=[linha.get("vf_liquido_max") for linha in serie],
+                mode="lines",
+                line={"width": 0},
+                name="Líquido (melhor cenário fiscal)",
+                showlegend=False,
+            )
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=[linha["anos"] for linha in serie],
+                y=[linha.get("vf_liquido_min") for linha in serie],
+                mode="lines",
+                line={"width": 0},
+                fill="tonexty",
+                name="Líquido (faixa entre cenários fiscais)",
+            )
+        )
     figure.add_trace(
         go.Scatter(
             x=[linha["anos"] for linha in serie],
@@ -791,6 +860,7 @@ def _render_projecoes(analise: dict) -> None:
         )
     )
     figure.update_layout(
+        separators=",.",  # padrão brasileiro: 1.234,56
         title="Evolução estimada do patrimônio",
         xaxis_title="Anos",
         yaxis_title="Valor (R$)",
@@ -830,23 +900,14 @@ def _render_tributacao(analise: dict) -> None:
         ]
     )
     st.dataframe(
-        resumo,
+        _com_reais(resumo),
         hide_index=True,
         width="stretch",
         column_config={
             "Anos": st.column_config.NumberColumn("Anos", format="%d"),
-            "Imposto estimado": st.column_config.NumberColumn(
-                "Imposto estimado",
-                format="R$ %.2f",
-            ),
-            "Imposto parcial calculado": st.column_config.NumberColumn(
-                "Imposto parcial calculado",
-                format="R$ %.2f",
-            ),
-            "Bruto sem tributação definida": st.column_config.NumberColumn(
-                "Bruto sem tributação definida",
-                format="R$ %.2f",
-            ),
+            "Imposto estimado": st.column_config.TextColumn("Imposto estimado"),
+            "Imposto parcial calculado": st.column_config.TextColumn("Imposto parcial calculado"),
+            "Bruto sem tributação definida": st.column_config.TextColumn("Bruto sem tributação definida"),
         },
     )
 
@@ -898,10 +959,29 @@ def _render_meta(analise: dict) -> None:
 
     st.subheader("🎯 Análise da meta")
     if meta["valor_liquido_projetado"] is None:
-        st.warning(meta["motivo_indeterminacao"])
+        if meta.get("valor_liquido_min") is not None:
+            cols = st.columns(2)
+            cols[0].metric("Valor-alvo nominal", formatar_brl(meta["valor_alvo"]))
+            cols[1].metric(
+                f"Projeção em {meta['prazo_anos']:g} ano(s)",
+                f"{formatar_brl(meta['valor_liquido_min'])} a "
+                f"{formatar_brl(meta['valor_liquido_max'])}",
+            )
+            veredito = {
+                "todos": (st.success, "A meta é atingida em todos os cenários fiscais."),
+                "nenhum": (st.warning, "A meta não é atingida em nenhum cenário fiscal."),
+                "depende": (
+                    st.info,
+                    "A meta depende dos dados fiscais: é atingida em alguns cenários.",
+                ),
+            }.get(meta.get("atingida_cenarios"))
+            if veredito:
+                veredito[0](veredito[1])
+        else:
+            st.warning(meta["motivo_indeterminacao"])
         st.caption(
-            "Preencha as premissas fiscais ausentes e gere a análise "
-            "novamente para avaliar a meta líquida."
+            meta["motivo_indeterminacao"]
+            + " Preencha as premissas fiscais para obter um valor único."
         )
         return
 
@@ -1052,14 +1132,11 @@ def _render_ativos(analise: dict) -> None:
                 if coluna not in colunas
             )
             st.dataframe(
-                tabela[colunas],
+                _com_reais(tabela[colunas]),
                 hide_index=True,
                 width="stretch",
                 column_config={
-                    "Preço": st.column_config.NumberColumn(
-                        "Preço",
-                        format="R$ %.2f",
-                    ),
+                    "Preço": st.column_config.TextColumn("Preço"),
                     "Score": st.column_config.NumberColumn(
                         "Score",
                         format="%.2f",

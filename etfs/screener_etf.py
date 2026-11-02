@@ -385,14 +385,34 @@ _PADROES_CLASSE_ETF = (
 VOLATILIDADE_MAXIMA_RENDA_FIXA = 8.0
 
 
-def classe_etf(nome: str | None, volatilidade: float | None = None) -> str:
-    """Classifica um ETF em "acoes", "renda_fixa", "commodity" ou "cripto".
+# Fundos de investimento regionais (FINOR, FINAM, FUNDES — Decreto-Lei
+# 1.376/1974) e outros ativos que listas públicas rotulam como ETF, mas que
+# não são fundos de índice nem podem ser comprados como tal.
+NAO_ETFS = {"FNOR11", "FNAM11", "FDES11", "PSVM11"}
+
+# Todo ETF brasileiro é juridicamente um "fundo de índice".
+_MARCA_FUNDO_DE_INDICE = re.compile(r"[IÍ]NDICE|\bETF\b|INDEX")
+
+
+def classe_etf(
+    nome: str | None,
+    volatilidade: float | None = None,
+    ticker: str | None = None,
+) -> str:
+    """Classifica em "acoes", "renda_fixa", "commodity", "cripto" ou "outro".
 
     O nome resolve os casos claros; a volatilidade observada pega ETFs de
     renda fixa cujo nome não diz isso (ex.: "IPCA 95-5", "DAP5", nomes
-    genéricos de gestora).
+    genéricos de gestora). Um nome conhecido sem "índice"/"ETF" indica que o
+    ativo não é um fundo de índice ("outro").
     """
+    ticker_limpo = str(ticker or "").upper().replace(".SA", "")
+    if ticker_limpo in NAO_ETFS:
+        return "outro"
     texto = unicodedata.normalize("NFC", str(nome or "")).upper()
+    nome_conhecido = bool(texto.strip()) and texto.strip() != ticker_limpo
+    if nome_conhecido and not _MARCA_FUNDO_DE_INDICE.search(texto):
+        return "outro"
     for classe, padrao in _PADROES_CLASSE_ETF:
         if padrao.search(texto):
             return classe
@@ -446,7 +466,7 @@ def top_etfs(perfil: int, n: int = 5, classe: str | None = "acoes") -> list[dict
         # regionais antigos que algumas listas rotulam como ETF).
         if not (dados.get("preco") or 0) > 0 or not (dados.get("volume") or 0) > 0:
             continue
-        classe_ativo = classe_etf(dados.get("nome"), dados.get("volatilidade"))
+        classe_ativo = classe_etf(dados.get("nome"), dados.get("volatilidade"), ticker_limpo)
         if classe is not None and classe_ativo != classe:
             continue
         score, motivos = _score_etf(dados, perfil)

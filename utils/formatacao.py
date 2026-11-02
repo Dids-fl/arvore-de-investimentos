@@ -36,3 +36,21 @@ def interpretar_numero(texto: str) -> float:
     elif _MILHAR_BR.match(limpo):
         limpo = limpo.replace(".", "")
     return float(limpo)
+
+
+def formatar_numero(valor: float | int | None, casas: int = 2) -> str:
+    """Formata ``1234.5`` como ``1.234,50``; inválido vira "indeterminado"."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return "indeterminado"
+    if not math.isfinite(valor):
+        return "indeterminado"
+    texto = f"{valor:,.{casas}f}"
+    return texto.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def formatar_pct(valor: float | int | None, casas: int = 2) -> str:
+    """Formata uma taxa decimal: ``0.1375`` vira ``13,75%``."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return "indeterminado"
+    numero = formatar_numero(valor * 100, casas)
+    return numero if numero == "indeterminado" else f"{numero}%"
