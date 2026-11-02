@@ -143,12 +143,77 @@ Ao montar este teste, apareceram desdobramentos de cotas não ajustados no
 Yahoo (XPML11 e KNCR11 com "retorno" de +700% em um ano). Janelas com salto
 diário acima de 35% passaram a ser descartadas na validação de FIIs e ETFs.
 
-Ações e cripto não foram testados: não há fonte gratuita simples com os
-indicadores fundamentalistas de ações "como eram" em cada data (a CVM tem os
-balanços, mas montar P/L e ROE históricos fica como próximo passo), e a
-CoinGecko gratuita só dá 365 dias.
+### Ações (26 datas semestrais, 2013–2025)
+
+P/L, P/VP, ROE e DY de cada data foram reconstruídos só com dados públicos
+da CVM: lucro e patrimônio das DFPs (a DFP de um ano só conta a partir de
+abril do ano seguinte), número de ações do FRE e tickers do FCA. Preço e
+dividendos vêm do Yahoo. Entram as ações com liquidez média de pelo menos
+R$ 1 milhão por dia; o retorno medido é o total dos 12 meses seguintes.
+
+Top-10 do ranking, excesso médio sobre o Ibovespa por ano:
+
+| Perfil | Regra | Treino 2013–2018 | Teste 2019–2025 | Bateu a mediana (treino / teste) | Bateu o Ibovespa (teste) |
+|---|---|---|---|---|---|
+| Conservador | atual (DY 50%, P/L 25%, ROE 15%, P/VP 10%) | +7,9 p.p. | +2,7 p.p. | 83% / 71% | 64% |
+| Moderado | antiga (ROE 40%) | +3,5 p.p. | +1,4 p.p. | 92% / 71% | 43% |
+| Moderado | **nova (P/L 35%, DY 25%, P/VP 25%, ROE 15%)** | **+8,7 p.p.** | **+3,1 p.p.** | 100% / 64% | **71%** |
+| Agressivo | antiga (ROE 70%) | −0,9 p.p. | −4,4 p.p. | 42% / 36% | 29% |
+| Agressivo | **nova (P/L 50%, P/VP 50%, ROE ≥ 10% como filtro)** | **+8,9 p.p.** | **+6,8 p.p.** | **100% / 100%** | **79%** |
+
+Cada regra nova foi a melhor do treino pelo critério "bater a mediana com
+mais frequência e, no empate, maior excesso". Pesos vizinhos (por exemplo
+P/L 60% e P/VP 40%) dão resultados parecidos, então não é um ajuste fino ao
+acaso. Ordenar só por ROE alto foi uma das piores regras nos dois períodos:
+empresas muito rentáveis já costumam estar caras. O conservador ficou como
+estava, porque já ia bem nos dois períodos.
+
+Cuidados: o Yahoo não tem preços de empresas que saíram da bolsa (só 388
+dos 654 tickers tinham preço), o que favorece o universo testado (viés de
+sobrevivência), e o pior top-10 ainda perdeu 15% em 12 meses. Ações seguem
+sendo de alto risco.
+
+Cripto não foi testado: a CoinGecko gratuita só dá 365 dias.
+
+## 3. Carteiras por perfil (2008–2026, rebalanceadas todo mês)
+
+1.500 perfis sorteados passaram pelo próprio `engine.criar_analise`. Cada
+classe da carteira foi representada por um índice: CDI; Tesouro IPCA+ de
+cerca de 5 anos (preços do Tesouro, com marcação a mercado); Ibovespa;
+média dos FIIs líquidos (desde 2019); dólar. Multimercado e previdência que
+não é de renda fixa usam 70% CDI, 15% IPCA+ e 15% Ibovespa, porque não há
+índice gratuito para eles.
+
+| | Perfis | Retorno anual | Pior queda média / pior caso | Pior 12 meses (média) | 12 meses abaixo do CDI |
+|---|---|---|---|---|---|
+| Conservador | 677 | 10,1% | 0% / 0% | +2,2% | 7% |
+| Moderado | 402 | 9,9% | −2,7% / −16,9% | +1,8% | 28% |
+| "Venderia tudo" numa queda | 399 | 10,1% | 0% / 0% | +2,2% | 7% |
+| Prazo curto | 293 | 10,1% | 0% / 0% | +2,2% | 7% |
+
+CDI no período: 10,0% ao ano.
+
+Um segundo teste usou só respostas agressivas (risco alto, compraria mais
+na queda, prazo longo). Ele gerou 604 carteiras agressivas, com pior queda
+média de −5,4% e pior caso de −28,5%.
+
+O resultado é coerente: quem venderia tudo numa queda e quem tem prazo
+curto nunca teve perda, e a queda máxima cresce do conservador ao
+agressivo. Os sorteios dão poucos agressivos porque o app usa o menor nível
+entre risco declarado, reação a quedas e prazo. Quase metade dos perfis
+agressivos ainda fica só em renda fixa, pelo objetivo "reserva" ou pela
+falta de reserva de emergência. Isso é intencional.
+
+O resultado honesto é que, de 2008 a 2026, correr mais risco não rendeu
+mais que o CDI: a bolsa brasileira ficou perto do CDI no período. As
+carteiras com risco servem para quem aceita oscilar esperando prêmio no
+futuro, não porque o passado recente pagou esse prêmio. Por isso a
+alocação não foi alterada.
 
 ## Limitações
+
+- O motor tributário ainda tem casos sem comprovação documental; essa parte
+  depende de informes de rendimentos reais ou de um contador.
 
 - Fundos: só 3 cortes e janelas de 12 meses que se sobrepõem; o cadastro é o
   atual (viés de sobrevivência).

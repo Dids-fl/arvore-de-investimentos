@@ -29,3 +29,25 @@ def test_ignora_acao_sem_nenhum_indicador() -> None:
     universo = [_acao("ZERO3", dy=0, pl=0, roe=0), _acao("BOAS3"), _acao("OUTR3")]
     tickers = [a["ticker"] for a in screener.ranquear_acoes(universo, perfil=2, n=10)]
     assert "ZERO3" not in tickers
+
+
+def test_agressivo_prefere_acoes_baratas_a_roe_alto() -> None:
+    # Regra validada: no agressivo, P/L e P/VP baixos pesam mais que ROE alto.
+    universo = [
+        _acao("CARA3", dy=1.0, pl=40.0, roe=45.0, pvp=6.0),
+        _acao("BARA3", dy=1.0, pl=5.0, roe=12.0, pvp=0.7),
+        _acao("MEIO3", dy=1.0, pl=15.0, roe=20.0, pvp=2.0),
+    ]
+    ranking = screener.ranquear_acoes(universo, perfil=3, n=3)
+    assert ranking[0]["ticker"] == "BARA3"
+    assert ranking[-1]["ticker"] == "CARA3"
+
+
+def test_agressivo_mantem_filtro_de_roe_minimo() -> None:
+    universo = [
+        _acao("BAIX3", pl=3.0, roe=4.0, pvp=0.5),
+        _acao("BOAA3", pl=8.0, roe=15.0, pvp=1.0),
+        _acao("OUTA3", pl=9.0, roe=18.0, pvp=1.1),
+    ]
+    tickers = [a["ticker"] for a in screener.ranquear_acoes(universo, perfil=3, n=3)]
+    assert "BAIX3" not in tickers

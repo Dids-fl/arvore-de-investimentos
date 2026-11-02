@@ -30,7 +30,6 @@ from .ativos import (
     PESO_TAMANHO_ACOES,
     PESOS_ACOES,
     REF_ACOES,
-    REF_ACOES_AGRESSIVO,
     UNIVERSO_ACOES_N,
     UNIVERSO_FIIS_N,
 )
@@ -61,7 +60,7 @@ def norm(valor: float, bom: float, ruim: float) -> float:
 
 def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
     pesos   = PESOS_ACOES[perfil]
-    refs    = REF_ACOES_AGRESSIVO if perfil == 3 else REF_ACOES
+    refs    = REF_ACOES
     lim_dy  = LIMIARES_DY_ACOES[perfil]
     lim_roe = LIMIARES_ROE_ACOES[perfil]
     lim_pl  = LIMIARES_PL_ACOES[perfil]
@@ -107,11 +106,11 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
                 motivos.append(f"⚠️  P/L: {pl:.1f} (avaliar crescimento)")
         else:
             if pl <= lim_pl["otimo"]:
-                motivos.append(f"✅ P/L: {pl:.1f} (e ROE alto = oportunidade)")
+                motivos.append(f"✅ P/L: {pl:.1f} (barata)")
             elif pl <= lim_pl["ok"]:
-                motivos.append(f"ℹ️  P/L: {pl:.1f} (aceitável se ROE justificar)")
+                motivos.append(f"ℹ️  P/L: {pl:.1f} (razoável)")
             else:
-                motivos.append(f"⚠️  P/L: {pl:.1f} (muito esticado)")
+                motivos.append(f"⚠️  P/L: {pl:.1f} (cara para a estratégia de valor)")
     else:
         if perfil == 1:
             motivos.append("❌ P/L negativo — empresa com prejuízo")
@@ -138,13 +137,13 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
                 motivos.append(f"⚠️  ROE: {roe:.1f}% (abaixo do esperado)")
         else:
             if roe >= lim_roe["otimo"]:
-                motivos.append(f"✅ ROE: {roe:.1f}% ← motor de crescimento")
+                motivos.append(f"✅ ROE: {roe:.1f}% (rentável)")
             elif roe >= lim_roe["ok"]:
                 motivos.append(f"ℹ️  ROE: {roe:.1f}%")
             else:
-                motivos.append(f"❌ ROE: {roe:.1f}% (insuficiente para crescimento)")
+                motivos.append(f"❌ ROE: {roe:.1f}% (baixo)")
     elif perfil == 3:
-        motivos.append("❌ ROE zero/negativo — descartável para agressivo")
+        motivos.append("❌ ROE zero/negativo — empresa sem lucro")
 
     # P/VP
     pvp = float(ind.get("pvp", 0) or 0)
