@@ -21,12 +21,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from calendarios.sincronizar_b3 import sincronizar_calendarios_relevantes
+from decisao import analises as decisao_analises
+from decisao import diario as decisao_diario
+from decisao import historico as decisao_historico
+from decisao.fgc import analisar_garantias
 from engine import (
     DividaJurosAltosError,
     RecomendacaoBloqueadaError,
     buscar_ativos_da_analise,
     criar_analise,
     montar_payload_exportacao,
+    nome_categoria,
     rotulo_classe_ativo,
 )
 from importacao.lotes_tributarios import (
@@ -37,6 +42,18 @@ from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
 from utils.formatacao import formatar_brl, formatar_pct
+
+
+
+def _md(texto: str) -> str:
+    """Escapa o cifrão: no Markdown do Streamlit, "R$ ... R$" vira fórmula."""
+    return texto.replace("$", r"\$")
+
+
+def _brl_md(valor) -> str:
+    """Valor em reais para textos renderizados como Markdown."""
+    return _md(formatar_brl(valor))
+
 
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
@@ -435,7 +452,7 @@ def _render_questionario(market: dict) -> None:
             return
         st.success(
             f"{importacao.quantidade_lotes} lote(s) importado(s), com saldo "
-            f"total de {formatar_brl(importacao.saldo_total)}."
+            f"total de {_brl_md(importacao.saldo_total)}."
         )
         st.dataframe(
             pd.DataFrame(importacao.resumo),
@@ -607,9 +624,9 @@ def _render_alocacao(analise: dict) -> None:
     if isinstance(plano_reserva, dict):
         st.caption(
             "Reserva-alvo: "
-            f"{formatar_brl(plano_reserva['valor_alvo'])} · "
-            f"Reserva atual: {formatar_brl(plano_reserva['valor_atual'])} · "
-            f"Déficit: {formatar_brl(plano_reserva['deficit'])}"
+            f"{_brl_md(plano_reserva['valor_alvo'])} · "
+            f"Reserva atual: {_brl_md(plano_reserva['valor_atual'])} · "
+            f"Déficit: {_brl_md(plano_reserva['deficit'])}"
         )
     col_chart, col_table = st.columns([1.25, 1])
     with col_chart:
@@ -748,8 +765,8 @@ def _render_projecoes(analise: dict) -> None:
 
     st.subheader("📈 Projeção de crescimento")
     st.caption(
-        f"Capital inicial: **{formatar_brl(respostas['cap_inicial'])}** · "
-        f"Aporte mensal: **{formatar_brl(respostas['aporte_mensal'])}** · "
+        f"Capital inicial: **{_brl_md(respostas['cap_inicial'])}** · "
+        f"Aporte mensal: **{_brl_md(respostas['aporte_mensal'])}** · "
         f"Taxa ponderada bruta: "
         f"**{formatar_pct(resultado['taxa_perfil'])} a.a.** · "
         f"IPCA esperado (Focus): **{_faixa_ipca(analise['projecoes'], market)}**"
@@ -931,7 +948,7 @@ def _render_tributacao(analise: dict) -> None:
         for detalhe in horizonte["tributacao_por_classe"].values():
             imposto = detalhe["imposto_estimado"]
             imposto_texto = (
-                f"{formatar_brl(imposto)}"
+                f"{_brl_md(imposto)}"
                 if isinstance(imposto, (int, float))
                 else "indeterminado"
             )
@@ -945,7 +962,7 @@ def _render_tributacao(analise: dict) -> None:
                 st.caption(
                     "Come-cotas futuro: "
                     f"{detalhe['eventos_come_cotas']} evento(s), "
-                    f"{formatar_brl(detalhe['come_cotas_estimado'])} antecipados e "
+                    f"{_brl_md(detalhe['come_cotas_estimado'])} antecipados e "
                     "sem reconstrução de histórico anterior."
                 )
             elif (
@@ -1017,19 +1034,324 @@ def _render_meta(analise: dict) -> None:
     if meta["atingida"]:
         st.success(
             "A meta é atingível no cenário central, com margem nominal de "
-            f"{formatar_brl(meta['diferenca'])}."
+            f"{_brl_md(meta['diferenca'])}."
         )
     else:
         mensagem = (
             "Faltariam aproximadamente "
-            f"{formatar_brl(abs(meta['diferenca']))} no cenário central."
+            f"{_brl_md(abs(meta['diferenca']))} no cenário central."
         )
         if meta["aporte_mensal_estimado"] is not None:
             mensagem += (
                 " O aporte mensal total estimado para atingir a meta é "
-                f"{formatar_brl(meta['aporte_mensal_estimado'])}."
+                f"{_brl_md(meta['aporte_mensal_estimado'])}."
             )
         st.warning(mensagem)
+
+
+# ── Decisões grandes ──────────────────────────────────────────────────────────
+
+VALOR_EXEMPLO = 100_000.0
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _indices_historicos() -> pd.DataFrame:
+    return decisao_historico.carregar_indices()
+
+
+def _horizonte_anos(analise: dict) -> float:
+    meta = analise.get("meta")
+    if isinstance(meta, dict) and meta.get("prazo_anos") is not None:
+        return float(meta["prazo_anos"])
+    return float(analise["resultado"]["prazo_taxa_meses"]) / 12.0
+
+
+def _render_crises(carteira: dict, valor: float, indices: pd.DataFrame) -> None:
+    usa_cripto = any(
+        "btc" in decisao_historico.PROXY_CATEGORIA.get(categoria, {}) for categoria in carteira
+    )
+    if usa_cripto and indices["btc"].notna().sum() < 24:
+        st.warning(
+            "A base não tem histórico de bitcoin, então a parte em cripto foi simulada "
+            "como Ibovespa. Isso subestima o risco: o bitcoin já caiu mais de 70% "
+            "em mais de uma ocasião."
+        )
+    resultado = decisao_analises.teste_crises(carteira, valor, indices)
+    pior = resultado["pior_queda"]
+    if pior["perda"] >= 0:
+        st.success(
+            "Nas crises desde 2000, esta carteira não teve um único mês abaixo do "
+            "valor investido: ela é toda de renda fixa pós-fixada."
+        )
+    else:
+        st.metric(
+            f"Pior queda do histórico ({pior['pico']} a {pior['fundo']})",
+            formatar_brl(pior["perda_reais"]),
+            delta=formatar_pct(pior["perda"]),
+            delta_color="inverse",
+        )
+        st.caption(
+            "Depois do fundo, levou "
+            f"{decisao_analises.meses_por_extenso(pior['meses_para_recuperar'])} "
+            "para voltar ao valor anterior."
+        )
+    linhas = [
+        {
+            "Crise": c["crise"],
+            "Período": f"{c['inicio']} a {c['fim']}",
+            "Pior momento": formatar_pct(c["perda_maxima"]),
+            "Em reais": formatar_brl(c["perda_maxima_reais"]),
+            "Tempo para voltar ao valor inicial": decisao_analises.meses_por_extenso(
+                c["meses_para_recuperar"]
+            ),
+            "Carteira no fim do período": formatar_pct(c["carteira_no_fim"]),
+            "CDI no período": formatar_pct(c["cdi_no_fim"]),
+        }
+        for c in resultado["crises"]
+    ]
+    st.dataframe(pd.DataFrame(linhas), hide_index=True, width="stretch")
+    st.caption(
+        "Simulação mensal com índices de cada classe (CDI, Tesouro IPCA+, Ibovespa, "
+        "FIIs, dólar), carteira rebalanceada todo mês. Quedas dentro de um mês "
+        "não aparecem inteiras: no pior dia da Covid a bolsa chegou a cair mais "
+        "do que o fechamento mensal mostra. Fundos multimercado e previdência são "
+        "aproximados por 70% CDI, 15% IPCA+ e 15% Ibovespa; classes sem dado na "
+        "época (FIIs antes de 2020, bitcoin) usam substitutos de risco parecido."
+    )
+
+
+def _render_faixas(
+    carteira: dict, valor: float, prazo: float, cdi_esperado: float, indices: pd.DataFrame
+) -> None:
+    faixas = decisao_analises.faixas_retorno(carteira, prazo, cdi_esperado, indices, valor)
+    anos = faixas["anos"]
+    st.markdown(
+        f"Retorno por ano em **{anos} ano(s)**, partindo do CDI esperado hoje "
+        f"({formatar_pct(cdi_esperado)} a.a.) e da variação que esta carteira teve "
+        "em relação ao CDI em todas as janelas de mesmo prazo desde 2000."
+    )
+    linhas = [
+        {
+            "Certeza": nome,
+            "Retorno por ano": f"{formatar_pct(f['minimo'])} a {formatar_pct(f['maximo'])}",
+            f"Valor em {anos} ano(s)": (
+                f"{formatar_brl(f['valor_minimo'])} a {formatar_brl(f['valor_maximo'])}"
+            ),
+        }
+        for nome, f in faixas["faixas"].items()
+    ]
+    st.dataframe(pd.DataFrame(linhas), hide_index=True, width="stretch")
+    cols = st.columns(3)
+    cols[0].metric("Mediana", f"{formatar_pct(faixas['mediana'])} a.a.")
+    cols[1].metric(
+        "Vezes que perdeu dinheiro no prazo", formatar_pct(faixas["chance_perder_dinheiro"], 0)
+    )
+    cols[2].metric("Vezes que rendeu menos que o CDI", formatar_pct(faixas["chance_abaixo_do_cdi"], 0))
+    observacoes = [
+        "Inclui o erro da própria previsão do CDI, medido na validação histórica.",
+        f"Há {faixas['janelas']} janelas sobrepostas, mas só "
+        f"{faixas['janelas_independentes']} períodos de {anos} ano(s) sem sobreposição: "
+        "quanto maior o prazo, menos histórico independente existe.",
+    ]
+    if faixas["prazo_limitado"]:
+        observacoes.append(
+            f"Seu prazo ({prazo:g} anos) passa de {decisao_analises.PRAZO_MAXIMO_FAIXA} anos; "
+            "não há histórico suficiente além disso, então a faixa mostrada é a de 10 anos."
+        )
+    st.caption(" ".join(observacoes))
+
+
+def _render_garantias(carteira: dict, valor: float, taxa: float, prazo: float) -> None:
+    # O FGC cobre o saldo na data da quebra; CDBs longos costumam ter até 5 anos.
+    rendimento = (1 + taxa) ** min(max(prazo, 1), 5) - 1
+    resultado = analisar_garantias(carteira, valor, rendimento_ate_vencimento=rendimento)
+    grupos = resultado["grupos"]
+    nomes = {
+        "fgc_ou_tesouro": "Tesouro Direto ou CDB/LCI/LCA (FGC)",
+        "tesouro": "Somente Tesouro Direto",
+        "fundos": "Fundos e previdência (patrimônio separado, sem FGC)",
+        "sem_garantia": "Sem garantia (ações, FIIs, cripto, COE, crédito privado)",
+    }
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Tipo de garantia": nomes[k], "Valor": formatar_brl(v)}
+                for k, v in grupos.items()
+                if v > 0
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    for alerta in resultado["alertas"]:
+        st.warning(_md(alerta))
+    if not resultado["alertas"]:
+        st.success("Os valores cabem nos limites de garantia sem precisar dividir.")
+    st.caption(
+        "FGC: até R\\$ 250 mil por CPF em cada instituição ou conglomerado (juros "
+        "incluídos) e teto de R\\$ 1 milhão a cada 4 anos. O cálculo inclui os "
+        f"juros de até 5 anos ({_brl_md(resultado['valor_bancario_no_vencimento'])} na "
+        "parte bancária); reavalie a divisão quando o saldo crescer. Bancos do mesmo "
+        "grupo contam como um só."
+    )
+
+
+def _render_custo_saida(carteira: dict, valor: float, taxa: float, indices: pd.DataFrame) -> None:
+    linhas = decisao_analises.custo_de_sair(carteira, valor, taxa, indices)
+    tabela = []
+    for linha in linhas:
+        registro = {
+            "Classe": nome_categoria(linha["categoria"]),
+            "Aplicado": formatar_brl(linha["valor"]),
+        }
+        for h in linha["horizontes"]:
+            rotulo = f"{h['meses']} meses"
+            registro[f"Resgate em {rotulo}"] = formatar_brl(h["liquido_central"])
+            registro[f"Pior caso em {rotulo}"] = formatar_brl(h["liquido_pior_caso"])
+        tabela.append(registro)
+    st.dataframe(pd.DataFrame(tabela), hide_index=True, width="stretch")
+    with st.expander("Como e quando dá para resgatar cada classe"):
+        for linha in linhas:
+            st.write(f"• **{nome_categoria(linha['categoria'])}:** {linha['liquidez']}")
+    st.caption(
+        "Valores líquidos de IR. \"Resgate\" usa a taxa esperada da carteira; "
+        "\"pior caso\" aplica a ela o resultado das 5% piores janelas históricas "
+        "daquela classe contra o CDI, no mesmo prazo. Renda fixa e fundos seguem a tabela regressiva (6 meses já passam "
+        "de 180 dias, então pagam 20%); ações e ETFs 15% e FIIs 20% sobre o ganho, "
+        "sem considerar a isenção de vendas de até R\\$ 20 mil por mês em ações. "
+        "Previdência no regime regressivo: 35% antes de 2 anos e, no PGBL, sobre "
+        "todo o valor resgatado. Sair cedo de previdência quase sempre é caro."
+    )
+
+
+def _render_entrada(carteira: dict, valor: float, indices: pd.DataFrame) -> None:
+    resultado = decisao_analises.entrada_parcelada(carteira, valor, indices)
+    if not resultado["faz_diferenca"]:
+        st.info(
+            "Para esta carteira, parcelar a entrada não muda quase nada: ela é "
+            "praticamente toda pós-fixada. Pode investir de uma vez."
+        )
+        return
+    meses = resultado["horizonte_meses"]
+    linhas = [
+        {
+            "Estratégia": e["nome"],
+            f"Valor típico em {meses} meses": formatar_brl(e["mediana"]),
+            "Pior caso": formatar_brl(e["pior_caso"]),
+            "5% piores": formatar_brl(e["pior_5pct"]),
+            "Melhor caso": formatar_brl(e["melhor_caso"]),
+            "Superou investir de uma vez": (
+                "—" if e["venceu_de_uma_vez"] is None else formatar_pct(e["venceu_de_uma_vez"], 0)
+            ),
+        }
+        for e in resultado["estrategias"]
+    ]
+    st.dataframe(pd.DataFrame(linhas), hide_index=True, width="stretch")
+    st.caption(
+        f"Testado em {resultado['datas_testadas']} datas de início desde 2000. Enquanto "
+        "não entra na carteira, o dinheiro rende CDI. Parcelar não aumenta o "
+        "retorno esperado; o que ele faz é reduzir o arrependimento de entrar "
+        "tudo logo antes de uma queda. Se uma queda forte faria você desistir, "
+        "parcelar em 6 a 12 meses é a opção mais segura."
+    )
+
+
+def _render_historico(analise: dict, indices: pd.DataFrame) -> None:
+    observacao = st.text_input(
+        "Anotação (opcional)",
+        key="decisao_observacao",
+        placeholder="Ex.: investi R$ 200 mil no banco X",
+    )
+    if st.button("Salvar esta análise no meu histórico", key="decisao_salvar"):
+        try:
+            decisao_diario.salvar(decisao_diario.registro_da_analise(analise, observacao))
+            st.success("Análise salva. Ela aparece abaixo e fica só neste computador.")
+        except OSError as exc:
+            st.error(f"Não foi possível salvar o histórico: {exc}")
+    registros = decisao_diario.listar()
+    if not registros:
+        st.caption(
+            "Nenhuma análise salva ainda. Salve as decisões que você realmente "
+            "tomar; daqui a alguns meses o app compara o previsto com o que "
+            "aconteceu."
+        )
+        return
+    for registro in registros:
+        avaliacao = decisao_diario.avaliar(registro, indices)
+        titulo = (
+            f"{registro['data']} · {registro.get('perfil') or ''} · "
+            f"{_brl_md(registro.get('valor') or 0)}"
+        )
+        if registro.get("observacao"):
+            titulo += f" · {registro['observacao']}"
+        with st.expander(titulo):
+            st.write(
+                "Carteira: "
+                + ", ".join(
+                    f"{nome_categoria(k)} {v:.0f}%".replace(".", ",")
+                    for k, v in registro["carteira"].items()
+                )
+            )
+            if avaliacao["meses"] == 0:
+                st.caption("Ainda não passou um mês completo para comparar.")
+            else:
+                cols = st.columns(4)
+                cols[0].metric(
+                    f"Rendeu ({avaliacao['meses']} meses, até {avaliacao['ate']})",
+                    formatar_pct(avaliacao["realizado"]),
+                )
+                cols[1].metric("Previsto", formatar_pct(avaliacao["previsto"]))
+                cols[2].metric("Pessimista", formatar_pct(avaliacao["pessimista"]))
+                cols[3].metric("CDI", formatar_pct(avaliacao["cdi"]))
+                st.write(f"Resultado: **{avaliacao['situacao']}**.")
+                st.caption(
+                    "Aproximação pelos índices de cada classe, não pelos seus "
+                    "ativos reais, e sem IR."
+                )
+            if st.button("Apagar", key=f"decisao_apagar_{registro['id']}"):
+                decisao_diario.remover(registro["id"])
+                st.rerun()
+
+
+def _render_decisao(analise: dict) -> None:
+    resultado = analise["resultado"]
+    carteira = {k: float(v) for k, v in resultado["portfolio"].items() if float(v) > 0}
+    if not carteira:
+        return
+    st.subheader("🛡️ Antes de uma decisão grande")
+    valor = float(analise["respostas"].get("cap_inicial") or 0)
+    if valor <= 0:
+        valor = VALOR_EXEMPLO
+        st.caption(f"Sem capital inicial informado: os valores usam {_brl_md(valor)} como exemplo.")
+    try:
+        indices = _indices_historicos()
+    except Exception as exc:  # noqa: BLE001 — base embarcada ilegível
+        logger.exception("Base histórica indisponível")
+        st.warning(f"Histórico das classes indisponível: {exc}")
+        return
+    prazo = _horizonte_anos(analise)
+    abas = st.tabs(
+        [
+            "Teste de crise",
+            "Faixas por prazo",
+            "Garantias (FGC)",
+            "Custo de sair antes",
+            "Entrada parcelada",
+            "Meu histórico",
+        ]
+    )
+    with abas[0]:
+        _render_crises(carteira, valor, indices)
+    with abas[1]:
+        _render_faixas(carteira, valor, prazo, float(resultado["taxa_base"]), indices)
+    with abas[2]:
+        _render_garantias(carteira, valor, float(resultado["taxa_perfil"]), prazo)
+    with abas[3]:
+        _render_custo_saida(carteira, valor, float(resultado["taxa_perfil"]), indices)
+    with abas[4]:
+        _render_entrada(carteira, valor, indices)
+    with abas[5]:
+        _render_historico(analise, indices)
 
 
 def _render_ativos(analise: dict) -> None:
@@ -1207,6 +1529,8 @@ def _render_resultado(analise: dict) -> None:
     _render_projecoes(analise)
     _render_tributacao(analise)
     _render_meta(analise)
+    st.divider()
+    _render_decisao(analise)
     st.divider()
     _render_ativos(analise)
     st.divider()

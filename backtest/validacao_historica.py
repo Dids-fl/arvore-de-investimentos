@@ -1434,28 +1434,9 @@ def proxies_mensais() -> pd.DataFrame:
     return tabela.loc[INICIO_CARTEIRAS:]
 
 
-# Cada categoria do app vira uma mistura das séries acima. Multimercado e
-# previdência sem renda fixa pura não têm índice gratuito: usam uma mistura
-# documentada (70% CDI, 15% IPCA+, 15% Ibovespa).
-_MULTI = {"cdi": 0.70, "ipca_mais": 0.15, "ibov": 0.15}
-PROXY_CATEGORIA: dict[str, dict[str, float]] = {
-    "rf": {"cdi": 1}, "rf_liq": {"cdi": 1}, "rf_reserva": {"cdi": 1}, "rf_selic_cdb": {"cdi": 1},
-    "rf_reavalie": {"cdi": 1}, "fundos_rf": {"cdi": 1}, "fundos_rf_liq": {"cdi": 1},
-    "prev_pgbl_rf": {"cdi": 1}, "prev_vgbl_rf": {"cdi": 1}, "coe": {"cdi": 1},
-    "estruturados": {"cdi": 1}, "ofertas": {"cdi": 1},
-    "rf_ipca": {"ipca_mais": 1},
-    "rf_equilibrio": {"cdi": 0.5, "ipca_mais": 0.5},
-    "fundos": _MULTI, "fundos_div": _MULTI, "fundos_multi": _MULTI,
-    "prev_pgbl": _MULTI, "prev_vgbl": _MULTI,
-    "fiis": {"fii": 1}, "fiis_del": {"fii": 1},
-    "rv": {"ibov": 1}, "rv_dca": {"ibov": 1}, "rv_compl": {"ibov": 1},
-    "fundos_acoes": {"ibov": 1}, "fundos_etf": {"ibov": 1}, "fundos_dca": {"ibov": 1},
-    "rv_cripto": {"btc": 1}, "fundos_cripto": {"btc": 1},
-    "cambio": {"usd": 1},
-}
-# Quando uma série não existe no início do período (FIIs antes de 2019,
-# bitcoin antes de 2014), usa-se um substituto de risco parecido.
-_SUBSTITUTO = {"fii": {"ipca_mais": 0.5, "ibov": 0.5}, "btc": {"ibov": 1}, "usd": {"cdi": 1}}
+# Mapeamento categoria → índices: o mesmo que o app usa (decisao.historico).
+from decisao.historico import PROXY_CATEGORIA  # noqa: E402
+from decisao.historico import SUBSTITUTO as _SUBSTITUTO  # noqa: E402
 
 
 def simular_carteira(carteira: dict[str, float], proxies: pd.DataFrame) -> dict[str, Any]:
