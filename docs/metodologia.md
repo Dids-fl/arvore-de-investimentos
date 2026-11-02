@@ -86,25 +86,21 @@ risco.
 
 ### 5. Hipóteses de retorno
 
-Para um horizonte de `n` meses:
-
-1. a taxa conservadora é a taxa anual equivalente da curva Selic;
-2. a taxa moderada é a média entre essa taxa e o CAGR histórico do Ibovespa;
-3. a taxa agressiva é o CAGR histórico do Ibovespa.
-
-Em forma simplificada:
+Para um horizonte de `n` meses, todas as classes partem da mesma taxa: a taxa
+anual equivalente da curva Selic/Focus.
 
 ```text
-taxa[1] = curva_selic(n)
-taxa[2] = (curva_selic(n) + ibov_cagr_10a) / 2
-taxa[3] = ibov_cagr_10a
+taxa[1] = taxa[2] = taxa[3] = curva_selic(n)
 ```
 
-A taxa da carteira é a média ponderada pela alocação e pelo risco de cada
-categoria.
+A regra foi escolhida pela validação histórica (`docs/validacao-historica.md`),
+com treino em 2004–2012 e teste em 2013–2025: ancorar ações nos juros
+esperados errou bem menos que repetir o CAGR de 10 anos do Ibovespa (regra
+anterior) e que somar um prêmio fixo calibrado no passado. De 2004 a 2025 o
+Ibovespa rendeu, em média, perto do CDI.
 
-Essa construção é uma hipótese operacional. O CAGR passado do Ibovespa não é
-previsão, e a média do perfil moderado não representa uma fronteira eficiente.
+A diferença de risco entre perfis aparece no cenário pessimista (seção 7), não
+numa promessa de retorno maior.
 
 ### 6. Curva da Selic
 
@@ -135,9 +131,18 @@ O sistema produz valores nominais e reais. Quando a classe tributária é
 indeterminada, o engine não deve apresentar um valor líquido agregado como se
 fosse exato.
 
-O cenário pessimista usa uma redução determinística da taxa central. Ele é um
-cenário de sensibilidade, não VaR, estresse probabilístico ou intervalo de
-confiança.
+O cenário pessimista é o menor entre:
+
+- a regra da renda fixa: `max(IPCA esperado + 2 p.p., 60% da taxa central)`;
+- `taxa central − exposição a ações × 0,84 × volatilidade do Ibovespa ÷ √anos`.
+
+O 0,84 é o percentil 20 da distribuição normal: o objetivo é que o resultado
+real supere o pessimista em cerca de 80% das vezes. Na validação histórica, a
+taxa real ficou acima dele em 82–100% dos casos. A inflação usada no poder de
+compra é o IPCA esperado pelo Focus para o horizonte.
+
+Quando falta um dado fiscal, o líquido é apresentado como faixa entre os
+cenários fiscais possíveis, calculados pelo próprio motor tributário.
 
 ### 8. Seleção de ativos
 

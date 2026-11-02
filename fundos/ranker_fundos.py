@@ -521,16 +521,33 @@ def rankear_fundos(
 ):
     """
     Função principal para o recomendador.
+
+    O ranking completo fica em cache até a CVM publicar um novo dia de
+    informe (ver fundos/cache_ranking.py).
     """
-    ranking = RankerFundos(
-        perfil,
-        incluir_sharpe_sortino,
-        prazo_anos=prazo_anos,
-        data_referencia=data_referencia,
-        retorno_esperado_anual=retorno_esperado_anual,
-        **filtro_kwargs,
-    ).gerar_ranking()
-    return ranking[:limite]
+    from .cache_ranking import com_cache
+
+    def calcular():
+        return RankerFundos(
+            perfil,
+            incluir_sharpe_sortino,
+            prazo_anos=prazo_anos,
+            data_referencia=data_referencia,
+            retorno_esperado_anual=retorno_esperado_anual,
+            **filtro_kwargs,
+        ).gerar_ranking()
+
+    parametros = {
+        "perfil": perfil,
+        "sharpe_sortino": incluir_sharpe_sortino,
+        "prazo_anos": prazo_anos,
+        "data_referencia": data_referencia,
+        "retorno_esperado_anual": (
+            None if retorno_esperado_anual is None else round(float(retorno_esperado_anual), 4)
+        ),
+        "filtros": filtro_kwargs,
+    }
+    return com_cache("fundos", parametros, calcular)[:limite]
 
 
 def buscar_fundo_cnpj(cnpj, perfil=PERFIL_MODERADO, incluir_sharpe_sortino=True):

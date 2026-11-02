@@ -50,7 +50,7 @@ from engine import (
 from mercado import load_market_data
 from utils.exceptions import DadosIndisponiveisError
 from utils.logging_config import get_logger, setup_logging
-from utils.formatacao import formatar_brl, interpretar_numero
+from utils.formatacao import formatar_brl, formatar_pct, interpretar_numero
 
 setup_logging(logging.INFO)
 logger = get_logger(__name__)
@@ -418,22 +418,22 @@ def _imprimir_mercado(market: dict, resumo: dict) -> None:
     if resumo["focus_selic"] is not None:
         print(
             "\n   Taxa-base equivalente da curva SELIC/Focus: "
-            f"{resumo['taxa_base'] * 100:.2f}% a.a."
+            f"{formatar_pct(resumo['taxa_base'])} a.a."
         )
 
     print("\n   Hipóteses por perfil:")
     for perfil in resumo["perfis"]:
         print(
             f"      {perfil['rotulo']:<11} "
-            f"{perfil['taxa_bruta'] * 100:.2f}% bruto | "
-            f"{perfil['taxa_real_bruta'] * 100:.2f}% real bruto"
+            f"{formatar_pct(perfil['taxa_bruta'])} bruto | "
+            f"{formatar_pct(perfil['taxa_real_bruta'])} real bruto"
         )
     print(
         "      O líquido depende do produto, prazo e contexto fiscal da "
         "carteira."
     )
     print(
-        f"      IPCA de referência: {resumo['ipca'] * 100:.2f}% a.a."
+        f"      IPCA de referência: {formatar_pct(resumo['ipca'])} a.a."
     )
 
 
@@ -472,11 +472,11 @@ def _imprimir_recomendacao(analise: dict) -> None:
 
     print(
         "\n   Taxa ponderada bruta: "
-        f"{resultado['taxa_perfil'] * 100:.2f}% a.a."
+        f"{formatar_pct(resultado['taxa_perfil'])} a.a."
     )
     print(
         "   Cenário pessimista:   "
-        f"{resultado['taxa_pess'] * 100:.2f}% a.a."
+        f"{formatar_pct(resultado['taxa_pess'])} a.a."
     )
     print("   Tributação calculada separadamente por classe e lote.")
     reserva = resultado.get("plano_reserva")
@@ -501,17 +501,28 @@ def _imprimir_projecoes(analise: dict) -> None:
     )
     print("   ─────────────────────────────────────────────────────────────────────")
     for linha in analise["projecoes"]:
+        imposto = _formatar_moeda(linha["imposto_estimado"])
+        liquido = _formatar_moeda(linha["vf_liquido"])
+        if linha["vf_liquido"] is None and linha.get("vf_liquido_min") is not None:
+            imposto = (
+                f"{_formatar_moeda(linha['imposto_min'])}–"
+                f"{_formatar_moeda(linha['imposto_max'])}"
+            )
+            liquido = (
+                f"{_formatar_moeda(linha['vf_liquido_min'])}–"
+                f"{_formatar_moeda(linha['vf_liquido_max'])}"
+            )
         print(
             f"   {linha['anos']:>4g} ano(s) "
             f"{_formatar_moeda(linha['vf_bruto']):>15} "
-            f"{_formatar_moeda(linha['imposto_estimado']):>15} "
-            f"{_formatar_moeda(linha['vf_liquido']):>15} "
+            f"{imposto:>15} "
+            f"{liquido:>15} "
             f"{linha['precisao_tributaria']}"
         )
     comparativo = analise.get("comparativo_poupanca")
     if comparativo:
         taxa = analise["market"]["poupanca"]
-        print(f"\n   Comparativo com a poupança ({taxa * 100:.2f}% a.a., isenta de IR):")
+        print(f"\n   Comparativo com a poupança ({formatar_pct(taxa)} a.a., isenta de IR):")
         for linha in comparativo:
             diferenca = linha["diferenca"]
             sinal = "" if diferenca is None or diferenca < 0 else "+"
@@ -526,10 +537,17 @@ def _imprimir_projecoes(analise: dict) -> None:
         if linha["vf_liquido"] is None
     ]
     if indeterminadas:
-        print(
-            "\n   ⚠️  Há classes sem dados fiscais suficientes. "
-            "O sistema não inventou uma alíquota para completar o líquido."
-        )
+        variaveis = indeterminadas[0].get("faixa_variaveis") or []
+        if variaveis:
+            print(
+                "\n   ℹ️  Faltam dados fiscais (" + ", ".join(variaveis) + "). "
+                "O líquido aparece como faixa entre o pior e o melhor cenário."
+            )
+        else:
+            print(
+                "\n   ⚠️  Há classes sem dados fiscais suficientes. "
+                "O sistema não inventou uma alíquota para completar o líquido."
+            )
         for premissa in indeterminadas[0]["premissas_tributarias"]:
             print(f"      • {premissa}")
 
@@ -545,10 +563,18 @@ def _imprimir_meta(analise: dict) -> None:
         f"em {meta['prazo_anos']:g} ano(s)"
     )
     if meta["valor_liquido_projetado"] is None:
-        print(
-            "   ⚠️  Resultado líquido indeterminado: "
-            f"{meta['motivo_indeterminacao']}"
-        )
+        if meta.get("valor_liquido_min") is not None:
+            print(
+                "   Valor projetado: entre "
+                f"{formatar_brl(meta['valor_liquido_min'])} e "
+                f"{formatar_brl(meta['valor_liquido_max'])} líquido"
+            )
+            print({
+                "todos": "   ✅ Meta atingida em todos os cenários fiscais.",
+                "nenhum": "   ⚠️  Meta não atingida em nenhum cenário fiscal.",
+                "depende": "   ℹ️  Meta atingida só em parte dos cenários fiscais.",
+            }.get(meta.get("atingida_cenarios"), ""))
+        print(f"   ℹ️  {meta['motivo_indeterminacao']}")
         return
     print(
         "   Valor projetado: "

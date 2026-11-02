@@ -8,6 +8,8 @@ from pathlib import Path
 import pandas as pd
 
 from .cvm_informe_diario_downloader import (
+    _precisa_atualizar,
+    _remover_antigos,
     download_informe_diario,
 )
 
@@ -150,6 +152,11 @@ class InformeDiarioColetorCVM:
             CREATE INDEX IF NOT EXISTS idx_inf_cnpj_data
             ON informe_diario(CNPJ_Classe, Data_Competencia)
             """
+        )
+
+        # Consultas por mês (já carregado? fora da janela?) sem varrer a tabela.
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inf_data ON informe_diario(Data_Competencia)"
         )
 
         self.conn.commit()
@@ -404,8 +411,13 @@ class InformeDiarioColetorCVM:
 
         for i, (ano, mes) in enumerate(meses):
             recente = i < meses_recentes_forcar
+            ja_carregado = not force and self.mes_ja_carregado(ano, mes)
 
-            if not recente and not force and self.mes_ja_carregado(ano, mes):
+            if not recente and ja_carregado:
+                pulados += 1
+                continue
+            # Meses recentes só são relidos se a CVM publicou arquivo novo.
+            if recente and ja_carregado and not _precisa_atualizar(ano, mes):
                 pulados += 1
                 continue
 
@@ -419,10 +431,27 @@ class InformeDiarioColetorCVM:
                 com_erro += 1
                 logger.exception(f"Erro ao carregar {ano}-{mes:02d}")
 
+        removidos = self.remover_fora_da_janela(meses[-1])
+        # Os dados já estão no banco: só os arquivos dos meses recentes são
+        # mantidos (servem para detectar se a CVM publicou versão nova).
+        arquivos = _remover_antigos(meses[:meses_recentes_forcar])
+
         logger.info(
             f"Histórico ({anos} ano(s)): {carregados} mês(es) carregado(s)/atualizado(s), "
-            f"{pulados} já presente(s) e pulado(s), {com_erro} com erro."
+            f"{pulados} já presente(s) e pulado(s), {com_erro} com erro; "
+            f"{removidos} registro(s) fora da janela e {len(arquivos)} arquivo(s) bruto(s) removidos."
         )
+
+    def remover_fora_da_janela(self, mes_mais_antigo):
+        """Apaga registros anteriores ao primeiro mês da janela móvel."""
+        ano, mes = mes_mais_antigo
+        corte = f"{ano:04d}-{mes:02d}-01"
+        cursor = self.conn.execute(
+            "DELETE FROM informe_diario WHERE Data_Competencia < ?",
+            (corte,),
+        )
+        self.conn.commit()
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
     # -------------------------------------------------------------
     # MÉTODOS DE CONSULTA
@@ -510,11 +539,15 @@ class InformeDiarioColetorCVM:
     # OTIMIZAÇÃO EM LOTE PARA RANKING (COM CHUNKING)
     # -------------------------------------------------------------
 
-    def listar_historicos(self, lista_cnpjs, limite=252):
+    def listar_historicos(self, lista_cnpjs, limite=252, data_maxima=None):
         """
         Retorna histórico dos últimos 'limite' registros para MÚLTIPLOS fundos
         em uma ÚNICA consulta SQL, dividindo em chunks para evitar limite de 999 variáveis.
+
+        ``data_maxima`` (AAAA-MM-DD) ignora registros posteriores; é usado na
+        validação histórica para ranquear "como se fosse" uma data passada.
         """
+        filtro_data = " AND Data_Competencia <= ?" if data_maxima else ""
         if not lista_cnpjs:
             return pd.DataFrame()
 
@@ -545,12 +578,12 @@ class InformeDiarioColetorCVM:
                             ORDER BY Data_Competencia DESC
                         ) AS rn
                     FROM informe_diario
-                    WHERE CNPJ_Classe IN ({placeholders})
+                    WHERE CNPJ_Classe IN ({placeholders}){filtro_data}
                 ) sub
                 WHERE rn <= ?
                 ORDER BY CNPJ_Classe, Data_Competencia
             """
-            params = chunk + [limite]
+            params = chunk + ([str(data_maxima)] if data_maxima else []) + [limite]
             try:
                 df_chunk = pd.read_sql_query(query, self.conn, params=params)
                 if not df_chunk.empty:
@@ -565,7 +598,7 @@ class InformeDiarioColetorCVM:
 
     # -------------------------------------------------------------
 
-    def listar_metricas_agregadas(self, lista_cnpjs):
+    def listar_metricas_agregadas(self, lista_cnpjs, data_maxima=None):
         """
         Calcula, DIRETO NO SQL (sem carregar as linhas diárias em pandas),
         as métricas agregadas por CNPJ necessárias para o pré-filtro
@@ -597,6 +630,7 @@ class InformeDiarioColetorCVM:
 
         chunk_size = 500
         dfs = []
+        filtro_data = " AND Data_Competencia <= ?" if data_maxima else ""
 
         for i in range(0, len(cnpjs_padronizados), chunk_size):
             chunk = cnpjs_padronizados[i:i + chunk_size]
@@ -613,7 +647,7 @@ class InformeDiarioColetorCVM:
                             ORDER BY Data_Competencia DESC
                         ) AS rn
                     FROM informe_diario
-                    WHERE CNPJ_Classe IN ({placeholders})
+                    WHERE CNPJ_Classe IN ({placeholders}){filtro_data}
                 )
                 SELECT
                     CNPJ_Classe,
@@ -626,7 +660,11 @@ class InformeDiarioColetorCVM:
                 GROUP BY CNPJ_Classe
             """
             try:
-                df_chunk = pd.read_sql_query(query, self.conn, params=chunk)
+                df_chunk = pd.read_sql_query(
+                    query,
+                    self.conn,
+                    params=chunk + ([str(data_maxima)] if data_maxima else []),
+                )
                 if not df_chunk.empty:
                     dfs.append(df_chunk)
             except Exception:
@@ -732,12 +770,12 @@ def buscar_ultimo_registro(cnpj):
     return get_informe_coletor().buscar_ultimo_registro(cnpj)
 
 
-def listar_historicos(lista_cnpjs, limite=252):
-    return get_informe_coletor().listar_historicos(lista_cnpjs, limite)
+def listar_historicos(lista_cnpjs, limite=252, data_maxima=None):
+    return get_informe_coletor().listar_historicos(lista_cnpjs, limite, data_maxima)
 
 
-def listar_metricas_agregadas(lista_cnpjs):
-    return get_informe_coletor().listar_metricas_agregadas(lista_cnpjs)
+def listar_metricas_agregadas(lista_cnpjs, data_maxima=None):
+    return get_informe_coletor().listar_metricas_agregadas(lista_cnpjs, data_maxima)
 
 
 def total_registros():

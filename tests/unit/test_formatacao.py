@@ -47,3 +47,32 @@ def test_interpretar_numero(texto, esperado) -> None:
 def test_interpretar_numero_invalido(texto) -> None:
     with pytest.raises(ValueError):
         interpretar_numero(texto)
+
+
+@pytest.mark.parametrize(
+    ("valor", "casas", "esperado"),
+    [(0.1375, 2, "13,75%"), (0.0458, 1, "4,6%"), (-0.02, 2, "-2,00%"), (None, 2, "indeterminado")],
+)
+def test_formatar_pct(valor, casas, esperado) -> None:
+    from utils.formatacao import formatar_pct
+
+    assert formatar_pct(valor, casas) == esperado
+
+
+def test_verificador_de_fontes_classifica_bloqueio_de_nuvem() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    caminho = Path(__file__).resolve().parents[2] / "scripts" / "verificar_fontes.py"
+    spec = importlib.util.spec_from_file_location("verificar_fontes", caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+
+    texto = modulo.markdown(
+        [
+            {"fonte": "A", "tipo": modulo.ESSENCIAL, "ok": False, "detalhe": "x", "segundos": 0},
+            {"fonte": "B", "tipo": modulo.NUVEM, "ok": False, "detalhe": "403", "segundos": 0},
+        ]
+    )
+    assert "| A | essencial | ❌ falhou |" in texto
+    assert "| B | bloqueio de nuvem | ⚠️ bloqueada |" in texto

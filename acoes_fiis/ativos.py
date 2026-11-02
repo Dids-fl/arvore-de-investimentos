@@ -43,7 +43,7 @@ CRIPTO_TOP_N       = 20          # top 20 por market cap da CoinGecko
 # Pesos do componente de tamanho sobre o score final, por perfil de risco:
 #   Conservador: 0.30 — tamanho importa muito; quer empresa reconhecida e estável
 #   Moderado:    0.20 — equilíbrio entre fundamentals e robustez
-#   Agressivo:   0.08 — fundamentos dominam; small cap OK se ROE excepcional
+#   Agressivo:   0.08 — preço (P/L e P/VP) domina; empresas menores entram
 PESO_TAMANHO_ACOES: dict[int, float] = {1: 0.30, 2: 0.20, 3: 0.08}
 
 # Referências para normalização em escala log
@@ -63,20 +63,34 @@ PESOS_ACOES: dict[int, dict[str, float]] = {
         "roe": 0.15,   # qualidade mínima do negócio (filtro, não motor)
         "pvp": 0.10,   # tiebreaker: margem de segurança no preço
     },
-    2: {  # Moderado — ROE como âncora; DY + P/L como equilíbrio risco/retorno
-        "dy":  0.25,   # renda relevante mas não dominante
-        "pl":  0.20,   # preço justo ainda importa
-        "roe": 0.40,   # qualidade do negócio é o motor principal
-        "pvp": 0.15,   # complementa avaliação de preço
+    # Moderado — equilíbrio entre preço (P/L, P/VP), renda (DY) e qualidade
+    # (ROE). Antes o ROE tinha 40%; na validação histórica, a combinação abaixo
+    # foi escolhida no treino (2013–2018) e, no teste (2019–2025), elevou o
+    # excesso do top-10 sobre o Ibovespa de +1,4 para +3,1 p.p. ao ano.
+    2: {
+        "dy":  0.25,
+        "pl":  0.35,
+        "roe": 0.15,
+        "pvp": 0.25,
     },
-    3: {  # Agressivo — ROE máximo; DY quase ignorado (reinvestimento > distribuição)
-        "dy":  0.05,   # irrelevante: empresa de crescimento reinveste, não distribui
-        "pl":  0.10,   # tolerante a P/L alto se ROE justificar
-        "roe": 0.70,   # critério dominante: retorno sobre capital é tudo
-        "pvp": 0.15,   # tiebreaker entre empresas igualmente rentáveis
+    # Agressivo — ações baratas (P/L e P/VP baixos), com peso pequeno para o
+    # tamanho, o que abre espaço a empresas menores. A regra antiga (ROE com
+    # peso 70%) foi a pior na validação histórica: ficou abaixo do Ibovespa
+    # no treino (2013–2018) e no teste (2019–2025). Com P/L e P/VP o top-10
+    # bateu a mediana das ações em 100% das datas nos dois períodos, e a
+    # vizinhança dos pesos dá resultados parecidos (ver
+    # docs/validacao-historica.md). ROE ≥ 10% continua como filtro.
+    3: {
+        "dy":  0.00,
+        "pl":  0.50,
+        "roe": 0.00,
+        "pvp": 0.50,
     },
 }
 
+# PESOS_FIIS e REF_FIIS deixaram de ser usados no score: a validação histórica
+# mostrou que DY alto e P/VP baixo escolhiam os piores FIIs (ver
+# acoes_fiis/screener.py::_score_fii). Mantidos só como referência.
 PESOS_FIIS: dict[int, dict[str, float]] = {
     1: {  # Conservador — DY alto e recorrente + vacância zero + P/VP seguro
         "dy":       0.45,  # renda mensal previsível é o objetivo principal
@@ -120,8 +134,6 @@ PESOS_CRIPTO: dict[int, dict[str, float]] = {
 #
 # Ações — nota: as referências são GLOBAIS (independentes de perfil).
 # Quem muda o comportamento por perfil são os PESOS acima, não as referências.
-# Exceção: REF_ACOES_AGRESSIVO redefine a tolerância ao P/L para não penalizar
-# empresas de crescimento que naturalmente negociam a múltiplos mais altos.
 
 REF_ACOES = {
     "dy":  {"bom": 12.0, "ruim": 0.0},
@@ -130,14 +142,6 @@ REF_ACOES = {
     "pvp": {"bom": 0.8,  "ruim": 3.0},    # menor é melhor
 }
 
-# Para o perfil agressivo: P/L "ruim" ampliado — empresa de crescimento com
-# P/L 50 não deve ser penalizada tão duramente quanto uma value stock cara.
-REF_ACOES_AGRESSIVO = {
-    "dy":  {"bom": 12.0, "ruim": 0.0},    # igual (mas peso ~0, então irrelevante)
-    "roe": {"bom": 40.0, "ruim": 5.0},    # exige ROE mais alto; abaixo de 5% = ruim
-    "pl":  {"bom": 8.0,  "ruim": 60.0},   # tolera P/L até 60 sem punição severa
-    "pvp": {"bom": 1.0,  "ruim": 5.0},    # aceita P/VP maior (empresas premium)
-}
 
 REF_FIIS = {
     "dy":       {"bom": 14.0,      "ruim": 4.0},
@@ -164,11 +168,11 @@ LIMIARES_DY_ACOES: dict[int, dict[str, float]] = {
 LIMIARES_ROE_ACOES: dict[int, dict[str, float]] = {
     1: {"otimo": 15.0, "ok": 10.0},  # conservador: ROE como filtro de qualidade mínima
     2: {"otimo": 20.0, "ok": 12.0},  # moderado: ROE bom é requisito
-    3: {"otimo": 28.0, "ok": 18.0},  # agressivo: exige ROE excepcional
+    3: {"otimo": 20.0, "ok": 10.0},  # agressivo: ROE ≥ 10% é o filtro mínimo
 }
 
 LIMIARES_PL_ACOES: dict[int, dict[str, float]] = {
     1: {"otimo": 10.0, "ok": 15.0},  # conservador: quer P/L baixo (preço barato)
     2: {"otimo": 14.0, "ok": 22.0},  # moderado: tolera múltiplo um pouco maior
-    3: {"otimo": 20.0, "ok": 40.0},  # agressivo: P/L alto OK se ROE justificar
+    3: {"otimo": 8.0,  "ok": 14.0},  # agressivo: busca ações baratas
 }

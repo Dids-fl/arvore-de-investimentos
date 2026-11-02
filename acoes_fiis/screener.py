@@ -7,6 +7,7 @@ Complementos: Yahoo Finance (via data_merger) para market cap, P/L, P/VP, divide
 
 import math
 import re
+import statistics
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -28,10 +29,7 @@ from .ativos import (
     MKTCAP_REF_MIN_B,
     PESO_TAMANHO_ACOES,
     PESOS_ACOES,
-    PESOS_FIIS,
     REF_ACOES,
-    REF_ACOES_AGRESSIVO,
-    REF_FIIS,
     UNIVERSO_ACOES_N,
     UNIVERSO_FIIS_N,
 )
@@ -62,7 +60,7 @@ def norm(valor: float, bom: float, ruim: float) -> float:
 
 def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
     pesos   = PESOS_ACOES[perfil]
-    refs    = REF_ACOES_AGRESSIVO if perfil == 3 else REF_ACOES
+    refs    = REF_ACOES
     lim_dy  = LIMIARES_DY_ACOES[perfil]
     lim_roe = LIMIARES_ROE_ACOES[perfil]
     lim_pl  = LIMIARES_PL_ACOES[perfil]
@@ -108,11 +106,11 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
                 motivos.append(f"⚠️  P/L: {pl:.1f} (avaliar crescimento)")
         else:
             if pl <= lim_pl["otimo"]:
-                motivos.append(f"✅ P/L: {pl:.1f} (e ROE alto = oportunidade)")
+                motivos.append(f"✅ P/L: {pl:.1f} (barata)")
             elif pl <= lim_pl["ok"]:
-                motivos.append(f"ℹ️  P/L: {pl:.1f} (aceitável se ROE justificar)")
+                motivos.append(f"ℹ️  P/L: {pl:.1f} (razoável)")
             else:
-                motivos.append(f"⚠️  P/L: {pl:.1f} (muito esticado)")
+                motivos.append(f"⚠️  P/L: {pl:.1f} (cara para a estratégia de valor)")
     else:
         if perfil == 1:
             motivos.append("❌ P/L negativo — empresa com prejuízo")
@@ -139,13 +137,13 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
                 motivos.append(f"⚠️  ROE: {roe:.1f}% (abaixo do esperado)")
         else:
             if roe >= lim_roe["otimo"]:
-                motivos.append(f"✅ ROE: {roe:.1f}% ← motor de crescimento")
+                motivos.append(f"✅ ROE: {roe:.1f}% (rentável)")
             elif roe >= lim_roe["ok"]:
                 motivos.append(f"ℹ️  ROE: {roe:.1f}%")
             else:
-                motivos.append(f"❌ ROE: {roe:.1f}% (insuficiente para crescimento)")
+                motivos.append(f"❌ ROE: {roe:.1f}% (baixo)")
     elif perfil == 3:
-        motivos.append("❌ ROE zero/negativo — descartável para agressivo")
+        motivos.append("❌ ROE zero/negativo — empresa sem lucro")
 
     # P/VP
     pvp = float(ind.get("pvp", 0) or 0)
@@ -208,67 +206,64 @@ def _score_acao(ind: dict, perfil: int) -> tuple[float, list[str]]:
 
 # ── Score de FIIs ─────────────────────────────────────────────────────────────
 
-def _score_fii(ind: dict, perfil: int) -> tuple[float, list[str]]:
-    pesos  = PESOS_FIIS[perfil]
-    refs   = REF_FIIS
-    score  = 0.0
-    motivos: list[str] = []
+# Regra validada (docs/validacao-historica.md, treino 2020–2022 e teste
+# 2023–2025, retorno total de 12 meses): ordenar por DY alto ou P/VP baixo
+# foi o PIOR critério — DY muito acima dos pares e desconto forte sobre o
+# patrimônio costumam sinalizar fundo em dificuldade, cujo preço continua
+# caindo. O que funcionou nos dois períodos foi preferir os FIIs mais
+# líquidos e excluir os de DY muito acima da mediana e P/VP abaixo de 0,8.
+DY_MAXIMO_ACIMA_DA_MEDIANA = 2.0  # p.p.
+PVP_MINIMO = 0.80
+_LIQUIDEZ_REFERENCIA = {"ruim": 200_000, "bom": 200_000_000}  # sem saturar no topo
 
+
+def _motivo_exclusao_fii(ind: dict, dy_mediana: float | None) -> str | None:
     dy = float(ind.get("dy", 0) or 0)
-    # Trata DY > 30% como extraordinário (limita o impacto)
-    dy_effective = min(dy, 30.0)
-    score += pesos["dy"] * norm(dy_effective, refs["dy"]["bom"], refs["dy"]["ruim"])
-    
-    if perfil == 1:
-        if dy >= 11:
-            motivos.append(f"✅ DY: {dy:.1f}% (excelente renda mensal)")
-        elif dy >= 8:
-            motivos.append(f"ℹ️  DY: {dy:.1f}%")
-        else:
-            motivos.append(f"⚠️  DY: {dy:.1f}% (baixo para conservador)")
-    elif perfil == 2:
-        if dy >= 10:
-            motivos.append(f"✅ DY: {dy:.1f}%")
-        else:
-            motivos.append(f"ℹ️  DY: {dy:.1f}%")
-    else:
-        if dy >= 10:
-            motivos.append(f"ℹ️  DY: {dy:.1f}% (bônus de renda)")
-
     pvp = float(ind.get("pvp", 0) or 0)
-    if pvp > 0:
-        score += pesos["pvp"] * norm(pvp, refs["pvp"]["bom"], refs["pvp"]["ruim"])
-        if perfil == 3:
-            if pvp < 0.90:
-                motivos.append(f"✅ P/VP: {pvp:.2f} (desconto sobre patrimônio = upside)")
-            elif pvp < 1.0:
-                motivos.append(f"ℹ️  P/VP: {pvp:.2f}")
-            else:
-                motivos.append(f"⚠️  P/VP: {pvp:.2f} (prêmio limita valorização)")
-        else:
-            label = "✅" if pvp < 1.0 else ("ℹ️ " if pvp <= 1.15 else "⚠️ ")
-            motivos.append(f"{label} P/VP: {pvp:.2f}")
+    if dy_mediana is not None and dy > dy_mediana + DY_MAXIMO_ACIMA_DA_MEDIANA:
+        return (
+            f"DY de {dy:.1f}% muito acima da mediana dos FIIs ({dy_mediana:.1f}%): "
+            "costuma indicar risco que o mercado já está precificando."
+        ).replace(".", ",", 1)
+    if 0 < pvp < PVP_MINIMO:
+        return f"P/VP {pvp:.2f}: desconto forte sobre o patrimônio costuma sinalizar problema.".replace(
+            ".", ",", 1
+        )
+    return None
 
+
+def _score_fii(ind: dict, perfil: int, dy_mediana: float | None = None) -> tuple[float, list[str]]:
+    """Score 0–100 pela liquidez; DY, P/VP e vacância aparecem só como informação.
+
+    ``perfil`` é mantido por compatibilidade: a validação histórica não
+    mostrou vantagem em pesos diferentes por perfil.
+    """
+    del perfil
+    motivos: list[str] = []
+    exclusao = _motivo_exclusao_fii(ind, dy_mediana)
     liq = float(ind.get("liquidez", 0) or 0)
     if liq > 0:
-        score += pesos["liquidez"] * norm(liq, refs["liquidez"]["bom"], refs["liquidez"]["ruim"])
-        if perfil == 3:
-            label = "✅" if liq >= 2_000_000 else "ℹ️ "
-            motivos.append(f"{label} Liquidez: R${liq/1e6:.1f}M/dia (agilidade para operar)")
-        else:
-            motivos.append(f"Liquidez: R${liq/1e6:.1f}M/dia")
-
-    vac = float(ind.get("vacancia", 0) or 0)
-    if vac > 0:
-        score += pesos["vacancia"] * norm(vac, refs["vacancia"]["bom"], refs["vacancia"]["ruim"])
-        if vac == 0:
-            motivos.append("✅ Vacância zero")
-        elif perfil == 1 and vac > 5:
-            motivos.append(f"⚠️  Vacância: {vac:.1f}% (risco ao DY)")
-        elif vac > 10:
-            motivos.append(f"⚠️  Vacância: {vac:.1f}%")
-
-    return round(score * 100, 1), motivos[:4]
+        nota = norm(
+            math.log10(liq),
+            math.log10(_LIQUIDEZ_REFERENCIA["bom"]),
+            math.log10(_LIQUIDEZ_REFERENCIA["ruim"]),
+        )
+    else:
+        nota = 0.0
+    score = 0.0 if exclusao else nota * 100
+    if exclusao:
+        motivos.append(f"⚠️  {exclusao}")
+    motivos.append(f"Liquidez: R${liq / 1e6:.1f}M/dia".replace(".", ","))
+    dy = float(ind.get("dy", 0) or 0)
+    if dy:
+        motivos.append(f"DY 12 meses: {dy:.1f}%".replace(".", ","))
+    pvp = float(ind.get("pvp", 0) or 0)
+    if pvp:
+        motivos.append(f"P/VP: {pvp:.2f}".replace(".", ","))
+    vac = ind.get("vacancia")
+    if vac is not None and float(vac) > 10:
+        motivos.append(f"⚠️  Vacância: {float(vac):.1f}%".replace(".", ","))
+    return round(score, 1), motivos[:4]
 
 # ── Funções de busca (sem BRAPI) ──────────────────────────────────────────────
 
@@ -367,6 +362,22 @@ def top_acoes(perfil: int, n: int = 5) -> list[dict]:
                 logger.debug(f"Erro ao enriquecer {ticker}: {e}")
         enriquecidos.append(ind)
 
+    return ranquear_acoes(enriquecidos, perfil, n, liquidos)
+
+
+def ranquear_acoes(
+    enriquecidos: list[dict],
+    perfil: int,
+    n: int = 5,
+    liquidos: list[dict] | None = None,
+) -> list[dict]:
+    """Filtra e pontua um universo de ações já enriquecido.
+
+    Separado de ``top_acoes`` para que a validação histórica pontue
+    indicadores reconstruídos de datas passadas com exatamente a mesma regra.
+    """
+    if liquidos is None:
+        liquidos = list(enriquecidos)
     # Filtro Market Cap
     mktcap_min = LIMITE_MKTCAP.get(perfil, 1_000_000_000)
     liquidos_filtrados = []
@@ -488,6 +499,9 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
     if not liquidos:
         liquidos = todos_fiis
 
+    dys = [float(f.get("dy", 0) or 0) for f in liquidos if f.get("dy")]
+    dy_mediana = statistics.median(dys) if dys else None
+
     resultados = []
     for ind in liquidos:
         dy  = float(ind.get("dy",  0) or 0)
@@ -499,7 +513,7 @@ def top_fiis(perfil: int, n: int = 5) -> list[dict]:
         if dy > 30.0:
             continue
 
-        score, motivos = _score_fii(ind, perfil)
+        score, motivos = _score_fii(ind, perfil, dy_mediana)
         resultados.append({
             "ticker":  ind.get("ticker", ""),
             "nome":    ind.get("nome", ""),

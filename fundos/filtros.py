@@ -10,6 +10,7 @@ NOTA: O mapeamento de classes ANBIMA depende das nomenclaturas atuais.
 """
 
 import logging
+import re
 import unicodedata
 
 import pandas as pd
@@ -222,6 +223,18 @@ CATEGORIAS_EXCLUIDAS = {
     2: {"ALAVANCADO", "CRIPTO", "EVENT_DRIVEN"},
     3: set(),
 }
+
+
+# Riscos que o perfil conservador não deve receber, mesmo dentro de "renda
+# fixa": crédito de menor qualidade (classe ANBIMA "Crédito Livre"), duração
+# alta (marcação a mercado forte), exterior e fundos incentivados de
+# infraestrutura (Lei 12.431), cujo bônus de isenção de IR levava fundos de
+# crédito ao topo. Na validação histórica, o 1º colocado do conservador em
+# set/2025 foi um desses fundos e rendeu 6,9% contra 14,5% do CDI.
+_RISCO_NAO_CONSERVADOR_CLASSE = re.compile(
+    r"CR[EÉ]DITO LIVRE|DURA[CÇ][AÃ]O ALTA|EXTERIOR|D[IÍ]VIDA EXTERNA",
+)
+_RISCO_NAO_CONSERVADOR_NOME = re.compile(r"INCENTIVAD|INFRA|12\.?431")
 
 
 # ---------------------------------------------------------------------
@@ -460,6 +473,22 @@ class FiltroFundos:
             logger.info(f"Filtro público-alvo: removidos {removidos} fundos restritos.")
         return df[mascara].copy()
 
+    def filtrar_risco_conservador(self, df: pd.DataFrame) -> pd.DataFrame:
+        """No perfil conservador, remove crédito livre, duração alta e incentivados."""
+        if self.perfil != 1:
+            return df
+        mascara = pd.Series(True, index=df.index)
+        if "Classificacao_Anbima" in df.columns:
+            classe = df["Classificacao_Anbima"].fillna("").astype(str).str.upper()
+            mascara &= ~classe.str.contains(_RISCO_NAO_CONSERVADOR_CLASSE)
+        if "Denominacao_Social" in df.columns:
+            nome = df["Denominacao_Social"].fillna("").astype(str).str.upper()
+            mascara &= ~nome.str.contains(_RISCO_NAO_CONSERVADOR_NOME)
+        removidos = int(len(df) - mascara.sum())
+        if removidos:
+            logger.info(f"Filtro de risco do conservador: removidos {removidos} fundos.")
+        return df[mascara].copy()
+
     def filtrar_nao_investiveis(self, df: pd.DataFrame) -> pd.DataFrame:
         """Remove fundos fechados e fundos "master".
 
@@ -546,6 +575,9 @@ class FiltroFundos:
 
         # 7b. Investível pela pessoa física (aberto e não master)
         df_filtrado = self.filtrar_nao_investiveis(df_filtrado)
+
+        # 7c. Riscos fora do perfil conservador
+        df_filtrado = self.filtrar_risco_conservador(df_filtrado)
 
         # 8. ESG
         df_filtrado = self.filtrar_esg(df_filtrado)

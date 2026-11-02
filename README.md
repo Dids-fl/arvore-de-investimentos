@@ -74,12 +74,22 @@ python -m backtest.run_backtest --help
   dados (nunca com alíquota genérica inventada);
 - comparativo com a poupança, quando a série do BCB está disponível;
 - análise de meta (quanto aportar por mês para chegar a um valor);
+- para decisões grandes: teste de crise em reais, faixas de 50/80/90% pelo
+  histórico, divisão pelo FGC, custo de resgatar antes, entrada parcelada e
+  histórico das suas decisões ([detalhes](docs/decisoes-grandes.md));
 - ranking de ativos específicos (Tesouro, fundos, previdência, CRA/CRI/
   debêntures, ações, FIIs, ETFs e cripto) e exportação em JSON.
 
 CDB, LCI, LCA e COE não têm ranking de ativos: não existe fonte pública e
 gratuita com as ofertas e taxas dos bancos. Eles continuam cobertos nas
 regras de recomendação e no motor tributário.
+
+## Validação com dados do passado
+
+`python -m backtest.validacao_historica` volta a datas passadas, monta os dados
+como estavam naquele dia e compara a previsão do app com o que aconteceu. O
+resultado mais recente está em
+[docs/validacao-historica.md](docs/validacao-historica.md).
 
 ## Desenvolvimento
 

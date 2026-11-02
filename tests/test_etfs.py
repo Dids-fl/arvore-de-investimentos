@@ -211,7 +211,7 @@ def test_score_ignora_taxa_ausente_sem_inventar_valor():
     )
 
 
-def test_score_muda_conforme_o_perfil():
+def test_menor_volatilidade_vence_em_todos_os_perfis():
     defensivo = dados_etf_ficticios(
         retorno=8.0,
         volatilidade=8.0,
@@ -244,8 +244,16 @@ def test_score_muda_conforme_o_perfil():
         perfil=3,
     )
 
+    # Validação histórica: menor volatilidade venceu em todos os perfis.
     assert score_defensivo_p1 > score_agressivo_p1
-    assert score_agressivo_p3 > score_defensivo_p3
+    assert score_defensivo_p3 > score_agressivo_p3
+
+
+def test_retorno_passado_nao_muda_o_score():
+    """Momentum de 12 meses não previu retorno futuro; é só informativo."""
+    base = dados_etf_ficticios(retorno=5.0, volatilidade=15.0, sharpe=0.2, taxa=0.3, volume=10_000_000)
+    subiu = dict(base, retorno_12m=60.0, sharpe=2.5)
+    assert screener._score_etf(base, perfil=2)[0] == screener._score_etf(subiu, perfil=2)[0]
 
 
 @pytest.fixture
@@ -314,6 +322,9 @@ def test_top_etfs_respeita_n_zero(ranking_mock):
         ("BB ETF ÍNDICE FUTURO DE BOI GORDO B3", "commodity"),
         ("HASHDEX NASDAQ BITCOIN REFERENCE PRICE FUNDO DE ÍNDICE", "cripto"),
         ("ISHARES BOVA FUNDO DE ÍNDICE", "acoes"),
+        ("Fundo de Investimento Amazônia - FINAM", "outro"),
+        ("PORTO SUDESTE V.M. S.A.", "outro"),
+        ("FUNDES", "outro"),
         ("BTG PACTUAL TEVA AÇÕES COMMODITIES BRASIL FUNDO DE ÍNDICE", "acoes"),
         ("Btg Pactual Teva Itbr Ipca 95-5 Fundo De Indice", "renda_fixa"),
         ("BB ETF ÍNDICE DAP5 B3 FUNDO DE ÍNDICE", "renda_fixa"),
@@ -333,12 +344,12 @@ def test_classe_etf(nome, classe):
 def test_classe_etf_usa_volatilidade_quando_nome_e_generico(volatilidade, classe):
     from etfs.screener_etf import classe_etf
 
-    assert classe_etf("BL03 Fundo Invest Financeiro", volatilidade) == classe
+    assert classe_etf("BL03 FUNDO DE ÍNDICE", volatilidade) == classe
 
 
 def test_top_etfs_de_acoes_ignora_renda_fixa_e_ativos_sem_preco(monkeypatch):
     universo = {
-        "BOVA11": {"nome": "ISHARES IBOVESPA", "volatilidade": 18.0},
+        "BOVA11": {"nome": "ISHARES IBOVESPA FUNDO DE ÍNDICE", "volatilidade": 18.0},
         "LFTS11": {"nome": "TESOURO SELIC ETF", "volatilidade": 0.5},
         "XXXX11": {"nome": "BL03 Fundo Invest Financeiro", "volatilidade": 2.0},
         "FNAM11": {"nome": "Fundo de Investimento Amazônia", "volatilidade": 30.0, "preco": 0.0},
@@ -356,3 +367,10 @@ def test_top_etfs_de_acoes_ignora_renda_fixa_e_ativos_sem_preco(monkeypatch):
 
     assert [item["ticker"] for item in resultado] == ["BOVA11"]
     assert resultado[0]["classe"] == "acoes"
+
+
+def test_fundos_regionais_nao_sao_etf():
+    from etfs.screener_etf import classe_etf
+
+    assert classe_etf("FNOR11", 30.0, "FNOR11") == "outro"
+    assert classe_etf("BOVA11", 20.0, "BOVA11") == "acoes"  # nome desconhecido
