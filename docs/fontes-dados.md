@@ -11,6 +11,8 @@
 | CDI anualizado (opcional) | Banco Central do Brasil, SGS | Série 4389 | Exibição e normalização de taxas em % do CDI |
 | Poupança (opcional) | Banco Central do Brasil, SGS | Série 195 | Comparativo da projeção com a poupança |
 | Expectativas do IPCA (opcional) | Banco Central, Olinda/Focus | `ExpectativasMercadoAnuais` | Exibição da inflação esperada |
+| Selic, CDI e IPCA (reserva) | BrasilAPI, gratuita e sem chave | `/api/taxas/v1` | Usada só quando o SGS do BCB falha; a referência mostra "via BrasilAPI" |
+| Bitcoin em reais (histórico) | API pública do Mercado Bitcoin, sem chave | `/api/v4/candles` | Reserva do Yahoo na base de `decisao/` (teste de crise e faixas) |
 
 As séries do SGS são consultadas em janela recente. Registros vazios,
 malformados, não finitos ou com data futura são descartados.

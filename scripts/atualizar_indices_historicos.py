@@ -19,7 +19,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backtest import validacao_historica as vh  # noqa: E402
-from decisao.historico import ARQUIVO_BASE, SERIES  # noqa: E402
+from decisao.historico import ARQUIVO_BASE, SERIES, btc_mercado_bitcoin  # noqa: E402
 
 INICIO = "2000-01-01"
 
@@ -35,7 +35,12 @@ def gerar() -> pd.DataFrame:
         try:
             niveis[nome] = vh._mensal(vh.serie_yahoo(ticker))
         except Exception as exc:  # noqa: BLE001 — série opcional
-            print(f"{ticker} indisponível: {exc}")
+            print(f"{ticker} indisponível no Yahoo: {exc}")
+    if "btc" not in niveis:
+        try:
+            niveis["btc"] = vh._mensal(btc_mercado_bitcoin())
+        except Exception as exc:  # noqa: BLE001 — série opcional
+            print(f"Bitcoin indisponível no Mercado Bitcoin: {exc}")
     tabela = pd.DataFrame(niveis).pct_change(fill_method=None).loc[INICIO:]
     # Só meses já encerrados: o último mês pode estar pela metade.
     hoje = pd.Timestamp.today().normalize()

@@ -181,3 +181,34 @@ def test_series_usadas_indica_inicio_dos_dados() -> None:
     assert usadas["fii"].endswith("2019") or usadas["fii"].endswith("2020")
     if base["btc"].isna().all():
         assert usadas["btc"] == "sem dado (substituto)"
+
+
+def test_btc_mercado_bitcoin_junta_blocos_anuais() -> None:
+    class Resposta:
+        def __init__(self, dados):
+            self._dados = dados
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._dados
+
+    class Sessao:
+        def __init__(self):
+            self.chamadas = []
+
+        def get(self, url, params, timeout):
+            self.chamadas.append(params)
+            inicio = params["from"]
+            return Resposta({"t": [inicio, inicio + 86400], "c": ["100.5", "101"]})
+
+    sessao = Sessao()
+    serie = historico.btc_mercado_bitcoin("2024-01-01", sessao=sessao)
+    assert len(sessao.chamadas) >= 2  # um bloco por ano
+    assert serie.iloc[0] == pytest.approx(100.5)
+    assert serie.index.is_monotonic_increasing
+    lista = historico._fechamentos_candles([{"timestamp": 1700000000, "close": 5}])
+    assert lista.iloc[0] == 5
+    with pytest.raises(ValueError):
+        historico._fechamentos_candles({"erro": "x"})

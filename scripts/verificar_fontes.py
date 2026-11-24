@@ -128,6 +128,23 @@ def _coingecko() -> str:
     return f"{len(mercados)} moedas, 1ª: {mercados[0]['symbol'].upper()}"
 
 
+def _brasilapi() -> str:
+    import mercado
+
+    selic, _ = mercado._fetch_brasilapi_taxa(mercado.SGS_SELIC)
+    assert 0 < selic < 1
+    return f"Selic {selic:.2%} (reserva do SGS)"
+
+
+def _mercado_bitcoin() -> str:
+    from decisao.historico import btc_mercado_bitcoin
+
+    hoje = date.today()
+    serie = btc_mercado_bitcoin(f"{hoje.year - 1}-{hoje.month:02d}-01")
+    assert len(serie) > 100, f"só {len(serie)} dias"
+    return f"{len(serie)} dias de BTC-BRL"
+
+
 def _status_invest() -> str:
     import requests
 
@@ -162,6 +179,8 @@ VERIFICACOES: list[tuple[str, str, Callable[[], str]]] = [
     ("Fundamentus (FIIs)", ESSENCIAL, _fundamentus_fiis),
     ("BRAPI (lista de ativos)", ESSENCIAL, _brapi),
     ("CoinGecko", OPCIONAL, _coingecko),
+    ("BrasilAPI (reserva do BCB)", OPCIONAL, _brasilapi),
+    ("Mercado Bitcoin (histórico BTC)", NUVEM, _mercado_bitcoin),
     ("Status Invest", NUVEM, _status_invest),
     ("B3 balcão (CRA/CRI/debêntures)", NUVEM, _b3_balcao),
 ]

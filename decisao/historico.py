@@ -10,7 +10,8 @@ com dados gratuitos:
 - ``ibov``: Ibovespa (Yahoo Finance);
 - ``fii``: média igual dos FIIs líquidos (CVM + Yahoo, desde 2020);
 - ``usd``: dólar (Yahoo, desde 2004);
-- ``btc``: bitcoin em reais (Yahoo), quando disponível.
+- ``btc``: bitcoin em reais (Yahoo ou, se ele falhar, a API pública do
+  Mercado Bitcoin).
 
 Ao rodar o app, os meses que faltam no fim da base são completados com CDI,
 Ibovespa e dólar baixados na hora (cache de um dia). Meses sem dado de uma
@@ -59,6 +60,56 @@ SUBSTITUTO: dict[str, dict[str, float]] = {
     "usd": {"cdi": 1},
     "ipca_mais": {"cdi": 1},
 }
+
+
+MERCADO_BITCOIN_CANDLES = "https://api.mercadobitcoin.net/api/v4/candles"
+
+
+def _fechamentos_candles(dados) -> pd.Series:
+    """Converte a resposta de candles (colunas ``t``/``c`` ou lista de dicts)."""
+    if isinstance(dados, dict) and "t" in dados and "c" in dados:
+        datas, precos = dados["t"], dados["c"]
+    elif isinstance(dados, list):
+        datas = [item.get("timestamp", item.get("t")) for item in dados]
+        precos = [item.get("close", item.get("c")) for item in dados]
+    else:
+        raise ValueError("formato de candles inesperado")
+    serie = pd.Series(
+        pd.to_numeric(pd.Series(precos), errors="coerce").to_numpy(),
+        index=pd.to_datetime(pd.to_numeric(pd.Series(datas)), unit="s"),
+    )
+    return serie.dropna().sort_index()
+
+
+def btc_mercado_bitcoin(inicio: str = "2014-01-01", sessao=None) -> pd.Series:
+    """Preço diário do bitcoin em reais pela API pública do Mercado Bitcoin.
+
+    Gratuita e sem chave. Usada quando o Yahoo não entrega ``BTC-BRL``.
+    Busca em blocos de um ano para respeitar o limite de candles por consulta.
+    """
+    import requests
+
+    sessao = sessao or requests.Session()
+    partes = []
+    atual = pd.Timestamp(inicio)
+    fim = pd.Timestamp.today().normalize()
+    while atual < fim:
+        proximo = min(atual + pd.DateOffset(years=1), fim)
+        resposta = sessao.get(
+            MERCADO_BITCOIN_CANDLES,
+            params={
+                "symbol": "BTC-BRL",
+                "resolution": "1d",
+                "from": int(atual.timestamp()),
+                "to": int(proximo.timestamp()),
+            },
+            timeout=30,
+        )
+        resposta.raise_for_status()
+        partes.append(_fechamentos_candles(resposta.json()))
+        atual = proximo
+    serie = pd.concat(partes) if partes else pd.Series(dtype=float)
+    return serie[~serie.index.duplicated()].sort_index()
 
 
 def ler_base(arquivo: Path = ARQUIVO_BASE) -> pd.DataFrame:

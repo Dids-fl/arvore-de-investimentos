@@ -331,6 +331,41 @@ def _cache_antigo_com_aviso(
 
 # ── Coletores ─────────────────────────────────────────────────────────────────
 
+_BRASILAPI_TAXAS_URL = "https://brasilapi.com.br/api/taxas/v1"
+_BRASILAPI_NOMES = {SGS_SELIC: "Selic", SGS_IPCA_12M: "IPCA", SGS_CDI_ANUAL: "CDI"}
+
+
+def _fetch_brasilapi_taxa(serie: int) -> tuple[float, str]:
+    """Selic, CDI ou IPCA 12 meses pela BrasilAPI (gratuita, sem chave).
+
+    A BrasilAPI republica os dados do Banco Central; serve de reserva quando
+    o SGS está fora do ar. Não informa a data de referência, então a
+    referência registra o dia da consulta e a fonte.
+    """
+    nome = _BRASILAPI_NOMES[serie]
+    data = _json_get(_BRASILAPI_TAXAS_URL)
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, dict) and str(item.get("nome", "")).casefold() == nome.casefold():
+            valor = item.get("valor")
+            if _is_number(valor):
+                hoje = dt.datetime.now(dt.timezone.utc).date()
+                return float(valor) / 100.0, f"{hoje:%d/%m/%Y}, via BrasilAPI"
+    raise RuntimeError(f"BrasilAPI: taxa {nome} ausente.")
+
+
+def _fetch_taxa_bcb(serie: int) -> tuple[float, str]:
+    """SGS do Banco Central; se falhar, a mesma taxa pela BrasilAPI."""
+    try:
+        return _fetch_sgs_value(serie)
+    except Exception as erro_sgs:  # noqa: BLE001 — qualquer falha tenta a reserva
+        try:
+            valor = _fetch_brasilapi_taxa(serie)
+        except Exception:  # noqa: BLE001
+            raise erro_sgs from None
+        logger.warning("SGS série %s indisponível (%s); usando BrasilAPI.", serie, erro_sgs)
+        return valor
+
+
 def _fetch_sgs_value(serie: int) -> tuple[float, str]:
     hoje = dt.datetime.now(dt.timezone.utc).date()
     data_inicial = hoje - dt.timedelta(days=90)
@@ -674,13 +709,13 @@ def load_market_data(
         return cached_data
 
     fetchers = {
-        "selic": lambda: _fetch_sgs_value(SGS_SELIC),
-        "ipca": lambda: _fetch_sgs_value(SGS_IPCA_12M),
+        "selic": lambda: _fetch_taxa_bcb(SGS_SELIC),
+        "ipca": lambda: _fetch_taxa_bcb(SGS_IPCA_12M),
         "focus_selic_por_ano": _fetch_focus_selic_por_ano,
         "ibov_cagr": _fetch_ibov_cagr_10a,
         # Opcionais: enriquecem a análise, mas não bloqueiam o carregamento.
         "ibov_volatilidade": _fetch_ibov_volatilidade_10a,
-        "cdi": lambda: _fetch_sgs_value(SGS_CDI_ANUAL),
+        "cdi": lambda: _fetch_taxa_bcb(SGS_CDI_ANUAL),
         "poupanca": _fetch_poupanca_anual,
         "focus_ipca_por_ano": _fetch_focus_ipca_por_ano,
     }
